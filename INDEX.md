@@ -14,6 +14,7 @@
 | 05 | [05-file-carving](modules/lab-linux/05-file-carving/README.md) | File carving | 4 | PASS | Y |
 | 06 | [06-windows-artifact-libs](modules/lab-linux/06-windows-artifact-libs/README.md) | Windows artifact libraries (libyal) | 5 | PASS | Y |
 | 07 | [07-network-pcap](modules/lab-linux/07-network-pcap/README.md) | Network / PCAP analysis | 4 | PASS | Y |
+| 08 | [08-malware-static-triage](modules/lab-linux/08-malware-static-triage/README.md) | Malware static triage | 6 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
@@ -30,7 +31,7 @@ _No modules yet._
 | File carving | lab-linux | 05-file-carving | Covered | PASS |
 | Windows artifact libraries (libyal) | lab-linux | 06-windows-artifact-libs | Covered | PASS |
 | Network / PCAP analysis | lab-linux | 07-network-pcap | Covered | PASS |
-| Malware static triage | lab-linux | 08-malware-static-triage | Planned | -- |
+| Malware static triage | lab-linux | 08-malware-static-triage | Covered | PASS |
 | Deobfuscation | lab-linux | 09-deobfuscation | Planned | -- |
 | Malicious documents | lab-linux | 10-malicious-documents | Planned | -- |
 | Offensive / network (Kali subset) | lab-linux | 11-offensive-kali | Planned | -- |
@@ -43,4 +44,4 @@ _No modules yet._
 | Malicious Office / PDF | lab-windows | 18-malicious-office-pdf | Planned | -- |
 | Script malware | lab-windows | 19-script-malware | Planned | -- |
 
-_Coverage: 7 / 19 families have a module._
+_Coverage: 8 / 19 families have a module._
