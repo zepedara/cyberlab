@@ -3,11 +3,11 @@ VM Platform,Appliance,Security Onion,2.4.190,,Network+host detection grid (Oracl
 VM Platform,Appliance,FireEye HX,10.0.5,,Endpoint EDR / host forensics,Vendor,
 VM Platform,Appliance,Splunk,9.4.7,,SIEM / log analytics,https://splunk.com,
 VM Platform,Appliance,RITA,5.1.1,,Beacon / C2 traffic analysis,https://github.com/activecm/rita,
-VM Platform,Appliance,FLARE-VM,DCWS Datalocker 2.2.1,choco list --local-only,Windows 10 malware reverse-engineering overlay,https://github.com/mandiant/flare-vm,Choco-based; run command to enumerate tool versions
+VM Platform,Appliance,FLARE-VM,official upstream (mandiant/kali),choco list --local-only,Windows 10 malware reverse-engineering overlay,https://github.com/mandiant/flare-vm,Choco-based; run command to enumerate tool versions
 VM Platform,Appliance,SIFT Workstation,2026-04-24,,DFIR forensic workstation,https://www.sans.org/tools/sift-workstation,Also a VM appliance; contains SIFT tools below
 VM Platform,Appliance,Velociraptor,~0.75 (UNCONFIRMED),,Endpoint hunting & collection,https://docs.velociraptor.app,ACTION: verify exact version from mission kit
 VM Platform,Appliance,REMnux,latest (NO VERSION),,Malware reverse-engineering Linux distro,https://remnux.org,ACTION: capture release-date version pin
-VM Platform,Appliance,Kali Linux,5.18.0-kali5-amd64,,Offensive / general-purpose distro,DCWS Datalocker 2.2.1,Debian 5.18.5-kali6 (2022-07-07)
+VM Platform,Appliance,Kali Linux,5.18.0-kali5-amd64,,Offensive / general-purpose distro,official upstream (mandiant/kali),Debian 5.18.5-kali6 (2022-07-07)
 SIFT,Forensics,Plaso / log2timeline,20250918,log2timeline.py [output] [source_image],Super-timeline generation from forensic artifacts,https://plaso.readthedocs.io,
 SIFT,Forensics,Rekall Framework,1.7.2 (legacy/inactive),rekall -f [memory_image],Memory extraction & analysis (Volatility fork),https://github.com/google/rekall,
 SIFT,Forensics,Volatility Framework,3 v2.28.1,vol -f [memory_image] [plugin],Volatile-memory (RAM) artifact extraction,https://volatilityfoundation.org,
