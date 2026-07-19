@@ -25,6 +25,7 @@
 |---|---|---|---|---|---|
 | 12 | [12-static-re](modules/lab-windows/12-static-re/README.md) | Static reverse engineering | 5 | PASS | Y |
 | 13 | [13-dynamic-debugging](modules/lab-windows/13-dynamic-debugging/README.md) | Dynamic debugging | 3 | PASS | Y |
+| 14 | [14-dotnet-re](modules/lab-windows/14-dotnet-re/README.md) | NET reverse engineering | 3 | PASS | Y |
 
 ## Coverage matrix
 
@@ -43,11 +44,11 @@
 | Offensive / network (Kali subset) | lab-linux | 11-offensive-kali | Covered | PASS |
 | Static reverse engineering | lab-windows | 12-static-re | Covered | PASS |
 | Dynamic debugging | lab-windows | 13-dynamic-debugging | Covered | PASS |
-| .NET reverse engineering | lab-windows | 14-dotnet-re | Planned | -- |
+| .NET reverse engineering | lab-windows | 14-dotnet-re | Covered | PASS |
 | Behavioral / dynamic analysis | lab-windows | 15-behavioral-dynamic | Planned | -- |
 | Process memory forensics | lab-windows | 16-process-memory | Planned | -- |
 | Shellcode analysis | lab-windows | 17-shellcode-analysis | Planned | -- |
 | Malicious Office / PDF | lab-windows | 18-malicious-office-pdf | Planned | -- |
 | Script malware | lab-windows | 19-script-malware | Planned | -- |
 
-_Coverage: 13 / 19 families have a module._
+_Coverage: 14 / 19 families have a module._
