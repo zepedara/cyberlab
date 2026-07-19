@@ -8,6 +8,7 @@
 | NN | Module | Tool group | #tools | Status | Sources |
 |---|---|---|---|---|---|
 | 01 | [01-disk-forensics](modules/lab-linux/01-disk-forensics/README.md) | Disk & filesystem forensics | 4 | PASS | Y |
+| 02 | [02-memory-forensics](modules/lab-linux/02-memory-forensics/README.md) | Memory forensics | 4 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
@@ -18,7 +19,7 @@ _No modules yet._
 | Family | VM | Slug | Coverage | Status |
 |---|---|---|---|---|
 | Disk/Filesystem forensics | lab-linux | 01-disk-forensics | Covered | PASS |
-| Memory forensics | lab-linux | 02-memory-forensics | Planned | -- |
+| Memory forensics | lab-linux | 02-memory-forensics | Covered | PASS |
 | Timeline / super-timelining | lab-linux | 03-timeline-analysis | Planned | -- |
 | Registry analysis | lab-linux | 04-registry-analysis | Planned | -- |
 | File carving | lab-linux | 05-file-carving | Planned | -- |
@@ -37,4 +38,4 @@ _No modules yet._
 | Malicious Office / PDF | lab-windows | 18-malicious-office-pdf | Planned | -- |
 | Script malware | lab-windows | 19-script-malware | Planned | -- |
 
-_Coverage: 1 / 19 families have a module._
+_Coverage: 2 / 19 families have a module._
