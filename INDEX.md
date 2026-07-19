@@ -12,6 +12,7 @@
 | 03 | [03-timeline-analysis](modules/lab-linux/03-timeline-analysis/README.md) | Timeline / super-timelining | 3 | PASS | Y |
 | 04 | [04-registry-analysis](modules/lab-linux/04-registry-analysis/README.md) | Registry analysis | 2 | PASS | Y |
 | 05 | [05-file-carving](modules/lab-linux/05-file-carving/README.md) | File carving | 4 | PASS | Y |
+| 06 | [06-windows-artifact-libs](modules/lab-linux/06-windows-artifact-libs/README.md) | Windows artifact libraries (libyal) | 5 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
@@ -26,7 +27,7 @@ _No modules yet._
 | Timeline / super-timelining | lab-linux | 03-timeline-analysis | Covered | PASS |
 | Registry analysis | lab-linux | 04-registry-analysis | Covered | PASS |
 | File carving | lab-linux | 05-file-carving | Covered | PASS |
-| Windows artifact libraries (libyal) | lab-linux | 06-windows-artifact-libs | Planned | -- |
+| Windows artifact libraries (libyal) | lab-linux | 06-windows-artifact-libs | Covered | PASS |
 | Network / PCAP analysis | lab-linux | 07-network-pcap | Planned | -- |
 | Malware static triage | lab-linux | 08-malware-static-triage | Planned | -- |
 | Deobfuscation | lab-linux | 09-deobfuscation | Planned | -- |
@@ -41,4 +42,4 @@ _No modules yet._
 | Malicious Office / PDF | lab-windows | 18-malicious-office-pdf | Planned | -- |
 | Script malware | lab-windows | 19-script-malware | Planned | -- |
 
-_Coverage: 5 / 19 families have a module._
+_Coverage: 6 / 19 families have a module._
