@@ -21,7 +21,9 @@
 
 ## LAB-WINDOWS modules
 
-_No modules yet._
+| NN | Module | Tool group | #tools | Status | Sources |
+|---|---|---|---|---|---|
+| 12 | [12-static-re](modules/lab-windows/12-static-re/README.md) | Static reverse engineering | 5 | PASS | Y |
 
 ## Coverage matrix
 
@@ -38,7 +40,7 @@ _No modules yet._
 | Deobfuscation | lab-linux | 09-deobfuscation | Covered | PASS |
 | Malicious documents | lab-linux | 10-malicious-documents | Covered | PASS |
 | Offensive / network (Kali subset) | lab-linux | 11-offensive-kali | Covered | PASS |
-| Static reverse engineering | lab-windows | 12-static-re | Planned | -- |
+| Static reverse engineering | lab-windows | 12-static-re | Covered | PASS |
 | Dynamic debugging | lab-windows | 13-dynamic-debugging | Planned | -- |
 | .NET reverse engineering | lab-windows | 14-dotnet-re | Planned | -- |
 | Behavioral / dynamic analysis | lab-windows | 15-behavioral-dynamic | Planned | -- |
@@ -47,4 +49,4 @@ _No modules yet._
 | Malicious Office / PDF | lab-windows | 18-malicious-office-pdf | Planned | -- |
 | Script malware | lab-windows | 19-script-malware | Planned | -- |
 
-_Coverage: 11 / 19 families have a module._
+_Coverage: 12 / 19 families have a module._
