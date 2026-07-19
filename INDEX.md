@@ -17,6 +17,7 @@
 | 08 | [08-malware-static-triage](modules/lab-linux/08-malware-static-triage/README.md) | Malware static triage | 6 | PASS | Y |
 | 09 | [09-deobfuscation](modules/lab-linux/09-deobfuscation/README.md) | Deobfuscation | 4 | PASS | Y |
 | 10 | [10-malicious-documents](modules/lab-linux/10-malicious-documents/README.md) | Malicious documents | 5 | PASS | Y |
+| 11 | [11-offensive-kali](modules/lab-linux/11-offensive-kali/README.md) | Offensive / network (Kali subset) | 6 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
@@ -36,7 +37,7 @@ _No modules yet._
 | Malware static triage | lab-linux | 08-malware-static-triage | Covered | PASS |
 | Deobfuscation | lab-linux | 09-deobfuscation | Covered | PASS |
 | Malicious documents | lab-linux | 10-malicious-documents | Covered | PASS |
-| Offensive / network (Kali subset) | lab-linux | 11-offensive-kali | Planned | -- |
+| Offensive / network (Kali subset) | lab-linux | 11-offensive-kali | Covered | PASS |
 | Static reverse engineering | lab-windows | 12-static-re | Planned | -- |
 | Dynamic debugging | lab-windows | 13-dynamic-debugging | Planned | -- |
 | .NET reverse engineering | lab-windows | 14-dotnet-re | Planned | -- |
@@ -46,4 +47,4 @@ _No modules yet._
 | Malicious Office / PDF | lab-windows | 18-malicious-office-pdf | Planned | -- |
 | Script malware | lab-windows | 19-script-malware | Planned | -- |
 
-_Coverage: 10 / 19 families have a module._
+_Coverage: 11 / 19 families have a module._
