@@ -27,6 +27,7 @@
 | 13 | [13-dynamic-debugging](modules/lab-windows/13-dynamic-debugging/README.md) | Dynamic debugging | 3 | PASS | Y |
 | 14 | [14-dotnet-re](modules/lab-windows/14-dotnet-re/README.md) | NET reverse engineering | 3 | PASS | Y |
 | 15 | [15-behavioral-dynamic](modules/lab-windows/15-behavioral-dynamic/README.md) | Behavioral / dynamic analysis | 5 | PASS | Y |
+| 16 | [16-process-memory](modules/lab-windows/16-process-memory/README.md) | Process memory forensics | 3 | PASS | Y |
 
 ## Coverage matrix
 
@@ -47,9 +48,9 @@
 | Dynamic debugging | lab-windows | 13-dynamic-debugging | Covered | PASS |
 | .NET reverse engineering | lab-windows | 14-dotnet-re | Covered | PASS |
 | Behavioral / dynamic analysis | lab-windows | 15-behavioral-dynamic | Covered | PASS |
-| Process memory forensics | lab-windows | 16-process-memory | Planned | -- |
+| Process memory forensics | lab-windows | 16-process-memory | Covered | PASS |
 | Shellcode analysis | lab-windows | 17-shellcode-analysis | Planned | -- |
 | Malicious Office / PDF | lab-windows | 18-malicious-office-pdf | Planned | -- |
 | Script malware | lab-windows | 19-script-malware | Planned | -- |
 
-_Coverage: 15 / 19 families have a module._
+_Coverage: 16 / 19 families have a module._
