@@ -1,0 +1,59 @@
+Platform,Category,Tool,Version,CLI / Command,Purpose,Source,Notes / Action
+VM Platform,Appliance,Security Onion,2.4.190,,Network+host detection grid (Oracle Linux 9 / SaltStack 3006.16 / Docker),https://securityonion.net,Baseline; contains ~40 sub-tools below
+VM Platform,Appliance,FireEye HX,10.0.5,,Endpoint EDR / host forensics,Vendor,
+VM Platform,Appliance,Splunk,9.4.7,,SIEM / log analytics,https://splunk.com,
+VM Platform,Appliance,RITA,5.1.1,,Beacon / C2 traffic analysis,https://github.com/activecm/rita,
+VM Platform,Appliance,FLARE-VM,DCWS Datalocker 2.2.1,choco list --local-only,Windows 10 malware reverse-engineering overlay,https://github.com/mandiant/flare-vm,Choco-based; run command to enumerate tool versions
+VM Platform,Appliance,SIFT Workstation,2026-04-24,,DFIR forensic workstation,https://www.sans.org/tools/sift-workstation,Also a VM appliance; contains SIFT tools below
+VM Platform,Appliance,Velociraptor,~0.75 (UNCONFIRMED),,Endpoint hunting & collection,https://docs.velociraptor.app,ACTION: verify exact version from mission kit
+VM Platform,Appliance,REMnux,latest (NO VERSION),,Malware reverse-engineering Linux distro,https://remnux.org,ACTION: capture release-date version pin
+VM Platform,Appliance,Kali Linux,5.18.0-kali5-amd64,,Offensive / general-purpose distro,DCWS Datalocker 2.2.1,Debian 5.18.5-kali6 (2022-07-07)
+SIFT,Forensics,Plaso / log2timeline,20250918,log2timeline.py [output] [source_image],Super-timeline generation from forensic artifacts,https://plaso.readthedocs.io,
+SIFT,Forensics,Rekall Framework,1.7.2 (legacy/inactive),rekall -f [memory_image],Memory extraction & analysis (Volatility fork),https://github.com/google/rekall,
+SIFT,Forensics,Volatility Framework,3 v2.28.1,vol -f [memory_image] [plugin],Volatile-memory (RAM) artifact extraction,https://volatilityfoundation.org,
+SIFT,Forensics,bulk_extractor,2.1.x,bulk_extractor -o [outdir] [source_image],Rapid unstructured-data carving from images,https://github.com/simsong/bulk_extractor/wiki,Pin exact on build
+SIFT,Forensics,afflib / afflib-tools,3.7.x,afinfo [image.aff],Advanced Forensic Format library/tools,https://github.com/sshock/afflibv3,Pin exact on build
+SIFT,Forensics,ClamAV,1.5.1,clamscan -r [dir],AV engine for malware detection in images,https://www.clamav.net,
+SIFT,Forensics,dc3dd,7.3.x,dc3dd if=[src] of=[dst] hash=[alg],DC3 forensic dd with hashing/logging,https://dc3.mil,Pin exact on build
+SIFT,Forensics,imagemounter,3.1.x,imount [image_file],Automated forensic disk-image mounting,https://imagemounter.readthedocs.io,Pin exact on build
+SIFT,Forensics,libyal libraries,Various,ewfinfo / vshadowinfo / etc,Parsers for BitLocker/ESE/EVTX/EWF/FVDE/VSS,https://github.com/libyal,libbde libesedb libevt libevtx libewf libfvde libvshadow
+SIFT,Forensics,lightgrep,1.4.x,lightgrep -p [pattern] [source],Fast multi-pattern regex search over forensic data,https://github.com/strozfriedberg/lightgrep,Pin exact on build
+SIFT,Forensics,QEMU,10.0.0,qemu-system-x86_64 -hda [disk_image],Boot/analyze disk images in sandbox,https://www.qemu.org,
+SIFT,Forensics,RegRipper,4,rip.pl -r [hive] -p [plugin],Windows Registry parsing & timelining,https://github.com/keydet89/RegRipper4.0,
+SIFT,Forensics,The Sleuth Kit (TSK),4.15.0,fls / ils / icat / fsstat,Filesystem/volume analysis & deleted-file recovery,https://wiki.sleuthkit.org,Collection of CLI tools
+Security Onion,Network Visibility,Zeek,8.0.4,,Network traffic analyzer & protocol metadata logging,,
+Security Onion,Network Visibility,Suricata,8.0.2,,Signature-based IDS/IPS & packet capture,,
+Security Onion,Network Visibility,Stenographer,Active,,High-speed raw full packet capture daemon,,Version tracks SO 2.4.190
+Security Onion,Network Visibility,Sensoroni,Custom,,Backend API agent retrieving/extracting PCAPs,,Version tracks SO 2.4.190
+Security Onion,File Analysis,Strelka,1.0.1,,Real-time file extraction & YARA/file carving,,
+Security Onion,File Analysis,FreqServer,Custom,,Entropy analysis to detect DGAs,,Version tracks SO 2.4.190
+Security Onion,File Analysis,DomainStats,Custom,,Domain-age checks to flag malicious sites,,Version tracks SO 2.4.190
+Security Onion,Host/EDR,Elastic Agent,8.18.8,,Host log/metric/audit collector,,
+Security Onion,Host/EDR,Elastic Fleet,8.18.8,,Central agent config & deployment,,
+Security Onion,Host/EDR,Osquery,Embedded,,Live endpoint queries via SQL,,Version tracks SO 2.4.190
+Security Onion,Host/EDR,Wazuh,Active,,HIDS - File Integrity Monitoring & rootkit checks,,Version tracks SO 2.4.190
+Security Onion,Host/EDR,OpenCanary,Active,,Network honeypot / decoy services,,Version tracks SO 2.4.190
+Security Onion,Log Routing,Redis,7.2.11,,Log ingestion queue/broker,,
+Security Onion,Log Routing,Logstash,8.18.8,,Data pipeline - ECS normalize & enrich,,
+Security Onion,Log Routing,Filebeat,8.18.8,,Lightweight log shipper,,
+Security Onion,Log Routing,Rsyslog / Syslog-ng,Native,,Ingest traditional syslog from appliances,,Version tracks SO 2.4.190
+Security Onion,DB/Search,Elasticsearch,8.18.8,,NoSQL index for logs/metadata/alerts,,
+Security Onion,DB/Search,Kibana,8.18.8,,Search analytics & dashboards,,
+Security Onion,DB/Search,ILM,Native,,Index Lifecycle Management (aging/rolling/deletion),,Version tracks SO 2.4.190
+Security Onion,IR/AI,Security Onion Console (SOC),2.4.190,,Web UI for threat hunting & grid management,,
+Security Onion,IR/AI,Onion AI Assistant,NEW (Pro),,AI triage assistance for analysts,,Version tracks SO 2.4.190
+Security Onion,IR/AI,TheHive,Active,,Collaborative IR & case management,,Version tracks SO 2.4.190
+Security Onion,IR/AI,CyberChef,Active,,Visual data decode/parse/analysis,,Version tracks SO 2.4.190
+Security Onion,Detection,ElastAlert 2,2.26.0,,Continuous alert-indicator scanner,,
+Security Onion,Detection,Playbook,Custom,,Custom detections mapped to MITRE ATT&CK,,Version tracks SO 2.4.190
+Security Onion,Detection,ATT&CK Navigator,5.1.1,,Visual defensive-coverage matrix,,
+Security Onion,Detection,Sigma / Sigma-CLI,Active,,Translate YAML detection rules to Elastic queries,,Version tracks SO 2.4.190
+Security Onion,Detection,so-idstools,Custom,,Manage/update Suricata ET rules,,Version tracks SO 2.4.190
+Security Onion,Diagnostics,InfluxDB,Active,,Time-series store for hardware metrics,,Version tracks SO 2.4.190
+Security Onion,Diagnostics,Telegraf,1.36.1,,Hardware health/CPU/mem/disk agent,,
+Security Onion,Diagnostics,Grafana,Active,,Infra/node-health dashboards,,Version tracks SO 2.4.190
+Security Onion,Identity/Infra,Nginx (so-nginx),1.29.1,,Reverse proxy for internal web traffic,,
+Security Onion,Identity/Infra,Ory Kratos & Dex,Active,,IAM - SSO/auth/sessions,,Version tracks SO 2.4.190
+Security Onion,Identity/Infra,so-firewall,Custom,,iptables/nftables wrapper for inter-node comms,,Version tracks SO 2.4.190
+Security Onion,Identity/Infra,so-apt-cacher-ng,Custom,,Local package caching proxy,,Version tracks SO 2.4.190
+Security Onion,Identity/Infra,ManagerHype,Custom,,Hypervisor integration for VM mapping,,Version tracks SO 2.4.190
