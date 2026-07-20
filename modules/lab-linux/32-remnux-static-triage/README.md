@@ -10,6 +10,11 @@ When a suspicious file lands on an analyst's desk, the first job is "static tria
 | ssdeep | apt install ssdeep | Compute and compare context-triggered piecewise (fuzzy) hashes for similarity |
 | pefile | pip3 install pefile | Python library/CLI to parse the structure of Windows PE (EXE/DLL) files |
 
+Notes on the claims in this table:
+- Detect-It-Easy ships preinstalled on REMnux and is documented on the REMnux tool list; `diec` is the console front-end (`diec` = "Detect It Easy Console"). See the Detect-It-Easy repo and REMnux docs in Sources.
+- ssdeep implements **context-triggered piecewise hashing (CTPH)**, the fuzzy-hashing algorithm described by Jesse Kornblum; the algorithm and CLI are documented on the ssdeep project site (Sources).
+- pefile is a pure-Python module for parsing/working with the Portable Executable (PE) format; the `pefile.PE` class and section/import structures are documented in the erocarrera/pefile repo (Sources).
+
 ## Learning objectives
 - Use **Detect-It-Easy** to identify a file's type, compiler, and packer status from the command line.
 - Generate and compare **ssdeep** fuzzy hashes to quantify similarity between two files.
@@ -25,8 +30,10 @@ python3 -c "import pefile; print('pefile', pefile.__version__)"
 ```
 Expected output: DIE prints a version string (e.g. `Detect It Easy 3.xx`), `ssdeep` prints a version like `ssdeep 2.14.1`, and the Python line prints `pefile 2023.x.x`. If any command errors, install with the commands in the Tools covered table.
 
+Notes: `ssdeep -V` is the documented version flag (ssdeep man page / project docs). `pefile.__version__` is exposed by the module and matches the release tags in the erocarrera/pefile repo. DIE's `--version`/`-v` is documented in the Detect-It-Easy repo. Exact version strings vary by REMnux release; treat the examples above as illustrative, not fixed.
+
 ## Guided walkthrough
-1. Build a small, benign PE test file so nothing dangerous is used (a plain MinGW-compiled "hello world").
+1. Build a small, benign PE test file so nothing dangerous is used (a plain MinGW-compiled "hello world"). We generate our own sample so the exercise never touches live malware — this is the standard "known-good baseline" approach for practicing triage tooling.
 ```bash
 mkdir -p exercise && cd exercise
 cat > hello.c <<'EOF'
@@ -37,24 +44,24 @@ EOF
 x86_64-w64-mingw32-gcc hello.c -o sample.exe
 ls -l sample.exe
 ```
-Expected output: a `sample.exe` PE binary is produced (tens of KB).
+Expected output: a `sample.exe` PE binary is produced (tens of KB). Why cross-compile? `x86_64-w64-mingw32-gcc` is the MinGW-w64 GCC target that emits a Windows PE32+ (PE64) executable from a Linux host, so we get a genuine PE to feed to Windows-format tooling without needing Windows. (MinGW-w64 project; Kali `mingw-w64` package — see Sources.)
 
-2. `diec` — identify what the file is and whether it is packed.
+2. `diec` — identify what the file is and whether it is packed. This is the fastest way to answer "what am I even looking at?" — DIE reads magic bytes, the PE header, and its signature database to name the format, architecture, linker/compiler, and any packer/protector.
 ```bash
 diec sample.exe
 ```
-Expected output: DIE reports `PE64`, an entrypoint, and a compiler such as `Compiler: MinGW` — and importantly it will NOT flag a packer for this clean build.
+Expected output: DIE reports `PE64` (i.e. PE32+), an entrypoint, and a compiler/linker consistent with GCC/MinGW — and importantly it will NOT flag a packer for this clean build. Nuance: for a normal compiler-produced binary, DIE shows only compiler/linker signatures and no packer line; a packer hit (e.g. UPX) on real malware is an early evasion tell. DIE's detection is signature-based, so absence of a packer flag means "no known signature matched," not a guarantee the file is unpacked. (Detect-It-Easy repo — Sources.)
 
-3. `ssdeep` — fingerprint the file, then prove a tiny change produces a *similar* (not identical) hash.
+3. `ssdeep` — fingerprint the file, then prove a tiny change produces a *similar* (not identical) hash. This demonstrates CTPH: cryptographic hashes (SHA-256) change completely with a one-byte edit, but fuzzy hashes stay measurably similar, which is what lets analysts cluster variants.
 ```bash
 ssdeep sample.exe > baseline.txt
 cp sample.exe sample_mod.exe
 printf 'X' >> sample_mod.exe        # append one byte
 ssdeep -m baseline.txt sample_mod.exe
 ```
-Expected output: `sample_mod.exe matches baseline.txt:sample.exe (NN)` where NN is a match score below 100 (fuzzy similarity), demonstrating near-duplicate detection.
+Expected output: `sample_mod.exe matches baseline.txt:sample.exe (NN)` where NN is a match score (0–100). Nuance: `-m` matches inputs against a saved hash file (documented flag). A single appended byte usually yields a high-but-below-100 score; for a very small file the score may even remain 100 because the change is below ssdeep's block-size sensitivity threshold — this is expected behavior of CTPH and illustrates why ssdeep is best on larger, more complex samples. (ssdeep project docs / man page — Sources.)
 
-4. `pefile` — read the PE structure, sections, and imports.
+4. `pefile` — read the PE structure, sections, and imports. This is the "x-ray": the `TimeDateStamp`, section entropy, and import table are exactly the fields analysts weaponize for hunting and anomaly detection.
 ```bash
 python3 - <<'EOF'
 import pefile
@@ -68,7 +75,7 @@ if hasattr(pe, "DIRECTORY_ENTRY_IMPORT"):
         print("DLL:", entry.dll.decode())
 EOF
 ```
-Expected output: section names like `.text`, `.data`, `.idata` with entropy values (roughly 4–6 for normal code), and imported DLLs such as `KERNEL32.dll` and `msvcrt.dll`.
+Expected output: section names like `.text`, `.data`, `.idata` (or `.rdata`) with entropy values (roughly 4–6 for normal code and data). Nuance: `FILE_HEADER.TimeDateStamp` is the PE COFF header's link-time timestamp — a 32-bit Unix epoch value per the PE/COFF specification; it can be legitimately set, zeroed, or forged, so treat it as an indicator not proof. `get_entropy()` returns Shannon entropy on a 0–8 scale; values approaching 8.0 indicate compression/encryption (a packing signal). MinGW imports typically include `KERNEL32.dll` and the C runtime `msvcrt.dll`. (pefile repo for `PE`, `FILE_HEADER`, `sections`, `get_entropy`, `DIRECTORY_ENTRY_IMPORT`; Microsoft Learn PE/COFF spec for `TimeDateStamp` — Sources.)
 
 ## Hands-on exercise
 Using the sample in this module's `exercise/` directory, answer:
@@ -82,10 +89,24 @@ Using the sample in this module's `exercise/` directory, answer:
 - **Reproducible generator:** run the two code blocks in Guided walkthrough steps 1 and 3 inside `exercise/`.
 
 ## SOC analyst perspective
-Static triage is the front door of the incident-response examination phase. When an EDR alert or a Security Onion detection (e.g., a Suricata file-extraction or a Zeek `files.log` entry) surfaces an unknown binary, an analyst pulls the extracted file and runs DIE/pefile/ssdeep before ever detonating it. DIE quickly flags packers/protectors (an early indicator of evasion, mapping to MITRE ATT&CK **T1027.002 Software Packing**), pefile reveals suspicious imports and compile timestamps that can be pivoted into hunting queries, and ssdeep clusters the sample against known-bad fuzzy hashes to attribute it to a family and to sweep the fleet for near-duplicates. In Security Onion you can enrich hits by correlating the file hash from `files.log` with your ssdeep-derived clusters, turning one alert into a fleet-wide retrospective hunt.
+Static triage is the front door of the incident-response examination phase. When an EDR alert or a Security Onion detection surfaces an unknown binary, an analyst pulls the extracted file and runs DIE/pefile/ssdeep before ever detonating it.
+
+Concrete Security Onion pivots and detection logic:
+- **Zeek `files.log`** records extracted files with their `sha256`/`md5`, `mime_type`, `source`, and `fuid`; use the hash to pivot in Kibana/Elastic and to seed your ssdeep clustering. Zeek's File Analysis Framework (see Zeek docs in Sources) is what produces these fields.
+- **Suricata `fileinfo`/file-extraction** events (in Security Onion's Suricata configuration) can carve PE files off the wire; the resulting file hash correlates directly to the same object in `files.log`. (Security Onion docs; Suricata docs — Sources.)
+- **PE magic / MIME**: hunt on Zeek `files.log` where `mime_type == "application/x-dosexec"` crossing HTTP or SMB to spot Windows executables being delivered.
+- **Fuzzy clustering**: DIE flags packers/protectors — an early evasion indicator mapping to MITRE ATT&CK **T1027.002 (Software Packing)** and the parent **T1027 (Obfuscated Files or Information)**. pefile exposes suspicious imports (e.g. `VirtualAlloc`/`WriteProcessMemory` combinations tied to process injection tradecraft under **T1055**) and compile timestamps that become pivotable hunt terms. ssdeep clusters the sample against known-bad fuzzy hashes to attribute it to a family and sweep the fleet for near-duplicates.
+- **From one alert to a hunt**: correlate the `sha256` from `files.log` with your ssdeep-derived clusters in Elastic, turning a single detection into a fleet-wide retrospective hunt. Detection-in-depth here aligns with the triage-first workflow taught in SANS FOR610 (Sources).
 
 ## Attacker perspective
-Attackers know analysts will triage statically, so they deliberately defeat these tools. They **pack or crypt** binaries (raising section entropy toward 8.0 and hiding real imports behind a stub) to fool casual inspection — but DIE and pefile expose exactly those tells: a single high-entropy section, a truncated import table, an unusual entrypoint, or a compile timestamp that has been zeroed or forged. To dodge ssdeep clustering, malware authors add junk bytes, randomize resources, or recompile per-target so fuzzy scores drop; yet minor changes still leave residual similarity (a match score well below 100), which is precisely what ssdeep is designed to catch. The artifacts left behind for defenders include the PE header anomalies, packer signatures, mismatched section characteristics, and consistent fuzzy-hash lineage across a campaign.
+Attackers know analysts will triage statically, so they deliberately defeat these tools using concrete TTPs:
+
+- **Packing/crypting (T1027.002)**: UPX or custom crypters compress/encrypt the real payload behind a stub, raising a section's Shannon entropy toward 8.0 and collapsing the visible import table to a handful of loader APIs. Artifact left behind: one anomalously high-entropy section, an import table dominated by `LoadLibrary`/`GetProcAddress` (dynamic resolution), and an entrypoint that lands outside `.text`. DIE's packer signatures and pefile's `get_entropy()` expose exactly these tells.
+- **Timestamp forging / "timestomping" the PE header (T1070.006 style manipulation of time attributes)**: `FILE_HEADER.TimeDateStamp` is trivially zeroed or set to a decoy epoch. Artifact: an implausible or all-zero `TimeDateStamp`, or one that disagrees with Rich header / debug directory timestamps.
+- **Obfuscation more broadly (T1027)** and **deobfuscation at runtime (T1140)**: the packed stub decodes the real payload only when executed, which is why static entropy is high but dynamic analysis is still needed.
+- **Defeating ssdeep clustering**: authors inject junk/padding bytes, randomize resources, or recompile per-target so fuzzy scores drop. Evasion is imperfect — minor changes still leave residual similarity (a match score well below 100), which is precisely what CTPH is designed to catch.
+
+Defender-visible artifacts across a campaign: PE header anomalies, packer signatures, mismatched section characteristics (e.g. writable+executable sections), truncated import tables, and consistent fuzzy-hash lineage. (MITRE ATT&CK T1027 / T1027.002 / T1140 / T1055 / T1070.006 pages — Sources.)
 
 ## Answer key
 Expected findings and the exact commands that produce them:
@@ -93,7 +114,7 @@ Expected findings and the exact commands that produce them:
 ```bash
 diec exercise/sample.exe | grep -iE "compiler|packer|linker"
 ```
-2. **ssdeep:** the modified copy matches the baseline with a score under 100 (fuzzy match, not identical).
+2. **ssdeep:** the modified copy matches the baseline with a score under 100 (fuzzy match, not identical); for this very small sample the score may be high (possibly 100) because one appended byte is below the CTPH block-size sensitivity — record whatever score you observe.
 ```bash
 ssdeep exercise/sample.exe > exercise/baseline.txt
 ssdeep -m exercise/baseline.txt exercise/sample_mod.exe
@@ -109,17 +130,37 @@ sha256sum exercise/sample.exe
 (Record this digest in your notes; it is deterministic per toolchain version but differs across MinGW versions, which is why a reproducible generator command is provided instead of a fixed digest.)
 
 ## MITRE ATT&CK & DFIR phase
-- **T1027 — Obfuscated Files or Information** (detected via DIE/pefile entropy and header analysis).
-- **T1027.002 — Software Packing** (DIE packer signatures; pefile section entropy).
-- **T1140 — Deobfuscate/Decode Files or Information** (context for follow-on analysis).
+- **T1027 — Obfuscated Files or Information** (detected via DIE/pefile entropy and header analysis). https://attack.mitre.org/techniques/T1027/
+- **T1027.002 — Software Packing** (DIE packer signatures; pefile section entropy). https://attack.mitre.org/techniques/T1027/002/
+- **T1140 — Deobfuscate/Decode Files or Information** (context for follow-on analysis). https://attack.mitre.org/techniques/T1140/
+- **T1055 — Process Injection** (context: suspicious import combinations flagged during pefile triage). https://attack.mitre.org/techniques/T1055/
+- **T1070.006 — Indicator Removal: Timestomp** (context: forged/zeroed PE `TimeDateStamp`). https://attack.mitre.org/techniques/T1070/006/
 - **DFIR phase:** Identification and Examination — static triage prioritizes samples before dynamic analysis.
 
 ## Sources
-- REMnux tools documentation: https://docs.remnux.org/discover-the-tools
-- Detect-It-Easy (horsicq): https://github.com/horsicq/Detect-It-Easy
-- ssdeep / fuzzy hashing project: https://ssdeep-project.github.io/ssdeep/
-- pefile documentation: https://github.com/erocarrera/pefile
-- Kali Tools — ssdeep: https://www.kali.org/tools/ssdeep/
+Claim → source mapping (all URLs are real, authoritative pages):
+
+- REMnux ships DIE/ssdeep/pefile; tool discovery — REMnux docs: https://docs.remnux.org/discover-the-tools
+- Detect-It-Easy behavior, `diec` console, `--version`, packer/compiler signature detection — horsicq/Detect-It-Easy repo: https://github.com/horsicq/Detect-It-Easy
+- ssdeep context-triggered piecewise (fuzzy) hashing algorithm, CLI flags (`-V`, `-m`), scoring 0–100 — ssdeep project docs: https://ssdeep-project.github.io/ssdeep/
+- Kali `ssdeep` package/usage — Kali Tools: https://www.kali.org/tools/ssdeep/
+- pefile `PE` class, `sections`, `get_entropy()`, `FILE_HEADER.TimeDateStamp`, `DIRECTORY_ENTRY_IMPORT`, `__version__` — erocarrera/pefile repo: https://github.com/erocarrera/pefile
+- PE/COFF `IMAGE_FILE_HEADER.TimeDateStamp` semantics (32-bit epoch link timestamp), PE32+ (PE64) format — Microsoft Learn PE Format spec: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
+- MinGW-w64 cross-compiler (`x86_64-w64-mingw32-gcc`) producing Windows PE — MinGW-w64 project: https://www.mingw-w64.org/ and Kali `mingw-w64` package: https://www.kali.org/tools/mingw-w64/
+- Zeek File Analysis Framework and `files.log` fields (sha256/md5, mime_type, fuid) — Zeek docs: https://docs.zeek.org/en/master/frameworks/file-analysis.html
+- Suricata file extraction / `fileinfo` events — Suricata docs: https://docs.suricata.io/en/latest/file-extraction/file-extraction.html
+- Security Onion Zeek/Suricata/Elastic integration and pivots — Security Onion docs: https://docs.securityonion.net/
 - MITRE ATT&CK T1027 Obfuscated Files or Information: https://attack.mitre.org/techniques/T1027/
 - MITRE ATT&CK T1027.002 Software Packing: https://attack.mitre.org/techniques/T1027/002/
-- SANS FOR610 Reverse-Engineering Malware: https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+- MITRE ATT&CK T1140 Deobfuscate/Decode Files or Information: https://attack.mitre.org/techniques/T1140/
+- MITRE ATT&CK T1055 Process Injection: https://attack.mitre.org/techniques/T1055/
+- MITRE ATT&CK T1070.006 Indicator Removal: Timestomp: https://attack.mitre.org/techniques/T1070/006/
+- SANS FOR610 Reverse-Engineering Malware (static triage workflow): https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+
+## Related modules
+- [Malware static triage](../08-malware-static-triage/README.md) -- shares detect-it-easy for file identification/packing checks.
+- [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives); pairs static triage with memory analysis.
+- [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives); turns triage findings into detection rules.
+- [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives); disk-forensics companion to file triage.
+
+<!-- cyberlab-enriched: v1 -->
