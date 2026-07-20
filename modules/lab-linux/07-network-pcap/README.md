@@ -76,7 +76,7 @@ Open the sample capture in this module's `exercise/` directory and answer:
 - **File:** `exercise/sample.pcap`
 - **Type:** libpcap network capture (benign HTTP GET + DNS lookup to a documentation host).
 - **Safe origin:** Generated in an isolated lab namespace against RFC-5737/example.com documentation endpoints; **benign and inert — contains no malware, no exploit, no live C2**. Capture was produced with `tcpdump -w sample.pcap` over synthetic traffic, then verified offline.
-- **sha256:** `3f5b8c1d9e2a47f6b0c8d1e4a7b2c9f0e3d6a1b4c7e0f3a6d9b2c5e8f1a4d7b0`
+- **sha256:** `c039d5d4db1a5d96dd80c4a321a2bdf6013428a9cf0782f780883e0b44851c77`
 
 ## SOC analyst perspective
 A defender uses these tools during network-based detection and incident response. In Security Onion, alerts from Suricata/Zeek pivot you to the exact PCAP; you then run tshark to confirm what an IDS rule flagged — extracting the malicious host, URI, JA3/TLS SNI, or DNS name that triggered it (mapping to T1071 Application Layer Protocol and T1568 Dynamic Resolution). ngrep quickly confirms cleartext IOCs like exfiltrated data or beaconing patterns, while tcpflow reassembles the full request/response so you can recover a dropped payload or verify C2 content. This evidence-grade extraction validates or dismisses an alert, scopes affected hosts, and feeds new detection signatures — the core of the examination phase.
@@ -85,7 +85,7 @@ A defender uses these tools during network-based detection and incident response
 An attacker who gains a network foothold uses the same capture capability for reconnaissance and credential theft — sniffing cleartext protocols (HTTP, FTP, Telnet) with ngrep or tshark to harvest passwords (T1040 Network Sniffing), or reassembling sessions with tcpflow to steal transferred files and tokens. Offensively, running Wireshark/tshark against a mirrored or MITM'd link maps internal services and protocols before pivoting. The artifacts they leave for defenders: promiscuous-mode NIC state, unexpected packet-capture processes in host telemetry, ARP-spoofing entries when combined with a MITM tool, and — on the wire — the very cleartext sessions that reveal both their reconnaissance targets and the credentials they grabbed.
 
 ## Answer key
-Sample sha256: `3f5b8c1d9e2a47f6b0c8d1e4a7b2c9f0e3d6a1b4c7e0f3a6d9b2c5e8f1a4d7b0`
+Sample sha256: `c039d5d4db1a5d96dd80c4a321a2bdf6013428a9cf0782f780883e0b44851c77`
 
 1. DNS query name:
 ```bash

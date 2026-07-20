@@ -73,7 +73,7 @@ mkdir -p exercise
 printf 'X5O!P%%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > exercise/eicar_sample.txt
 sha256sum exercise/eicar_sample.txt
 ```
-- **sha256:** `275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f`
+- **sha256:** `131f95c51cc819465fa1797f6ccacf9d494aaaff46fa3eac73ae63ffbdfd8267`
 
 Task: Write (or reuse) a YARA rule that detects the EICAR string, scan the `exercise/` directory recursively, and record the matching rule name and file path.
 
@@ -99,9 +99,9 @@ Hunt_EICAR_TestString exercise/eicar_sample.txt
 Confirm the sample integrity:
 ```bash
 sha256sum exercise/eicar_sample.txt
-# 275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f  exercise/eicar_sample.txt
+# 131f95c51cc819465fa1797f6ccacf9d494aaaff46fa3eac73ae63ffbdfd8267  exercise/eicar_sample.txt
 ```
-The held-out validator check confirms the rule name `Hunt_EICAR_TestString` matches `exercise/eicar_sample.txt` and that the sha256 equals `275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f`.
+The held-out validator check confirms the rule name `Hunt_EICAR_TestString` matches `exercise/eicar_sample.txt` and that the sha256 equals `131f95c51cc819465fa1797f6ccacf9d494aaaff46fa3eac73ae63ffbdfd8267`.
 
 ## MITRE ATT&CK & DFIR phase
 - **T1027** — Obfuscated Files or Information (rules and evasion around packed/encoded payloads).

@@ -62,7 +62,7 @@ Use the sample in this module's `exercise/` directory.
 - **Sample:** `exercise/sample.bin`
 - **Type:** 32-bit position-independent Windows shellcode blob (raw bytes, no PE header).
 - **Safe origin:** Benign/inert training stub assembled locally with NASM from source (`exercise/sample.asm`). It only resolves and calls `WinExec("calc.exe")`-style APIs in an emulator; it contains **no live malware**, no network egress, and no persistence. Emulate it (`scdbg`) rather than launch it, and run any live step only inside an isolated FLARE-VM snapshot with host-only networking.
-- **sha256:** `9f2c4a7be1d0836af5c19e2b7d4a0c68f3e5b91a2c7d40e8b16f9a3c5d7e0f12`
+- **sha256:** `99bd3c262cfc8e3173548986f8dd786d59cc51d3f9e0929b85d34f973c839d55`
 
 Tasks:
 1. Emulate `sample.bin` with `scdbg` and list every Windows API it resolves, in call order.

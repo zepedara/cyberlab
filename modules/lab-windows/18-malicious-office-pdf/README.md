@@ -52,8 +52,8 @@ Expected: OneNoteAnalyzer prints extraction progress and creates a `*_content` d
 Using the two samples in this module's `exercise/` directory, determine (a) which PDF object holds the auto-run trigger and what outbound URI it references, and (b) the filename and type of the payload embedded in the OneNote file.
 
 Sample artifacts (both **benign/inert — no live malware**, safe to open with no network egress; analyze inside a FLARE-VM snapshot with host-only/FakeNet):
-- `exercise/invoice_sample.pdf` — **type:** PDF document. **Origin:** hand-crafted benign PDF containing a `/OpenAction`→`/JavaScript` object and a `/URI` pointing to the RFC-reserved example domain `http://example.com/track` (no exploit, no shellcode). **sha256:** `4b8a2f6c19d7e0a35c1f9b8ad6e2470c3f5b91a08d24e6c7b1f0a93d5e82c14b`
-- `exercise/note_sample.one` — **type:** Microsoft OneNote section file. **Origin:** synthetically generated `.one` embedding an inert text stub named `open_me.txt` (labeled to mimic a lure) — no executable content. **sha256:** `9f3c71e5b204a8d6f1c0937e5ab8d24f6e10c3b95d7a24810f6b3e9c02a17d5e`
+- `exercise/invoice_sample.pdf` — **type:** PDF document. **Origin:** hand-crafted benign PDF containing a `/OpenAction`→`/JavaScript` object and a `/URI` pointing to the RFC-reserved example domain `http://example.com/track` (no exploit, no shellcode). **sha256:** `c8d6b1b7db3374b5e29ff0e9417501b18194b21af9bfe698f4376126899f3c37`
+- `exercise/note_sample.one` — **type:** Microsoft OneNote section file. **Origin:** synthetically generated `.one` embedding an inert text stub named `open_me.txt` (labeled to mimic a lure) — no executable content. **sha256:** `a1de5a74f5dfb5932596214363301ea725545d1cabf06f12a730803f2fea3416`
 
 ## SOC analyst perspective
 Malicious documents are a top initial-access vector, so defenders triage them constantly. PDFStreamDumper and OneNoteAnalyzer let an IR analyst statically confirm weaponization and extract IOCs — embedded URIs, dropped-file names, and payload hashes — without detonating the sample, which maps to ATT&CK **T1204.002 (User Execution: Malicious File)**, **T1566.001 (Spearphishing Attachment)**, and **T1027 (Obfuscated Files)**. In Security Onion you pivot on those artifacts: use extracted URIs to query Suricata `http.hostname`/`url` alerts and Zeek `http.log`/`files.log`, and hunt the payload sha256 across Zeek `files.log` hashes and endpoint EDR telemetry. Confirming a `/OpenAction` auto-launch or a OneNote-embedded HTA lets you write a targeted detection and scope which mailboxes/hosts received the same document family, feeding your case timeline and containment decisions.
@@ -67,13 +67,13 @@ Adversaries embed auto-executing content in PDFs (`/OpenAction`, `/Launch`, `/Ja
 Select-String -Path "$PWD\exercise\invoice_sample.pdf" -Pattern 'OpenAction','/JS','/JavaScript','/URI' -AllMatches |
     Select-Object LineNumber, Line
 ```
-Expected: lines showing `/OpenAction`, a `/JavaScript` (or `/JS`) action object, and `(http://example.com/track)`. In PDFStreamDumper the same is visible via **Analyze > Header Data** (OpenAction) and **Search For > JavaScript**. Sample sha256: `4b8a2f6c19d7e0a35c1f9b8ad6e2470c3f5b91a08d24e6c7b1f0a93d5e82c14b`.
+Expected: lines showing `/OpenAction`, a `/JavaScript` (or `/JS`) action object, and `(http://example.com/track)`. In PDFStreamDumper the same is visible via **Analyze > Header Data** (OpenAction) and **Search For > JavaScript**. Sample sha256: `c8d6b1b7db3374b5e29ff0e9417501b18194b21af9bfe698f4376126899f3c37`.
 - **OneNote:** The embedded payload is `open_me.txt` (an inert text stub), extracted by OneNoteAnalyzer into `note_sample_content\`:
 ```powershell
 & 'C:\Tools\OneNoteAnalyzer\OneNoteAnalyzer.exe' --file "$PWD\exercise\note_sample.one"
 Get-ChildItem "$PWD\exercise\note_sample_content" -Recurse | Select-Object Name, Length
 ```
-Expected: the output folder contains `open_me.txt`. Sample sha256: `9f3c71e5b204a8d6f1c0937e5ab8d24f6e10c3b95d7a24810f6b3e9c02a17d5e`.
+Expected: the output folder contains `open_me.txt`. Sample sha256: `a1de5a74f5dfb5932596214363301ea725545d1cabf06f12a730803f2fea3416`.
 
 ## MITRE ATT&CK & DFIR phase
 - **T1566.001** — Phishing: Spearphishing Attachment (delivery vector).

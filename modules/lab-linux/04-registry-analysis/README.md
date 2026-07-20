@@ -53,7 +53,7 @@ Sample declaration:
 - Type: Windows Registry SYSTEM hive fragment (raw `regf` file).
 - Safe origin: Generated inside a disposable Windows sandbox VM by exporting a stock SYSTEM hive, then trimmed for size. It is benign/inert data only — it contains no executable code, no malware, and no network egress occurs when parsing it.
 - Filename: `exercise/SYSTEM_sample.hive`
-- sha256: `9f2c4a7e1b8d6f30c5a9e2740b13d8f6a71c904e5b28d3f6019a7c4e82b5d6f1`
+- sha256: `4bb9288b72efda173d0c86ac07166d80290ebd55197d9ef413a6cf536d14369c`
 
 Steps: run `regfinfo` to confirm the signature, then use either `regfexport | grep ComputerName` or `rip.pl -p compname` to recover the computer name.
 
@@ -75,7 +75,7 @@ rip.pl -r exercise/SYSTEM_sample.hive -p compname
 regfexport exercise/SYSTEM_sample.hive | grep -i "ComputerName"
 sha256sum exercise/SYSTEM_sample.hive
 ```
-`regfinfo` confirms the `regf` signature; `rip.pl -p compname` and the `regfexport | grep` both return the ComputerName value from `ControlSet001\Control\ComputerName\ComputerName`. The `sha256sum` output must equal `9f2c4a7e1b8d6f30c5a9e2740b13d8f6a71c904e5b28d3f6019a7c4e82b5d6f1`.
+`regfinfo` confirms the `regf` signature; `rip.pl -p compname` and the `regfexport | grep` both return the ComputerName value from `ControlSet001\Control\ComputerName\ComputerName`. The `sha256sum` output must equal `4bb9288b72efda173d0c86ac07166d80290ebd55197d9ef413a6cf536d14369c`.
 
 ## MITRE ATT&CK & DFIR phase
 - T1547.001 — Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder

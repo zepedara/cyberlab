@@ -72,7 +72,7 @@ Open `exercise/sample.pcap` in this module's `exercise/` directory and answer:
 **Sample declaration**
 - Type: libpcap capture file (`.pcap`) containing benign simulated DNS + HTTP traffic.
 - Safe origin: generated in an isolated lab using `curl` against an INetSim/FakeNet-NG responder — **no live malware, no real C2, no PII, no external egress**. The capture contains only synthetic requests.
-- sha256: `9f2c1a7b4e6d8093c5a2f10b3d7e64c8912ab5df037e2c9814a6b0f5d3e17c42`
+- sha256: `c039d5d4db1a5d96dd80c4a321a2bdf6013428a9cf0782f780883e0b44851c77`
 
 ## SOC analyst perspective
 In an incident, a defender rarely trusts the compromised host — they trust the wire. tshark and ngrep let an analyst carve command-and-control beacons, data-exfiltration flows, and lateral-movement traffic out of a Security Onion pcap without altering endpoint evidence. Security Onion already runs Zeek and Suricata to produce alerts and connection logs; when an alert fires (say Suricata flags a suspicious domain), the analyst pivots into the full packet capture via Security Onion's PCAP retrieval and uses tshark filters (`dns.qry.name`, `http.host`, `tls.handshake.extensions_server_name`) to confirm the indicator and pull hard IOCs. This directly supports detection of Application Layer Protocol (T1071) C2, DNS-based signaling (T1071.004), and Exfiltration Over C2 Channel (T1041). ngrep quickly proves whether credentials or tool output traversed the network in cleartext.
@@ -81,7 +81,7 @@ In an incident, a defender rarely trusts the compromised host — they trust the
 An attacker uses the same packet-level visibility, but as a defender-awareness problem: they know that unencrypted C2, cleartext credentials, and noisy scanning all leave a permanent record in any capture appliance. Offensive operators therefore encrypt beacons (TLS), blend into common ports, and use domain fronting or DNS tunneling to evade grep-style detection — yet each still leaves artifacts. TLS ClientHello SNI values, JA3-relevant handshake fields, unusual DNS TXT-record volume, periodic beacon timing, and consistent User-Agent strings all persist in pcap even when payloads are encrypted. An attacker running tshark/ngrep on a network they've tapped (e.g., after ARP poisoning) can harvest cleartext creds — Network Sniffing (T1040) — but that tap plus the resulting arp anomalies are themselves detectable artifacts for the blue team.
 
 ## Answer key
-Sample sha256: `9f2c1a7b4e6d8093c5a2f10b3d7e64c8912ab5df037e2c9814a6b0f5d3e17c42`
+Sample sha256: `c039d5d4db1a5d96dd80c4a321a2bdf6013428a9cf0782f780883e0b44851c77`
 
 1. Count DNS queries and find the most frequent domain:
 ```bash

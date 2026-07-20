@@ -64,7 +64,7 @@ Sample declaration:
 - **File:** `exercise/encoded_payload.bin`
 - **Type:** benign, inert binary blob containing a single-byte XOR-encoded URL string plus one embedded Base64 blob. Contains NO executable code and NO live malware.
 - **Safe origin:** generated locally for this lab by XOR-encoding a harmless RFC-5737 documentation-range URL (`http://198.51.100.23/update`) with key byte `0x5A`; no network egress. Reproducible offline.
-- **sha256:** `9f2c4b8e1d7a6035e2f4c9b0a1d8e7f36c5b4a2938271605f4e3d2c1b0a99887`
+- **sha256:** `06ae969a275e9dce37ed7c1e897f9146ded3b97c14afbad5e65eac1640f8e558`
 
 Task: use XORSearch to find the XOR key and the plaintext URL, use xortool to confirm the key, and use base64dump to decode the embedded Base64 blob. Report the recovered URL and the XOR key byte.
 
@@ -77,7 +77,7 @@ Attackers XOR- or Base64-encode strings so static AV, YARA rules, and casual ana
 ## Answer key
 - XOR key byte: **0x5A**
 - Recovered URL: **`http://198.51.100.23/update`**
-- Sample sha256: `9f2c4b8e1d7a6035e2f4c9b0a1d8e7f36c5b4a2938271605f4e3d2c1b0a99887`
+- Sample sha256: `06ae969a275e9dce37ed7c1e897f9146ded3b97c14afbad5e65eac1640f8e558`
 
 Commands that produce the findings:
 ```bash

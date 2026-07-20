@@ -80,7 +80,7 @@ printf '%s' 'cyberlab' | md5sum | awk '{print $1}' > exercise/lab_hash.txt
 Sample declaration:
 - **Type:** MD5 password-hash text file (ASCII, 32 hex chars + newline).
 - **Safe origin:** Generated on-VM from the harmless string `cyberlab`; contains no real credential, no malware, no network egress.
-- **exercise/lab_hash.txt sha256:** `4e9f8b1c2d7a6e5f0b3c8d19a24f76e0b5c1d8a72f3e6094b1c5d8e2a37f6094`
+- **exercise/lab_hash.txt sha256:** `818ed600ef221d270821b1a874576c4668251740ce27450624741b7da7df2be5`
 
 Tasks:
 1. Crack the hash with `john` (raw MD5) and record the recovered plaintext.
@@ -110,7 +110,7 @@ hashcat -m 0 --show exercise/lab_hash.txt
 ```
 Expected: hashcat reports `Status...........: Cracked` and `--show` prints `<hash>:cyberlab`. Note hashcat is typically faster (higher H/s) than john on the same box, especially with a GPU.
 
-Sample sha256 (must match): `4e9f8b1c2d7a6e5f0b3c8d19a24f76e0b5c1d8a72f3e6094b1c5d8e2a37f6094`
+Sample sha256 (must match): `818ed600ef221d270821b1a874576c4668251740ce27450624741b7da7df2be5`
 
 ## MITRE ATT&CK & DFIR phase
 - **T1046** Network Service Discovery — `nmap`, Metasploit auxiliary scanners (DFIR phase: *identification*).

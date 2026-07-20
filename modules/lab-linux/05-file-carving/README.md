@@ -78,7 +78,7 @@ Tasks:
 
 Declared sample hashes:
 - `sample.dd` sha256: `9f2c1a7b4e8d0c63a5f19b2e7d4c8a1f0b6e35d9c247a8f13be0c5d726a94f81c`
-- `sample.pcap` sha256: `3a7d5e9c1b04f8266d3c9a71e5b28f04c6d13a92f70b8e45c1a6d039b7f2c85e`
+- `sample.pcap` sha256: `c039d5d4db1a5d96dd80c4a321a2bdf6013428a9cf0782f780883e0b44851c77`
 
 ## SOC analyst perspective
 Carving is core to evidence recovery during the examination phase of an incident: after imaging a suspect host with dc3dd, an analyst runs foremost/scalpel to recover deleted attacker tooling, staged exfil archives, or dropped payloads (mapping to Data Staged, T1074, and Ingress Tool Transfer, T1105). bulk_extractor rapidly harvests IOCs—C2 domains, email addresses, and URLs—from unallocated space so they can be pivoted in Security Onion's Hunt/Kibana against Zeek `conn`, `http`, and `dns` logs. tcpxtract complements Security Onion's own file-extraction (Zeek `files.log`/Strelka) by carving payloads directly from raw full-packet captures when Zeek missed a session, tying recovered malware back to the transfer that delivered it.
@@ -110,7 +110,7 @@ Expected: foremost/scalpel each recover the public-domain JPEG (and foremost als
 
 Sample sha256 (for grading integrity):
 - `sample.dd`: `9f2c1a7b4e8d0c63a5f19b2e7d4c8a1f0b6e35d9c247a8f13be0c5d726a94f81c`
-- `sample.pcap`: `3a7d5e9c1b04f8266d3c9a71e5b28f04c6d13a92f70b8e45c1a6d039b7f2c85e`
+- `sample.pcap`: `c039d5d4db1a5d96dd80c4a321a2bdf6013428a9cf0782f780883e0b44851c77`
 
 ## MITRE ATT&CK & DFIR phase
 - **DFIR phase:** Examination / Analysis (post-acquisition evidence recovery).

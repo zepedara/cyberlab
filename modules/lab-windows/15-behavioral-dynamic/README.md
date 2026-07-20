@@ -72,7 +72,7 @@ Detonate the benign sample in this module's `exercise/` directory and produce a 
 - **Sample:** `exercise/benign_dropper.exe`
 - **Type:** Windows PE32 executable (inert training stub).
 - **Safe origin:** Compiled in-lab from a benign C stub that only writes one registry Run value, drops one file to `%TEMP%`, and issues a single DNS lookup for `beacon.test.lab`. It contains **no** malicious payload, no self-replication, and performs **no** real-network egress (all traffic is captured by FakeNet-NG). Detonate only on LAB-WINDOWS with networking isolated.
-- **sha256:** `9f2c4b1a7d63e58c0a4f1b9d2e6c8a37f5b0d1e4c9a72b8360d5e1f47a3c92b6`
+- **sha256:** `c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b`
 
 Tasks:
 1. Run Regshot 1st shot, detonate under Procmon and FakeNet-NG, then Regshot 2nd shot + Compare.
@@ -103,7 +103,7 @@ Get-FileHash .\exercise\benign_dropper.exe -Algorithm SHA256 | Format-List
 Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'UpdateSvc'
 # Expected: an UpdateSvc property whose value points to %TEMP%\svc_update.dat
 ```
-Sample sha256: `9f2c4b1a7d63e58c0a4f1b9d2e6c8a37f5b0d1e4c9a72b8360d5e1f47a3c92b6`
+Sample sha256: `c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b`
 
 ## MITRE ATT&CK & DFIR phase
 - **T1547.001** — Boot or Logon Autostart Execution: Registry Run Keys (Regshot/Autoruns/Procmon).

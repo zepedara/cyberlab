@@ -75,7 +75,7 @@ Work against the sample image in this module's `exercise/` directory.
 - **Sample:** `exercise/practice.dd`
 - **Type:** raw (`dd`) disk image containing a single small FAT16 file system.
 - **Safe origin:** benign/inert. Generated in-lab with no network egress by creating a zeroed image, formatting a FAT16 file system, copying two harmless text files (`readme.txt`, `secret.txt`), deleting `secret.txt`, then unmounting. It contains NO malware and NO real personal data.
-- **sha256:** `9f2c4b6e8a1d3f5079b2c4e6a8d0f1b3c5e7a9d1f3b5c7e9a1d3f5b7c9e1a3d5`
+- **sha256:** `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
 
 **Task:**
 1. Find the FAT partition offset with `mmls`.
@@ -89,7 +89,7 @@ During incident response a defender receives a disk image from a suspected-compr
 An adversary who wants to hide activity will delete tools, clear logs, and timestomp files — but on most file systems deletion only unlinks the directory entry, leaving the data and metadata recoverable until overwritten. The very cleanup an attacker performs (T1070.004 File Deletion, T1070.006 Timestomp) leaves distinctive artifacts: orphaned inodes, `fls`-visible deleted entries, MAC-time inconsistencies where modified times predate creation, and gaps in the timeline that stand out. An attacker may also use TSK-style tools defensively-offensively to check what residue their operations leave. Every recovered deleted file, every mismatched timestamp, and every unallocated data unit becomes evidence a defender can extract with `fls`, `istat`, and `icat`.
 
 ## Answer key
-Sample sha256: `9f2c4b6e8a1d3f5079b2c4e6a8d0f1b3c5e7a9d1f3b5c7e9a1d3f5b7c9e1a3d5`
+Sample sha256: `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
 
 1. Partition offset — the FAT file system begins at sector **2048**:
 ```bash

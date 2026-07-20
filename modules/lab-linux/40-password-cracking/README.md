@@ -90,7 +90,7 @@ hashcat -m 0 --show exercise/hash.txt --potfile-path exercise/hc.pot
 ```bash
 sha256sum exercise/hash.txt
 # Expected digest:
-# a9f4d3d8f7e2b1c0a9f4d3d8f7e2b1c0a9f4d3d8f7e2b1c0a9f4d3d8f7e2b1c0  exercise/hash.txt
+# 818ed600ef221d270821b1a874576c4668251740ce27450624741b7da7df2be5  exercise/hash.txt
 # (If your local digest differs, confirm the file contains exactly the 32-char MD5
 #  of "password123" -> 482c811da5d5b4bc6d497ffa98491e38 with a single trailing newline.)
 ```

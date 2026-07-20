@@ -87,7 +87,7 @@ Tasks:
 4. Carve the image with `photorec` and confirm at least one file is recovered.
 
 Declared sample sha256:
-`3b1c9f8a5d2e47b6c0a1f4e9d8c7b6a5e4f3d2c1b0a9988776655443322110ff`
+`452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
 
 ## SOC analyst perspective
 A defender uses these tools during the examination phase of an incident when a suspect endpoint's disk (or a forensic image of it) needs to be triaged. `fls`/`mactime` timelines reveal when malicious files were dropped or when persistence was created, directly supporting detection of techniques like T1547 (Boot or Logon Autostart Execution) and T1070.004 (File Deletion). `icat` recovers files an attacker deleted to cover their tracks, and `photorec` carves out payloads no longer referenced by the filesystem. In a Security Onion workflow, network alerts (Suricata/Zeek) flag a compromised host by IP; the analyst then pulls the disk image and cross-references the filesystem timeline against the alert timestamp to confirm the intrusion, scope lateral movement, and export IOCs (hashes, filenames) back into Security Onion for hunting across other hosts.
@@ -96,7 +96,7 @@ A defender uses these tools during the examination phase of an incident when a s
 Attackers know that deleting a file with `rm` or emptying the recycle bin only unlinks the directory entry — the underlying blocks (and often the file data) remain until overwritten, which is exactly what `icat` and `photorec` recover. Adversaries performing T1070.004 (Indicator Removal: File Deletion) and T1485 (Data Destruction) may wipe tools, staged archives, or logs, but leave carveable remnants, orphaned MFT/inode entries, and telltale timeline gaps that `fls -r` exposes with the `*` deleted marker. Even secure-delete or partition-wiping attempts leave artifacts: `mmls` and `testdisk` reveal tampered or removed partition tables, and slack space frequently retains fragments of the very files an attacker believed were destroyed, giving investigators recoverable evidence.
 
 ## Answer key
-Sample sha256: `3b1c9f8a5d2e47b6c0a1f4e9d8c7b6a5e4f3d2c1b0a9988776655443322110ff`
+Sample sha256: `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
 
 Expected findings and the exact commands that produce them:
 

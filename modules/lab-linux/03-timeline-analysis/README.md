@@ -57,7 +57,7 @@ Using the sample in this module's `exercise/` directory, build a Plaso super-tim
 Sample declaration:
 - **Type:** small FAT filesystem raw disk image (`exercise/disk.raw`) plus an unpacked file tree (`exercise/sample_fs/`).
 - **Safe origin:** benign/inert — generated in the lab with `dd`/`mkfs.vfat` and populated with harmless text files. Contains NO malware and requires NO network egress.
-- **sha256 (disk.raw):** `9f2c4d7a1e8b3f60c5a29d4e7b8c1f03a6d92e4b7c8f105a3d6e9b2c4f70185d`
+- **sha256 (disk.raw):** `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
 
 ## SOC analyst perspective
 Super-timelines are a core examination technique for incident responders because they reconstruct the exact order of adversary actions across many artifact sources at once. When Security Onion alerts fire (via Suricata/Zeek/Elastic) on a host, the analyst pulls a disk image and runs `log2timeline.py`, then uses `psort.py` filters to zoom into the alert window, correlating filesystem MACB times with browser, prefetch, and event-log events. This confirms initial access, staging, and execution ordering, and lets the analyst pivot Security Onion Kibana network events against on-disk timestamps. It supports mapping activity to ATT&CK techniques such as T1070.006 (Timestomp) and T1074 (Data Staged) by revealing inconsistencies between MACB values.
@@ -66,7 +66,7 @@ Super-timelines are a core examination technique for incident responders because
 Attackers know timelines betray them, so they attempt anti-forensics: timestomping files (T1070.006) with tools like SetMACE or `touch` to blend malicious files into system-install dates, clearing logs (T1070.001), and wiping browser history. Ironically these actions leave their own artifacts — Plaso surfaces the divergence between `$STANDARD_INFORMATION` and `$FILE_NAME` MFT timestamps, out-of-order sequence numbers, and files whose filesystem `filestat` time contradicts their content or registry references. An analyst reviewing the super-timeline can spot the impossible ordering (e.g., a file "created" before the OS) that a timestomp introduces, turning the attacker's cover-up into a detection signal.
 
 ## Answer key
-Sample sha256 (disk.raw): `9f2c4d7a1e8b3f60c5a29d4e7b8c1f03a6d92e4b7c8f105a3d6e9b2c4f70185d`
+Sample sha256 (disk.raw): `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
 
 Commands producing the findings:
 ```bash

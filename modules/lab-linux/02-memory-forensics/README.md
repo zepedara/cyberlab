@@ -66,7 +66,7 @@ Work inside this module's `exercise/` directory.
 - **Sample artifact:** `exercise/sample.mem`
 - **Type:** A small, inert raw memory-style dump — a synthetic byte blob generated on the lab host that embeds benign, planted strings (a fake URL `http://benign.lab.local/beacon`, a fake email `analyst@lab.local`) and a randomly generated 256-bit AES key schedule for detection practice. It contains **no** operating-system code and **no** live malware.
 - **Safe origin:** Generated locally with `dd`/`openssl` on the LAB-LINUX VM (no network egress); it is benign and inert.
-- **sha256:** `3f9a2c1b7d4e5f6081a2b3c4d5e6f70819a2b3c4d5e6f70819a2b3c4d5e6f708`
+- **sha256:** `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
 
 Tasks:
 1. Use bulk_extractor to recover the planted URL and email.
@@ -80,7 +80,7 @@ In a SOC, memory forensics is the go-to when disk and log evidence look clean bu
 Attackers deliberately avoid touching disk to evade EDR and file-based detection — living-off-the-land, process injection (T1055), reflective DLL loading (T1620), and encrypted C2 all keep the malicious logic in RAM. From the attacker's viewpoint, memory is their hiding place, but it is also the very thing these tools expose: injected regions, unlinked processes, and network sockets remain visible to Volatility even when the running OS is lied to. Encryption keys used for C2 or ransomware, plaintext credentials, and decrypted config blobs sit in memory in recoverable form, which aeskeyfind/rsakeyfind and bulk_extractor harvest. The artifacts left for defenders include anomalous private memory, orphaned handles, decrypted strings, and key schedules that never appear on disk — a strong reason attackers try to force reboots or clear RAM.
 
 ## Answer key
-Sample sha256: `3f9a2c1b7d4e5f6081a2b3c4d5e6f70819a2b3c4d5e6f70819a2b3c4d5e6f708`
+Sample sha256: `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
 
 Expected findings and the exact commands that produce them:
 

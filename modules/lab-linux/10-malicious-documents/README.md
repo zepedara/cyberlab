@@ -69,7 +69,7 @@ Work only against the artifacts in this module's `exercise/` directory.
 **Sample declaration**
 - `exercise/sample.doc` — a **Microsoft Word 97-2003 (OLE2) document** containing a benign, inert VBA macro that only pops a message box / writes a harmless string. It performs **no network egress and no file execution**.
 - Origin: generated locally for training with a hand-written VBA `AutoOpen` sub; **benign/inert, no live malware**.
-- sha256: `3f8a1c9d6b2e47a5f0c1d8e93b4a6f21c7d95e08a1b3c4d5e6f70819a2b3c4d5`
+- sha256: `c8d6b1b7db3374b5e29ff0e9417501b18194b21af9bfe698f4376126899f3c37`
 
 **Tasks**
 1. Confirm the document contains a macro and identify the auto-exec trigger.
@@ -84,7 +84,7 @@ Malicious documents are the #1 phishing payload, so defenders must rapidly decid
 Attackers embed VBA or Excel 4.0 (XLM) macros that trigger on open (`AutoOpen`, `Workbook_Open`) to run a downloader or spawn PowerShell/`cmd`. They obfuscate strings (char-code math, base64, cell-splitting) to evade AV, and PDFs are abused with `/OpenAction` + `/JavaScript` or embedded launch actions. These techniques leave rich artifacts: the OLE document itself carries macro streams and metadata (`olemeta`, `oleid`), child processes appear in EDR/Sysmon (Office spawning `powershell.exe`), and downloaded stagers land in `%TEMP%` with URLs recoverable via `olevba`/`XLMMacroDeobfuscator`. Every one of those decoded strings and the file hash is evidence a defender can pivot on.
 
 ## Answer key
-- Sample sha256: `3f8a1c9d6b2e47a5f0c1d8e93b4a6f21c7d95e08a1b3c4d5e6f70819a2b3c4d5`
+- Sample sha256: `c8d6b1b7db3374b5e29ff0e9417501b18194b21af9bfe698f4376126899f3c37`
 - Verify integrity:
 ```bash
 sha256sum exercise/sample.doc

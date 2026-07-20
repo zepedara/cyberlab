@@ -58,7 +58,7 @@ Using the sample in this module's `exercise/` directory, build a super-timeline 
 Sample declaration:
 - **Type:** Sleuth Kit bodyfile (plain-text pipe-delimited `MD5|name|inode|...|mtime|atime|ctime|crtime` records) named `bodyfile.txt`, plus a small directory `artifacts/` of inert benign log/text files.
 - **Safe origin:** Generated on the SIFT VM from a throwaway ext4 loopback image populated with empty benign files (`touch`/`fls`). Contains **no live malware**, no executable payloads, and requires **no network egress** to process.
-- **sha256 (bodyfile.txt):** `4f3a9c1e7b2d6058a1c4e93f7d0b8e2a6c5f19d34b7a08e2c1f6935ad84b70e5`
+- **sha256 (bodyfile.txt):** `ad0a859947384b0ad9e942aaa37633ba181b3f2c701d0d3e72ef3265a48fba8d`
 
 ## SOC analyst perspective
 In IR the super-timeline is the backbone of the examination phase: after Security Onion alerts on suspicious activity (a Zeek/Suricata hit, a Sigma detection), you pull the endpoint's disk image and run `log2timeline.py` to reconstruct exactly when the intrusion began and how it progressed. Correlating Plaso event times with Security Onion's network PCAP timeline lets you pin process execution and file drops to network callbacks. This directly supports mapping ATT&CK behaviours such as T1070.006 (Timestomp), T1053 (Scheduled Task/Job), and T1547 (Boot/Logon Autostart) by exposing when persistence artifacts were actually written versus their claimed timestamps.
@@ -81,7 +81,7 @@ psort.py -o l2tcsv -w /tmp/case_timeline.csv /tmp/case.plaso
 sort -t',' -k1,2 /tmp/case_timeline.csv | grep -m1 'crtime'
 ```
 Expected: both approaches return the `2023-06-01 08:14:22` / `/var/log/app/install.log` row.
-Sample sha256 (`bodyfile.txt`): `4f3a9c1e7b2d6058a1c4e93f7d0b8e2a6c5f19d34b7a08e2c1f6935ad84b70e5`
+Sample sha256 (`bodyfile.txt`): `ad0a859947384b0ad9e942aaa37633ba181b3f2c701d0d3e72ef3265a48fba8d`
 
 ## MITRE ATT&CK & DFIR phase
 - **T1070.006** — Indicator Removal: Timestomp (detected via $FILE_NAME vs $STANDARD_INFORMATION discrepancies in the timeline).

@@ -70,7 +70,7 @@ Defenders rarely receive tidy PE files; shellcode arrives embedded in exploit do
 Attackers favor position-independent shellcode precisely because it has no header, no imports table, and can be injected into a benign process — making static signatures and simple file scanning far less effective (T1055 Process Injection, T1027 Obfuscated Files or Information). They frequently resolve API addresses at runtime by walking the PEB and hashing export names, encode the payload with a small XOR/rolling decoder stub, and use egg-hunters to locate a larger stage. Artifacts still leak for defenders: emulation reveals the decoder loop and the eventual API calls, unusual RWX memory regions and unbacked executable pages show up in process memory, and BlobRunner-style live detonation exposes the decoded second stage in the debugger. Sandbox execution also produces network and process telemetry that maps directly back to the shellcode's true intent.
 
 ## Answer key
-Sample: `exercise/sample.bin`, SHA256 = `9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a`.
+Sample: `exercise/sample.bin`, SHA256 = `99bd3c262cfc8e3173548986f8dd786d59cc51d3f9e0929b85d34f973c839d55`.
 
 That digest corresponds to the 6-byte inert blob `90 90 90 CC C3 90` (NOP padding, `int3`, `ret`, trailing NOP). Regenerate the exact sample if missing:
 ```powershell

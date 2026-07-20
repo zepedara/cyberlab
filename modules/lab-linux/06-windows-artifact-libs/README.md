@@ -75,7 +75,7 @@ Work against the sample artifact `exercise/Security.evtx` in this module's `exer
 
 - **Sample type:** Windows XML EventLog file (`.evtx`), Security channel.
 - **Safe origin:** benign/inert. Generated on an isolated Windows 10 lab VM by triggering normal logon/logoff events, then exported with `wevtutil epl Security`. It contains no malware, no live payloads, and no network egress — it is a static log file only.
-- **sha256:** `3f7a1c9e5b2d84610af92c7e4d0b8f6a1e93c25d7f0a4b8c6e1d2f3a9b0c4d5e`
+- **sha256:** `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
 
 **Task:** Export the log to text and answer:
 1. How many total records does the log contain?
@@ -88,7 +88,7 @@ A defender uses libyal to triage Windows artifacts pulled from a suspect host wi
 An attacker who gains access to a host targets the very artifacts these libraries read. They clear or tamper with `.evtx` logs (T1070.001 Indicator Removal: Clear Windows Event Logs) to hide logons, dump `ntds.dit` from a domain controller — often via a Volume Shadow Copy snapshot (T1003.003) so the live locked file can be copied — and steal Outlook `.pst`/`.ost` mailboxes for data collection (T1114 Email Collection). BitLocker may be abused for extortion, re-encrypting drives with attacker-controlled protectors (T1486). Each of these leaves recoverable evidence: shadow-copy creation times exposed by `vshadowinfo`, altered event-log gaps visible in `evtxexport` record sequences, new key protectors surfaced by `bdeinfo`, and ESE table access patterns in `esedbexport` output — all defender-findable trails.
 
 ## Answer key
-Sample sha256: `3f7a1c9e5b2d84610af92c7e4d0b8f6a1e93c25d7f0a4b8c6e1d2f3a9b0c4d5e`
+Sample sha256: `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
 
 Produce the answers with:
 ```bash

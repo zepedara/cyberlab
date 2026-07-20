@@ -69,7 +69,7 @@ Expected: dnSpyEx GUI opens with the assembly tree; you can set breakpoints and 
 Sample artifact: `exercise/sample_dotnet.exe`.
 - **Type:** a small benign 64-bit .NET (C#) console executable that prints a greeting and reads an embedded Base64 string — it performs **no network, file-write, or process-spawn activity**.
 - **Safe origin:** compiled locally on the FLARE-VM from an inert "Hello, analyst" C# source stub. It is completely benign/inert with no egress; it is **not** live malware.
-- **sha256:** `9f2c4b7e1a5d83f60c9e2b4a7d18f3c6b0e5a92d4c7f18b3e6a0d5c2f9b47e18`
+- **sha256:** `c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b`
 
 Tasks:
 1. Confirm it is a managed assembly.
@@ -84,7 +84,7 @@ Defenders reverse .NET malware constantly because commodity loaders, stealers (e
 Attackers favor .NET because it enables fast development, in-memory `Assembly.Load` execution, and easy trojanizing of legitimate managed apps. To slow analysis they apply obfuscators (ConfuserEx, .NET Reactor, SmartAssembly) that rename symbols, encrypt strings, and add control-flow flattening — precisely what de4dot is built to reverse. Offensively, the same decompilers here let a red-teamer study a target's proprietary .NET software for vulnerabilities or patch/crack licensing checks in dnSpyEx, then recompile. The artifacts left behind for defenders are rich: managed PE headers with a CLR runtime import (`mscoree.dll`), an embedded manifest/`#Strings` heap, obfuscator marker attributes, unusual `TargetFramework` metadata, and — after execution — .NET assembly-load events and JIT-compiled modules visible in memory and Sysinternals process telemetry.
 
 ## Answer key
-Sample sha256: `9f2c4b7e1a5d83f60c9e2b4a7d18f3c6b0e5a92d4c7f18b3e6a0d5c2f9b47e18`
+Sample sha256: `c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b`
 
 1. Managed-assembly confirmation:
 ```powershell
