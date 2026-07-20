@@ -3,11 +3,15 @@
 ## Overview (plain language)
 Ghidra is a free software reverse-engineering suite built by the NSA that takes a compiled program (like an .exe) and turns its raw machine code back into something humans can read — both assembly and a C-like "decompiled" view. It also has a scripting engine so you can automate boring, repetitive tasks like renaming functions or extracting strings. capa is a companion tool that reads a program and tells you, in plain English, what capabilities it has (for example "reads clipboard data" or "communicates over HTTP") by matching well-known code patterns. Together they let an analyst quickly understand what an unknown binary does without ever running it, which is safer and faster for triaging suspicious files.
 
+> Sourcing note: Ghidra is described as a "software reverse engineering (SRE) framework" with a decompiler and a scripting API by its official site and repository ([ghidra-sre.org](https://ghidra-sre.org/), [github.com/NationalSecurityAgency/ghidra](https://github.com/NationalSecurityAgency/ghidra)). capa "detects capabilities in executable files" by matching a rule set, per Mandiant's project docs ([github.com/mandiant/capa](https://github.com/mandiant/capa)).
+
 ## Tools covered
 | Tool | Install | Purpose |
 |---|---|---|
 | Ghidra | FLARE-VM (`choco install ghidra`) | Disassembler/decompiler with a Python/Java scripting engine (headless + GUI) |
 | capa | FLARE-VM (`choco install capa`) | Detects program capabilities via a rule set; integrates with Ghidra via the capa plugin |
+
+Both tools are packaged by the FLARE-VM installer profile ([github.com/mandiant/flare-vm](https://github.com/mandiant/flare-vm)). Ghidra ships both a GUI (`ghidraRun.bat`) and a headless launcher (`analyzeHeadless.bat`), documented in the official Installation/Getting-Started guide bundled under `docs/` and on the repo ([Ghidra InstallationGuide](https://ghidra-sre.org/InstallationGuide.html), [Ghidra repo `support/analyzeHeadless`](https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/RuntimeScripts/Windows/support/analyzeHeadless.bat)). capa exposes a Ghidra integration/plugin (`capa_explorer`) documented in the capa repo ([capa Ghidra integration](https://github.com/mandiant/capa/tree/master/capa/ghidra)).
 
 ## Learning objectives
 - Load a benign PE into Ghidra and auto-analyze it, then read the decompiled C output for the entry function.
@@ -27,15 +31,17 @@ Get-ChildItem -Recurse "C:\Tools" -Filter "analyzeHeadless.bat" -ErrorAction Sil
 ```
 Expected output: `capa.exe` prints a version string (e.g. `capa 7.x.x`), the Ghidra directory resolves to something like `C:\Tools\ghidra_11.x_PUBLIC`, and `analyzeHeadless.bat` is found under `support\`.
 
+> Why these paths: Ghidra's Windows distribution places `ghidraRun.bat` at the install root and `analyzeHeadless.bat` under `support\`, per the Installation Guide and the repo's `RuntimeScripts/Windows` layout ([Ghidra InstallationGuide](https://ghidra-sre.org/InstallationGuide.html), [repo layout](https://github.com/NationalSecurityAgency/ghidra/tree/master/Ghidra/RuntimeScripts/Windows/support)). `capa --version` is a documented flag ([capa usage](https://github.com/mandiant/capa#usage)). Actual install root under FLARE-VM depends on the chocolatey package layout; adjust the glob if your `C:\Tools` differs ([flare-vm](https://github.com/mandiant/flare-vm)).
+
 ## Guided walkthrough
 1. Build the benign sample (see Hands-on exercise) and stage a Ghidra project directory.
 ```powershell
 New-Item -ItemType Directory -Force -Path "C:\cases\27\ghidra_proj" | Out-Null
 Set-Location "C:\cases\27"
 ```
-Expected: an empty project directory `ghidra_proj` is created for headless analysis output.
+Expected: an empty project directory `ghidra_proj` is created for headless analysis output. *Why:* `analyzeHeadless` needs a project location (a folder plus a project name) to store the imported program database; supplying it up front keeps output deterministic ([analyzeHeadless usage](https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/Features/Base/ghidra_scripts/README.md), [Ghidra InstallationGuide](https://ghidra-sre.org/InstallationGuide.html)).
 
-2. Run Ghidra headless analysis and dump functions/strings with a built-in-style script. The `-postScript` runs after auto-analysis; here we use the shipped Python export.
+2. Run Ghidra headless analysis and dump functions/strings with a script. The `-postScript` runs after auto-analysis; here we invoke a script located via `-scriptPath`.
 ```powershell
 $GH = (Get-ChildItem "C:\Tools\ghidra*" -Directory | Select-Object -First 1).FullName
 & "$GH\support\analyzeHeadless.bat" "C:\cases\27\ghidra_proj" hello27 `
@@ -46,11 +52,15 @@ $GH = (Get-ChildItem "C:\Tools\ghidra*" -Directory | Select-Object -First 1).Ful
 ```
 Expected: Ghidra logs auto-analysis progress, then the post-script prints each recovered function name (including the entry point) to the console before the temporary project is deleted.
 
+> Why each flag: `-import` ingests the target and runs auto-analysis by default; `-postScript` runs a script AFTER analysis (as opposed to `-preScript`, which runs before), so function recovery is complete when the script iterates functions; `-scriptPath` tells Ghidra where to find the named script; `-deleteProject` removes the temporary project when done so repeated runs stay clean. All are documented in the headless analyzer README ([analyzeHeadless README](https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/Features/Base/ghidra_scripts/README.md), [Ghidra InstallationGuide](https://ghidra-sre.org/InstallationGuide.html)). Note: `FunctionNamesToConsole.py` is an example script name you provide in `-scriptPath`; Ghidra ships example scripts (browse **Window > Script Manager**, or the repo `ghidra_scripts` folders) that you can adapt to print `getFunctionManager().getFunctions(true)` ([Ghidra scripting API `FlatProgramAPI`](https://ghidra.re/ghidra_docs/api/ghidra/program/flatapi/FlatProgramAPI.html)). Nuance: auto-analysis names are best-effort — user functions may appear as `FUN_00401000` if symbols were stripped; here the sample retains symbol/PDB info from the local compile.
+
 3. Run capa against the same file to enumerate capabilities.
 ```powershell
 capa.exe -v "C:\cases\27\exercise\hello.exe"
 ```
-Expected: capa prints a table of matched rules grouped by ATT&CK tactic. For a trivial console app you will see few or no capabilities (a good baseline); richer binaries show entries like "write file" or "resolve API by hash".
+Expected: capa prints matched rules; the `-v` (verbose) flag adds per-rule detail and namespaces. Output is grouped by ATT&CK and Malware Behavior Catalog (MBC) mappings. For a trivial console app you will see few or no capabilities (a good baseline); richer binaries show entries like "write file" or "encode data using XOR".
+
+> Why/nuance: capa statically extracts features (API calls, strings, bytes, numbers) and matches them against its rule set; matches carry ATT&CK and MBC labels when the rule author supplied them ([capa README](https://github.com/mandiant/capa#usage), [Mandiant capa announcement](https://cloud.google.com/blog/topics/threat-intelligence/capa-automatically-identify-malware-capabilities)). A near-empty result on a minimal PE is expected and is the intended baseline for comparison against real malware. Use `-vv` for full feature-level evidence per match ([capa README](https://github.com/mandiant/capa#usage)).
 
 4. Open the file in the Ghidra GUI, run **Auto Analyze**, then double-click the entry function to view the Decompiler window (C-like pseudocode).
 ```powershell
@@ -58,6 +68,8 @@ $GH = (Get-ChildItem "C:\Tools\ghidra*" -Directory | Select-Object -First 1).Ful
 & "$GH\ghidraRun.bat"
 ```
 Expected: the Ghidra GUI launches; after importing and analyzing `hello.exe`, the Decompiler panel shows readable C for `main`/`entry`.
+
+> Why: the GUI Decompiler reconstructs high-level C from the p-code intermediate representation Ghidra lifts from the target's instructions, letting you read control flow the disassembly alone obscures ([Ghidra features / Decompiler](https://ghidra-sre.org/), [Ghidra repo `Decompiler`](https://github.com/NationalSecurityAgency/ghidra/tree/master/Ghidra/Features/Decompiler)).
 
 ## Hands-on exercise
 Sample artifact: `exercise\hello.exe` — a **benign, inert Windows console PE** you compile yourself from source; it only prints a string and exits (no network, no persistence, no file writes). Generate it on FLARE-VM using the bundled VC build tools:
@@ -78,6 +90,8 @@ cl /nologo /Fe:hello.exe hello.c
 Get-FileHash .\hello.exe -Algorithm SHA256
 ```
 
+> `cl.exe` is the MSVC C/C++ compiler; `/Fe:` names the output executable and `/nologo` suppresses the banner, both documented on Microsoft Learn ([cl /Fe (name exe)](https://learn.microsoft.com/en-us/cpp/build/reference/fe-name-exe-file), [cl /nologo](https://learn.microsoft.com/en-us/cpp/build/reference/nologo-suppress-startup-banner)). `Get-FileHash` computes SHA256 by default and via `-Algorithm SHA256`, per Microsoft Learn ([Get-FileHash](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash)).
+
 Tasks:
 1. Recover the function named `add_two` via Ghidra headless and confirm it appears in the console output.
 2. Read the Ghidra decompilation of `add_two` and state the arithmetic operation it performs.
@@ -86,10 +100,22 @@ Tasks:
 Because the binary is compiler-dependent, verify the sample with the SHA256 your build produces (`Get-FileHash` above) rather than a fixed digest; record that hash in your notes.
 
 ## SOC analyst perspective
-During incident response an analyst who pulls an unknown executable off a host does static triage before detonation. Ghidra's decompiler lets them read logic — hardcoded C2 domains, XOR loops, hashing of API names — without executing malware, and capa converts raw code patterns into ATT&CK-tagged capabilities that feed straight into a detection hypothesis. In Security Onion those hypotheses become hunts: if capa flags "resolve API by hash" (T1027) or "create service" (T1543.003), the analyst pivots to Sysmon (EventID 7/13) and Zeek/Suricata logs to find execution and network artifacts across the fleet, then writes or tunes Sigma/Suricata rules to catch the same behavior on other endpoints.
+During incident response an analyst who pulls an unknown executable off a host does static triage before detonation. Ghidra's decompiler lets them read logic — hardcoded C2 domains, XOR loops, hashing of API names — without executing malware, and capa converts raw code patterns into ATT&CK-tagged capabilities that feed straight into a detection hypothesis.
+
+Concrete detection logic and Security Onion pivots:
+- **capa flags "encode/decode data using XOR" or API-hashing → T1027 (Obfuscated Files or Information)** ([T1027](https://attack.mitre.org/techniques/T1027/)). Hunt hypothesis: the sample decrypts a config/payload at runtime. In Security Onion, pivot to **Sysmon Event ID 1** (process create, with hashes/command line) and **Event ID 7** (image/DLL load) to catch the loader, correlating the hash from `Get-FileHash` across Elastic (`process.hash.sha256`) ([Sysmon events](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon), [Security Onion Elastic](https://docs.securityonion.net/en/2.4/elastic.html)).
+- **capa flags "create service" → T1543.003 (Create or Modify System Process: Windows Service)** ([T1543.003](https://attack.mitre.org/techniques/T1543/003/)). Pivot to **Sysmon Event ID 13** (registry value set under `HKLM\SYSTEM\CurrentControlSet\Services\...`) and Windows **Security Event 4697 / System Event 7045** (service install) ([Sysmon](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon), [4697](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4697)).
+- **capa flags "communicate over HTTP" → T1071.001 (Application Layer Protocol: Web Protocols)** ([T1071.001](https://attack.mitre.org/techniques/T1071/001/)). Pivot to **Zeek `http.log`/`conn.log`** and **Suricata alerts** in Security Onion, filtering on any URIs/User-Agents recovered from the Ghidra decompilation ([Security Onion Zeek](https://docs.securityonion.net/en/2.4/zeek.html), [Security Onion Suricata](https://docs.securityonion.net/en/2.4/suricata.html)).
+- Turn confirmed strings/bytes into a **Suricata rule** or a **Sigma rule** (process-create) and deploy fleet-wide; Security Onion supports local Suricata rules and Sigma-driven detections ([Suricata rules](https://docs.suricata.io/en/latest/rules/index.html), [Sigma](https://github.com/SigmaHQ/sigma)).
 
 ## Attacker perspective
-Adversaries and red teamers use these same tools to understand and defeat defenses. Reversing with Ghidra reveals how an EDR agent hooks APIs or how a license/anti-tamper check works, and its scripting engine automates deobfuscation of packed or string-encrypted payloads. Attackers also run capa against their own implants to see which behaviors are "loud" and likely to be signatured, then refactor to reduce detections. Static analysis itself is quiet — it runs on the attacker's own box and leaves no artifacts on the victim — but the compiled malware they ship still betrays them: capa's matched rules, distinctive constants, imported API sets, and rich-header/compiler fingerprints all remain in the binary for a defender to recover later.
+Adversaries and red teamers use these same tools to understand and defeat defenses. Reversing with Ghidra reveals how an EDR agent hooks APIs or how a license/anti-tamper check works, and its scripting engine automates deobfuscation of packed or string-encrypted payloads. Attackers also run capa against their own implants to see which behaviors are "loud" and likely to be signatured, then refactor to reduce detections.
+
+Concrete TTPs, artifacts, and evasion:
+- **Obfuscation / packing (T1027, sub-technique T1027.002 Software Packing)** to defeat static feature extraction — packers strip imports and encrypt sections so capa sees only the stub ([T1027.002](https://attack.mitre.org/techniques/T1027/002/)). Artifact left behind: high section entropy, a tiny import table, and a distinctive unpacking stub — all recoverable statically. Defender counter: entropy analysis and capa's packer-detection rules ([capa rules](https://github.com/mandiant/capa-rules)).
+- **API hashing / dynamic resolution (T1027)** to hide `GetProcAddress`/import strings; the hashing routine and constant seed remain in the binary and can be scripted out with Ghidra ([T1027](https://attack.mitre.org/techniques/T1027/), [Ghidra scripting API](https://ghidra.re/ghidra_docs/api/index.html)).
+- **Runtime decode of payloads (T1140 Deobfuscate/Decode Files or Information)** — the decode routine is visible in the decompiler even when the plaintext is not on disk ([T1140](https://attack.mitre.org/techniques/T1140/)).
+- Static analysis itself is quiet — it runs on the attacker's own box and leaves no artifacts on the victim — but the compiled malware they ship still betrays them: capa's matched rules, distinctive constants, imported API sets, and rich-header/compiler fingerprints all remain in the binary for a defender to recover later ([capa announcement](https://cloud.google.com/blog/topics/threat-intelligence/capa-automatically-identify-malware-capabilities)).
 
 ## Answer key
 - `FunctionNamesToConsole.py` (or the GUI Symbol Tree) lists a user function `add_two` alongside `main`/`entry`.
@@ -104,14 +130,28 @@ Get-FileHash "C:\cases\27\exercise\hello.exe" -Algorithm SHA256
 - Record the SHA256 emitted by your compile of `hello.exe` (build-dependent); this is the sample identifier for grading.
 
 ## MITRE ATT&CK & DFIR phase
-- Analysis technique focus (defender-facing): T1027 (Obfuscated Files or Information) and T1140 (Deobfuscate/Decode Files or Information) — capabilities Ghidra scripting and capa help surface.
-- Example capabilities capa may map on richer samples: T1543.003 (Create or Modify System Process: Windows Service), T1071.001 (Application Layer Protocol: Web).
-- DFIR phase: **Examination / Analysis** (static reverse-engineering triage), feeding **Identification** of IOCs for hunting.
+- Analysis technique focus (defender-facing): T1027 (Obfuscated Files or Information) and T1140 (Deobfuscate/Decode Files or Information) — capabilities Ghidra scripting and capa help surface ([T1027](https://attack.mitre.org/techniques/T1027/), [T1140](https://attack.mitre.org/techniques/T1140/)).
+- Example capabilities capa may map on richer samples: T1027.002 (Software Packing) ([T1027.002](https://attack.mitre.org/techniques/T1027/002/)), T1543.003 (Create or Modify System Process: Windows Service) ([T1543.003](https://attack.mitre.org/techniques/T1543/003/)), T1071.001 (Application Layer Protocol: Web Protocols) ([T1071.001](https://attack.mitre.org/techniques/T1071/001/)).
+- DFIR phase: **Examination / Analysis** (static reverse-engineering triage), feeding **Identification** of IOCs for hunting. Phase terminology follows the NIST SP 800-86 forensic process (collection → examination → analysis → reporting) ([NIST SP 800-86](https://csrc.nist.gov/pubs/sp/800/86/final)) and SANS FOR610 static-analysis methodology ([SANS FOR610](https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/)).
 
 ## Sources
-- Ghidra project & documentation — https://ghidra-sre.org/ and https://github.com/NationalSecurityAgency/ghidra
-- Ghidra headless analyzer (analyzeHeadless) usage — https://ghidra-sre.org/InstallationGuide.html#RunGhidra
-- Mandiant capa — https://github.com/mandiant/capa and https://cloud.google.com/blog/topics/threat-intelligence/capa-automatically-identify-malware-capabilities
-- FLARE-VM (tool distribution incl. Ghidra & capa) — https://github.com/mandiant/flare-vm
-- MITRE ATT&CK techniques T1027 / T1140 — https://attack.mitre.org/techniques/T1027/ and https://attack.mitre.org/techniques/T1140/
-- SANS FOR610 Reverse-Engineering Malware (static analysis methodology) — https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+Claim → source mapping (all URLs are to official/authoritative pages):
+
+- Ghidra is an NSA SRE framework with a decompiler + scripting engine — https://ghidra-sre.org/ and https://github.com/NationalSecurityAgency/ghidra
+- Ghidra GUI launcher (`ghidraRun.bat`) and headless launcher location (`support\analyzeHeadless.bat`); install layout — https://ghidra-sre.org/InstallationGuide.html and https://github.com/NationalSecurityAgency/ghidra/tree/master/Ghidra/RuntimeScripts/Windows/support
+- `analyzeHeadless` flags (`-import`, `-preScript`/`-postScript`, `-scriptPath`, `-deleteProject`) and behavior — https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/Features/Base/ghidra_scripts/README.md
+- Ghidra scripting / FlatProgramAPI (enumerating functions) — https://ghidra.re/ghidra_docs/api/ghidra/program/flatapi/FlatProgramAPI.html and https://ghidra.re/ghidra_docs/api/index.html
+- Ghidra Decompiler feature — https://github.com/NationalSecurityAgency/ghidra/tree/master/Ghidra/Features/Decompiler
+- Mandiant capa: capability detection, `-v`/`-vv` verbosity, `--version`, ATT&CK/MBC mapping — https://github.com/mandiant/capa and https://cloud.google.com/blog/topics/threat-intelligence/capa-automatically-identify-malware-capabilities
+- capa Ghidra integration/plugin — https://github.com/mandiant/capa/tree/master/capa/ghidra
+- capa rules (packer/behavior rules) — https://github.com/mandiant/capa-rules
+- FLARE-VM (packages Ghidra & capa) — https://github.com/mandiant/flare-vm
+- MSVC `cl` `/Fe` and `/nologo`; PowerShell `Get-FileHash` — https://learn.microsoft.com/en-us/cpp/build/reference/fe-name-exe-file , https://learn.microsoft.com/en-us/cpp/build/reference/nologo-suppress-startup-banner , https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash
+- Sysmon events (1 process create, 7 image load, 13 registry set) — https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+- Windows service-install event 4697 — https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4697
+- Security Onion Elastic / Zeek / Suricata pivots — https://docs.securityonion.net/en/2.4/elastic.html , https://docs.securityonion.net/en/2.4/zeek.html , https://docs.securityonion.net/en/2.4/suricata.html
+- Suricata rule format — https://docs.suricata.io/en/latest/rules/index.html
+- Sigma detection rules — https://github.com/SigmaHQ/sigma
+- MITRE ATT&CK techniques: T1027 — https://attack.mitre.org/techniques/T1027/ ; T1027.002 — https://attack.mitre.org/techniques/T1027/002/ ; T1140 — https://attack.mitre.org/techniques/
+
+<!-- cyberlab-enriched: v1 -->
