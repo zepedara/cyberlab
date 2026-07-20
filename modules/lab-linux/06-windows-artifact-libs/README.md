@@ -3,6 +3,8 @@
 ## Overview (plain language)
 Windows stores a lot of forensic gold in special file formats that ordinary tools cannot read: event logs, the ESE database behind Windows Search and Active Directory, Outlook mailbox files, encrypted BitLocker volumes, and Volume Shadow Copy snapshots. The libyal project is a family of small, focused open-source libraries (each starting with "lib") that know exactly how to parse these Windows formats on Linux. In this module you use the command-line tools shipped with those libraries to open, export, and read Windows artifacts directly from a SIFT workstation — no Windows machine required. Think of libyal as a set of specialized "readers": one reads event logs, one reads databases, one reads mailboxes, one unlocks BitLocker, and one exposes shadow-copy snapshots so you can recover earlier versions of files.
 
+The libyal libraries are authored primarily by Joachim Metz and are the parsing engines behind several higher-level forensic frameworks (e.g. Plaso/log2timeline), so the record formats you see here are the same ones those tools consume (libyal project index: https://github.com/libyal/libyal).
+
 ## Tools covered
 | Tool | Install | Purpose |
 |---|---|---|
@@ -11,6 +13,13 @@ Windows stores a lot of forensic gold in special file formats that ordinary tool
 | libpff | apt install libpff-utils | Parse Outlook Personal Storage (.pst/.ost) mailbox files with `pffexport` |
 | libvshadow | apt install libvshadow-utils | Access Volume Shadow Copy Service snapshots with `vshadowinfo`/`vshadowmount` |
 | libbde | apt install libbde-utils | Unlock and read BitLocker Drive Encryption volumes with `bdeinfo`/`bdemount` |
+
+Notes/citations for the claims in this table:
+- `evtxexport` parses the EVTX (Windows XML EventLog) binary format; libevtx documents both the tool and the format (https://github.com/libyal/libevtx and format spec https://github.com/libyal/libevtx/blob/main/documentation/Windows%20XML%20Event%20Log%20(EVTX).asciidoc).
+- `esedbexport` reads the Extensible Storage Engine (ESE) database format used by Windows Search (`Windows.edb`), SRUM (`SRUDB.dat`), and Active Directory (`ntds.dit`) (https://github.com/libyal/libesedb).
+- `pffexport` reads the Personal Folder File / Offline Folder File (PFF) format that backs Outlook `.pst`/`.ost` files (https://github.com/libyal/libpff).
+- `vshadowinfo`/`vshadowmount` read the Volume Shadow Snapshot (VSS) store format (https://github.com/libyal/libvshadow).
+- `bdeinfo`/`bdemount` read the BitLocker Drive Encryption (BDE) volume format (https://github.com/libyal/libbde).
 
 ## Learning objectives
 - Verify the five libyal command-line utilities are installed and report their versions on LAB-LINUX.
@@ -28,47 +37,49 @@ pffexport -V
 vshadowinfo -V
 bdeinfo -V
 ```
-Expected output: each command prints a single line such as `evtxexport 20240421` (the exact date-stamped version will vary by package build). A non-zero exit or "command not found" means the corresponding `*-utils` package is missing.
+Expected output: each command prints a version line. The libyal utilities use `-V` for version output and print a single line such as `evtxexport 20240421` (the exact date-stamped version string varies by package build; libyal releases are versioned by date, see the release tags at https://github.com/libyal/libevtx/releases). A non-zero exit or "command not found" means the corresponding `*-utils` package is missing — install it with the `apt install` line from the **Tools covered** table (the packages ship in the SIFT/REMnux repositories; SIFT overview: https://www.sans.org/tools/sift-workstation/).
 
 ## Guided walkthrough
-1. `evtxexport` — dumps every record from an `.evtx` event log to text so you can read Event IDs, timestamps, and message strings.
+Each step below opens a different Windows format. Run integrity checks first; forensic parsing is only defensible if you can prove the input bytes were unchanged.
+
+1. `evtxexport` — dumps every record from an `.evtx` event log to text so you can read Event IDs, timestamps, and message strings. WHY: EVTX is a binary, chunked, XML-templated format; you cannot `grep` the raw file meaningfully, so you export it to human-readable text first (format spec: https://github.com/libyal/libevtx/blob/main/documentation/Windows%20XML%20Event%20Log%20(EVTX).asciidoc).
 ```bash
 # Show the tool's options, then export a sample Security event log to text.
 evtxexport -h
 evtxexport -f text exercise/Security.evtx > /tmp/security_events.txt
 wc -l /tmp/security_events.txt
 ```
-Expected observable: `-h` prints usage; the export produces a text file, and `wc -l` reports a positive line count (each record spans multiple lines including "Event Identifier" and "Creation time").
+Expected observable: `-h` prints usage (the `-f` flag selects output format, `text` or `xml`); the export produces a text file, and `wc -l` reports a positive line count. NUANCE: each record spans multiple lines and includes fields such as "Event Identifier" and "Creation time" (the FILETIME-derived record timestamp). Because EVTX stores records in chunks, a large gap or non-monotonic "Record number" sequence can indicate tampering or log clearing — a defender-relevant signal (see Attacker perspective, T1070.001). Tool reference: https://github.com/libyal/libevtx.
 
-2. `esedbexport` — lists and exports the tables inside an ESE `.edb` database (e.g. `SRUM`, `Windows.edb`, `ntds.dit`).
+2. `esedbexport` — lists and exports the tables inside an ESE `.edb`/`.dat` database (e.g. SRUM's `SRUDB.dat`, `Windows.edb`, `ntds.dit`). WHY: ESE is a page-based B-tree database; the forensic value lives in named tables, so you export each table to a delimited file for downstream analysis (tool reference: https://github.com/libyal/libesedb).
 ```bash
-# Export all tables from an ESE database into a timestamped output directory.
+# Export all tables from an ESE database into an output directory.
 esedbexport -t /tmp/edb_out exercise/Current.edb
 ls /tmp/edb_out.export
 ```
-Expected observable: a directory `/tmp/edb_out.export/` is created containing one file per table (e.g. `SruDbIdMapTable.0`).
+Expected observable: a directory `/tmp/edb_out.export/` is created containing one file per table. NUANCE: libesedb appends `.export` to the target given with `-t`, and SRUM databases contain tables such as `SruDbIdMapTable` plus GUID-named tables for network and application resource usage (SRUM/ESE forensic context is covered in SANS FOR500/FOR508 material; SANS: https://www.sans.org/). The `-t` option sets the export target path; run `esedbexport -h` to confirm option semantics for your installed build.
 
-3. `pffexport` — walks an Outlook PST/OST and writes messages, folders, and attachments to disk.
+3. `pffexport` — walks an Outlook PST/OST and writes messages, folders, and attachments to disk. WHY: PST/OST is a proprietary container; exporting recreates the folder hierarchy on disk so you can review mail as ordinary files (tool reference: https://github.com/libyal/libpff).
 ```bash
-# Export items (messages) from a PST into a timestamped directory.
+# Export items (messages) from a PST into an output directory.
 pffexport -m items -t /tmp/pst_out exercise/sample.pst
 find /tmp/pst_out.export -maxdepth 2 -type d | head
 ```
-Expected observable: a `/tmp/pst_out.export/` tree is created with folder subdirectories such as `Top of Personal Folders`.
+Expected observable: a `/tmp/pst_out.export/` tree is created with folder subdirectories reflecting the mailbox structure. NUANCE: `-m items` selects the export mode (items only, versus recovered/all); run `pffexport -h` to see the exact mode names in your build. Recovered/deleted items may appear under a separate `.recovered` directory when `-m recovered` or `-m all` is used, which matters for locating attacker-deleted mail.
 
-4. `vshadowinfo` — reads Volume Shadow Copy metadata (snapshot count, creation times) from a raw volume image.
+4. `vshadowinfo` — reads Volume Shadow Copy metadata (snapshot count, creation times) from a raw volume image. WHY: VSS snapshots hold prior versions of files (including files that were locked live, like `ntds.dit`); enumerating stores tells you which point-in-time copies exist before you mount them (tool reference: https://github.com/libyal/libvshadow).
 ```bash
 # Show VSS store metadata for a raw NTFS volume image.
 vshadowinfo exercise/volume.raw
 ```
-Expected observable: a report listing "Number of stores" and, for each store, an identifier and creation time (or a clean "no Volume Shadow Snapshots" message if none exist).
+Expected observable: a report listing "Number of stores" and, for each store, an identifier and creation time. NUANCE: if the input is a full disk image rather than a single-volume image, you may need to supply the volume/partition offset; `vshadowinfo` operates on a volume, so a partition offset (e.g. via a bytes offset) may be required for whole-disk images — check `vshadowinfo -h`. Snapshot creation times are a timeline anchor for when data was captured.
 
-5. `bdeinfo` — reads BitLocker volume metadata (encryption method, key-protector types) without needing to decrypt.
+5. `bdeinfo` — reads BitLocker volume metadata (encryption method, key-protector types) without needing to decrypt. WHY: reading the BDE header reveals the encryption method and which key protectors exist, guiding which credential (recovery key, password, startup key) you must obtain before `bdemount` can decrypt (tool reference: https://github.com/libyal/libbde).
 ```bash
-# Display BitLocker volume header metadata (no password required to read metadata).
+# Display BitLocker volume header metadata (no key required to read metadata).
 bdeinfo exercise/bitlocker.raw
 ```
-Expected observable: a report showing "Encryption method" (e.g. AES-XTS 128-bit) and one or more key-protector entries.
+Expected observable: a report showing "Encryption method" and one or more key-protector entries. NUANCE: the metadata (FVE) is readable without a key, but actually decrypting/mounting with `bdemount` requires a valid protector (recovery password with `-r`, password with `-p`, etc.); consult `bdeinfo -h`/`bdemount -h` and the libbde docs for the protector options and supported encryption methods (AES-CBC and AES-XTS variants): https://github.com/libyal/libbde.
 
 ## Hands-on exercise
 Work against the sample artifact `exercise/Security.evtx` in this module's `exercise/` directory.
@@ -81,11 +92,28 @@ Work against the sample artifact `exercise/Security.evtx` in this module's `exer
 1. How many total records does the log contain?
 2. Which Event Identifier appears most frequently?
 
+The Windows Security event IDs you are likely to see (4624 successful logon, 4625 failed logon, 4634 logoff, 4688 process creation) are documented by Microsoft; audit logon events reference: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624 and https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688 . `wevtutil epl` (export-log) is the native Windows export command: https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wevtutil .
+
 ## SOC analyst perspective
-A defender uses libyal to triage Windows artifacts pulled from a suspect host without spinning up a Windows box. `evtxexport` lets you carve authentication and process-creation events (Security 4624/4625/4688) that Security Onion would otherwise surface via its Windows event ingest — useful when you only have a raw disk image, not live telemetry. `esedbexport` unlocks SRUM (network/app usage) and `ntds.dit` for credential-theft investigations, while `pffexport` reconstructs phishing mailboxes. During incident response you cross-reference exported timestamps against Security Onion alerts to confirm scope. This directly supports detection of T1078 (Valid Accounts) via logon anomalies and T1003 (OS Credential Dumping) via NTDS access, giving IR teams offline, court-defensible parsing of the same artifacts Security Onion parses in near-real time.
+A defender uses libyal to triage Windows artifacts pulled from a suspect host without spinning up a Windows box. `evtxexport` lets you carve authentication and process-creation events (Security 4624 logon / 4625 failed logon / 4688 process creation — Microsoft Learn: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624 , /event-4625 , /event-4688) that Security Onion would otherwise surface via its Windows event ingest (Elastic Agent / Winlogbeat pipelines; Security Onion docs: https://docs.securityonion.net/) — useful when you only have a raw disk image, not live telemetry.
+
+Concrete detection logic and pivots:
+- **Failed→success logon bursts (T1110 Brute Force, https://attack.mitre.org/techniques/T1110/):** count 4625 by source account/IP, then look for a following 4624 with LogonType 3 (network) or 10 (RemoteInteractive/RDP). In Security Onion, pivot in Elastic on `winlog.event_id:4625` then `winlog.event_id:4624` filtered by `winlog.event_data.LogonType`.
+- **Suspicious process creation (T1059 Command and Scripting Interpreter, https://attack.mitre.org/techniques/T1059/):** 4688 records with unusual `NewProcessName`/parent-child pairs (e.g. `winword.exe`→`powershell.exe`). Cross-reference with Zeek/Suricata network alerts in Security Onion for egress from the same host around the same timestamp.
+- **Log clearing (T1070.001, https://attack.mitre.org/techniques/T1070/001/):** Security 1102 ("audit log was cleared") or System 104, plus non-monotonic "Record number" gaps in `evtxexport` output. Microsoft Learn event 1102: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-1102 .
+- **Credential access (T1003.003, https://attack.mitre.org/techniques/T1003/003/):** `esedbexport` of `ntds.dit` plus `vshadowinfo` showing a recently created shadow copy indicates a possible NTDS-via-VSS extraction.
+
+`esedbexport` also unlocks SRUM (network/app resource usage) and `ntds.dit` for credential-theft investigations, while `pffexport` reconstructs phishing mailboxes. During incident response you cross-reference exported timestamps against Security Onion alerts to confirm scope, giving IR teams offline, court-defensible parsing of the same artifacts Security Onion parses in near-real time. This directly supports detection of **T1078 Valid Accounts** (https://attack.mitre.org/techniques/T1078/) via logon anomalies and **T1003 OS Credential Dumping** (https://attack.mitre.org/techniques/T1003/) via NTDS access.
 
 ## Attacker perspective
-An attacker who gains access to a host targets the very artifacts these libraries read. They clear or tamper with `.evtx` logs (T1070.001 Indicator Removal: Clear Windows Event Logs) to hide logons, dump `ntds.dit` from a domain controller — often via a Volume Shadow Copy snapshot (T1003.003) so the live locked file can be copied — and steal Outlook `.pst`/`.ost` mailboxes for data collection (T1114 Email Collection). BitLocker may be abused for extortion, re-encrypting drives with attacker-controlled protectors (T1486). Each of these leaves recoverable evidence: shadow-copy creation times exposed by `vshadowinfo`, altered event-log gaps visible in `evtxexport` record sequences, new key protectors surfaced by `bdeinfo`, and ESE table access patterns in `esedbexport` output — all defender-findable trails.
+An attacker who gains access to a host targets the very artifacts these libraries read.
+
+- **Clear/tamper event logs — T1070.001 (https://attack.mitre.org/techniques/T1070/001/):** using `wevtutil cl Security` or PowerShell `Clear-EventLog` to hide logons. ARTIFACTS: a Security 1102 / System 104 "log cleared" record, and — critically — a new empty/short log whose "Record number" sequence and chunk layout differ from a naturally grown log, both visible in `evtxexport` output. EVASION: selective deletion is far harder than a full clear because EVTX is chunked; most attackers clear the whole log, which itself generates 1102.
+- **Dump `ntds.dit` from a domain controller — T1003.003 (https://attack.mitre.org/techniques/T1003/003/):** the live `ntds.dit` is locked, so attackers create a Volume Shadow Copy (e.g. `vssadmin create shadow` or `ntdsutil ... ifm`) and copy the file from the snapshot. ARTIFACTS: a new VSS store with a fresh creation time (surfaced by `vshadowinfo`), plus 4688 records for `vssadmin.exe`/`ntdsutil.exe`. EVASION: some tooling reads NTDS directly from raw NTFS to avoid `vssadmin`, but that still touches the disk and can leave USN/journal traces.
+- **Steal Outlook mailboxes — T1114 Email Collection (https://attack.mitre.org/techniques/T1114/):** copy `.pst`/`.ost` for staging/exfil. ARTIFACTS: `pffexport` reconstructs folders and, with `-m recovered`/`-m all`, deleted items an attacker thought were gone. EVASION: exporting a subset of folders reduces size for exfil but the file mtime/copy still leaves filesystem traces.
+- **BitLocker abuse for extortion — T1486 Data Encrypted for Impact (https://attack.mitre.org/techniques/T1486/):** enabling BitLocker or adding attacker-controlled protectors to lock out the owner. ARTIFACTS: new key-protector entries surfaced by `bdeinfo`, and BitLocker/`manage-bde` operation events. EVASION: attackers may remove recovery protectors to deny legitimate unlock, which `bdeinfo`'s protector enumeration still records at the volume-header level.
+
+Every one of these leaves recoverable evidence — shadow-copy creation times (`vshadowinfo`), event-log record gaps (`evtxexport`), new key protectors (`bdeinfo`), and ESE table access patterns (`esedbexport`) — all defender-findable trails.
 
 ## Answer key
 Sample sha256: `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
@@ -100,23 +128,39 @@ grep -c "Record number" /tmp/security_events.txt
 grep "Event Identifier" /tmp/security_events.txt \
   | awk -F: '{print $2}' | sort | uniq -c | sort -rn | head -1
 ```
-Expected findings: `grep -c "Record number"` returns the total record count for the log, and the `uniq -c | sort -rn | head -1` line reports the single most common Event Identifier together with its count (for a logon-focused Security log this is typically 4624 or 4634). Confirm integrity first with `sha256sum exercise/Security.evtx`, which must match the digest above.
+Expected findings: `grep -c "Record number"` returns the total record count for the log, and the `uniq -c | sort -rn | head -1` line reports the single most common Event Identifier together with its count (for a logon-focused Security log this is typically 4624 successful logon or 4634 logoff — Microsoft Learn event 4624: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624 , event 4634: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4634 ). Confirm integrity first with `sha256sum exercise/Security.evtx`, which must match the digest above.
 
 ## MITRE ATT&CK & DFIR phase
-- **T1070.001** — Indicator Removal on Host: Clear Windows Event Logs (detect via `evtxexport` gaps).
-- **T1003.003** — OS Credential Dumping: NTDS (`esedbexport` of `ntds.dit`, `vshadowinfo` for shadow-copy access).
-- **T1114** — Email Collection (`pffexport` of PST/OST mailboxes).
-- **T1078** — Valid Accounts (logon analysis from exported Security events).
-- **T1486** — Data Encrypted for Impact / BitLocker abuse (`bdeinfo` metadata review).
+- **T1070.001** — Indicator Removal on Host: Clear Windows Event Logs (detect via `evtxexport` record-sequence gaps and Security 1102). https://attack.mitre.org/techniques/T1070/001/
+- **T1003.003** — OS Credential Dumping: NTDS (`esedbexport` of `ntds.dit`, `vshadowinfo` for shadow-copy access). https://attack.mitre.org/techniques/T1003/003/
+- **T1114** — Email Collection (`pffexport` of PST/OST mailboxes). https://attack.mitre.org/techniques/T1114/
+- **T1078** — Valid Accounts (logon analysis from exported Security events). https://attack.mitre.org/techniques/T1078/
+- **T1110** — Brute Force (4625→4624 correlation). https://attack.mitre.org/techniques/T1110/
+- **T1059** — Command and Scripting Interpreter (4688 process-creation analysis). https://attack.mitre.org/techniques/T1059/
+- **T1486** — Data Encrypted for Impact / BitLocker abuse (`bdeinfo` metadata review). https://attack.mitre.org/techniques/T1486/
 - **DFIR phase:** Examination & Analysis (parsing acquired artifacts) supporting Identification of scope.
 
 ## Sources
-- SANS SIFT Workstation overview: https://www.sans.org/tools/sift-workstation/
-- libyal project (libevtx, libesedb, libpff, libvshadow, libbde) — Joachim Metz: https://github.com/libyal
-- libevtx documentation: https://github.com/libyal/libevtx/wiki
-- libvshadow documentation: https://github.com/libyal/libvshadow/wiki
-- libbde documentation: https://github.com/libyal/libbde/wiki
-- MITRE ATT&CK T1070.001: https://attack.mitre.org/techniques/T1070/001/
-- MITRE ATT&CK T1003.003: https://attack.mitre.org/techniques/T1003/003/
-- MITRE ATT&CK T1114: https://attack.mitre.org/techniques/T1114/
-- Security Onion documentation (Windows event ingest): https://docs.securityonion.net/
+Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn, MITRE ATT&CK, or recognized project docs):
+
+- libyal project index (all five libraries, authored by Joachim Metz): https://github.com/libyal/libyal
+- `evtxexport` tool + EVTX binary format (used for `-f text` export, record/Event Identifier fields, chunked layout): https://github.com/libyal/libevtx and format spec https://github.com/libyal/libevtx/blob/main/documentation/Windows%20XML%20Event%20Log%20(EVTX).asciidoc ; release/version tags: https://github.com/libyal/libevtx/releases
+- `esedbexport` tool + ESE database format (SRUM `SRUDB.dat`, `Windows.edb`, `ntds.dit`, `-t` export target with `.export` suffix): https://github.com/libyal/libesedb
+- `pffexport` tool + PFF/PST/OST format (`-m items` export mode, folder/attachment recreation): https://github.com/libyal/libpff
+- `vshadowinfo`/`vshadowmount` tool + VSS store format (store count/creation times, volume offset handling): https://github.com/libyal/libvshadow
+- `bdeinfo`/`bdemount` tool + BitLocker (BDE) format (encryption method, key-protector enumeration, protector options for decryption): https://github.com/libyal/libbde
+- SANS SIFT Workstation (package availability / DFIR context): https://www.sans.org/tools/sift-workstation/
+- SANS institute (SRUM/ESE and Windows event forensic training context, FOR500/FOR508): https://www.sans.org/
+- Microsoft Learn — event 4624 (successful logon): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624
+- Microsoft Learn — event 4625 (failed logon): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4625
+- Microsoft Learn — event 4634 (logoff): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4634
+- Microsoft Learn — event 4688 (process creation): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688
+- Microsoft Learn — event 1102 (audit log cleared): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-1102
+- Microsoft Learn — `wevtutil` (native EVTX export/clear): https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wevtutil
+- MITRE ATT&CK T1070.001 (Clear Windows Event Logs): https://attack.mitre.org/techniques/T1070/001/
+- MITRE ATT&CK T1003 / T1003.003 (OS Credential Dumping / NTDS): https://attack.mitre.org/techniques/T1003/ and https://attack.mitre.org/techniques/T1003/003/
+- MITRE ATT&CK T1114 (Email Collection): https://attack.mitre.org/techniques/T1114/
+- MITRE ATT&CK T1078 (Valid Accounts): https://attack.mitre.org/techniques/T1078/
+- MITRE ATT&CK T1110 (Brute Force): https://attack.mitre
+
+<!-- cyberlab-enriched: v1 -->
