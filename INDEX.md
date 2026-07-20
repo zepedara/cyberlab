@@ -23,6 +23,7 @@
 | 22 | [22-sleuthkit-mastery](modules/lab-linux/22-sleuthkit-mastery/README.md) | The Sleuth Kit command mastery | 2 | PASS | Y |
 | 23 | [23-plaso-supertimeline](modules/lab-linux/23-plaso-supertimeline/README.md) | Plaso super-timeline deep-dive | 3 | PASS | Y |
 | 24 | [24-wireshark-deep](modules/lab-linux/24-wireshark-deep/README.md) | Wireshark / tshark deep packet analysis | 3 | PASS | Y |
+| 25 | [25-cyberchef-recipes](modules/lab-linux/25-cyberchef-recipes/README.md) | CyberChef recipes for malware data | 2 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
