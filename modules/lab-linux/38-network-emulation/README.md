@@ -6,8 +6,10 @@ When you run a piece of suspicious software to watch what it does, it usually tr
 ## Tools covered
 | Tool | Install | Purpose |
 |---|---|---|
-| INetSim | apt install inetsim | Internet services simulation suite (DNS/HTTP/HTTPS/SMTP/FTP/etc.) that answers a sample's connections and logs them |
-| FakeNet-NG | pip install fakenet-ng | Dynamic network-interception tool that redirects and responds to a sample's traffic on the analysis host and captures a PCAP |
+| INetSim | apt install inetsim | Internet services simulation suite (DNS/HTTP/HTTPS/SMTP/FTP/etc.) that answers a sample's connections and logs them. Per the INetSim project, it is "a software suite for simulating common internet services in a lab environment." (https://www.inetsim.org/) |
+| FakeNet-NG | pip install fakenet-ng | Dynamic network-interception tool that redirects and responds to a sample's traffic on the analysis host and captures a PCAP. Per the FLARE repo, it is "a next generation dynamic network analysis tool for malware analysts and penetration testers." (https://github.com/mandiant/flare-fakenet-ng) |
+
+> Note on availability: both tools ship pre-installed on REMnux, the recommended LAB-LINUX platform for this module (https://docs.remnux.org/). On a stock Debian/Kali system `inetsim` is available via APT (https://www.kali.org/tools/inetsim/); FakeNet-NG is a Python package/release from the FLARE repo (https://github.com/mandiant/flare-fakenet-ng).
 
 ## Learning objectives
 - Configure and launch INetSim to simulate DNS and HTTP(S) services and confirm services are listening.
@@ -24,7 +26,7 @@ fakenet -h 2>&1 | head -n 5
 # Confirm we can see which service ports are free/listening
 ss -tulpn | head -n 5
 ```
-Expected output: INetSim prints its version banner (e.g. `INetSim 1.3.2`), FakeNet-NG prints its usage/help header, and `ss` lists current listening sockets so you can spot conflicts before starting a simulator.
+Expected output: INetSim prints its version banner (e.g. `INetSim 1.3.2`, the current stable release per https://www.inetsim.org/downloads.html), FakeNet-NG prints its usage/help header, and `ss` lists current listening sockets so you can spot conflicts before starting a simulator. `ss -tulpn` shows TCP (`-t`) and UDP (`-u`) listening (`-l`) sockets numerically (`-n`) with owning process (`-p`); this flag behavior is documented in the iproute2 `ss(8)` man page (https://man7.org/linux/man-pages/man8/ss.8.html). Knowing what already binds 53/80/443 matters because INetSim will fail to start a service whose port is already occupied.
 
 ## Guided walkthrough
 1. Prepare a working directory and a minimal INetSim config that enables DNS and HTTP and binds all replies to the loopback address.
@@ -39,7 +41,7 @@ start_service https
 EOF
 cat inetsim.conf
 ```
-Expected: the config file is echoed back showing DNS/HTTP/HTTPS enabled and all binds pointed at `127.0.0.1`.
+Expected: the config file is echoed back showing DNS/HTTP/HTTPS enabled and all binds pointed at `127.0.0.1`. WHY these keys: `start_service` selects which simulated services launch, `service_bind_address` controls the interface INetSim listens on, and `dns_default_ip` is the address returned for every A-record lookup so any domain the sample requests resolves to a host you control. These directives are the ones documented in the INetSim configuration manual (https://www.inetsim.org/documentation.html). In a real detonation you point `dns_default_ip` at the analysis host's LAN IP (not loopback) so a separate victim VM can reach it; loopback is used here to keep the exercise single-host and egress-free.
 
 2. Launch INetSim against that config. It reports each service it starts.
 ```bash
@@ -47,14 +49,14 @@ sudo inetsim --config ~/lab38/inetsim.conf --data-dir /var/lib/inetsim --log-dir
 sleep 3
 ss -tulpn | grep -E ':(53|80|443)\b'
 ```
-Expected: INetSim prints `* dns_53_tcp_udp - started`, `* http_80_tcp - started`, `* https_443_tcp - started`, and `ss` confirms sockets listening on ports 53, 80, and 443.
+Expected: INetSim prints startup lines such as `* dns 53/tcp - started`, `* http 80/tcp - started`, and `* https 443/tcp - started` (exact banner wording depends on version; see the INetSim manual, https://www.inetsim.org/documentation.html), and `ss` confirms sockets listening on ports 53, 80, and 443. WHY `--data-dir`/`--log-dir`: `--data-dir` holds the fake objects INetSim serves and `--log-dir` is where the request logs (`service.log`, `main.log`) are written — you will read those logs in the exercise. `sudo` is required because binding privileged ports below 1024 (53/80/443) needs elevated privileges (https://www.inetsim.org/documentation.html).
 
 3. Simulate a sample's behavior: resolve any domain (it should return the fake IP) and fetch a URL (INetSim serves a default page).
 ```bash
 dig @127.0.0.1 evil-c2.example.com +short
 curl -s http://127.0.0.1/malware.bin -o /tmp/served.bin && file /tmp/served.bin
 ```
-Expected: `dig` returns `127.0.0.1` for the arbitrary domain, and `curl` downloads INetSim's default fake object; `file` reports its type. INetSim logs the request under `~/lab38/log/`.
+Expected: `dig` returns `127.0.0.1` for the arbitrary domain (WHY: INetSim's DNS service answers every name with `dns_default_ip`, so C2 domains "resolve" without touching real infrastructure — see the DNS service in the manual, https://www.inetsim.org/documentation.html). `curl -s` fetches quietly and writes to `/tmp/served.bin`; INetSim's HTTP service returns a generic default object for any URL rather than the real payload, so `file` will report a small fake object (commonly a stub HTML page or a small binary object depending on the requested extension). Every request is recorded under `~/lab38/log/`. The `example.com` name is safe to use because it is reserved for documentation by RFC 2606/IANA (https://www.iana.org/domains/reserved).
 
 4. As an alternative, run FakeNet-NG which intercepts locally and writes a PCAP.
 ```bash
@@ -62,7 +64,7 @@ sudo fakenet 2>&1 | head -n 20
 # In another shell, generate traffic, then stop FakeNet with Ctrl+C to flush the PCAP
 ls -1 packets_*.pcap 2>/dev/null | head -n 1
 ```
-Expected: FakeNet-NG starts its Diverter and listeners, responds to any outbound connection, and on shutdown writes a timestamped `packets_YYYYMMDD_HHMMSS.pcap` recording every intercepted flow.
+Expected: FakeNet-NG starts its Diverter and listeners, responds to any outbound connection, and on shutdown writes a timestamped `packets_YYYYMMDD_HHMMSS.pcap` recording every intercepted flow. WHY the difference from INetSim: FakeNet-NG uses a "Diverter" that transparently redirects the host's own outbound traffic to its listeners and captures a PCAP of everything — you do not have to reconfigure the client's DNS. This Diverter + PCAP behavior and the `packets_*.pcap` output are documented in the FLARE repo README (https://github.com/mandiant/flare-fakenet-ng). On Linux FakeNet-NG requires root to install its traffic-diversion rules (https://github.com/mandiant/flare-fakenet-ng).
 
 ## Hands-on exercise
 Sample artifact: `exercise/beacon_client.sh` — a **benign, inert shell script** (NOT malware) that mimics a beacon by making one DNS lookup and one HTTP GET to a hard-coded fake C2 domain. It performs no privileged action and only talks to your local emulator. Safe origin: generated on-VM by the command below (no egress; the emulator answers all requests, and you should run it with your host firewall configured to drop outbound traffic).
@@ -81,6 +83,7 @@ EOF
 chmod +x exercise/beacon_client.sh
 sha256sum exercise/beacon_client.sh
 ```
+> The `.example` TLD and `203.0.113.0/24` (TEST-NET-3) address block are reserved for documentation/testing by RFC 2606 and RFC 5737 (https://www.iana.org/domains/reserved), so nothing here can route to a real host.
 
 Tasks:
 1. Start INetSim (DNS + HTTP) as in the walkthrough.
@@ -88,10 +91,21 @@ Tasks:
 3. From the INetSim log, identify (a) the domain the beacon resolved and (b) the exact HTTP path/URL it requested.
 
 ## SOC analyst perspective
-In a triage lab, a defender detonates a suspicious binary inside an isolated VM with INetSim or FakeNet-NG standing in for the internet, so the sample reveals its true network behavior with zero risk of contacting a live operator. The emulator logs become gold: every requested domain, URI, User-Agent, and SMTP recipient is a candidate indicator of compromise. Analysts feed those extracted domains/IPs into Security Onion as detection content — Suricata/Zeek DNS and HTTP rules, and Kibana dashboards hunting the same beacon interval or URI pattern across production PCAP and logs. This directly supports ATT&CK detection for T1071 (Application Layer Protocol), T1568 (Dynamic Resolution), and T1041 (Exfiltration Over C2 Channel) by turning a single detonation into reusable network signatures.
+In a triage lab, a defender detonates a suspicious binary inside an isolated VM with INetSim or FakeNet-NG standing in for the internet, so the sample reveals its true network behavior with zero risk of contacting a live operator. The emulator logs become gold: every requested domain, URI, User-Agent, and SMTP recipient is a candidate indicator of compromise (INetSim records these in its per-service logs under the configured log-dir, https://www.inetsim.org/documentation.html).
+
+Turn a single detonation into reusable detection content in Security Onion (https://docs.securityonion.net/):
+- **Zeek DNS pivot** — the domain the sample requested appears as a `query` field in `dns.log`; hunt it across production telemetry in Kibana/`dns` events, and watch for many distinct subdomains under one parent (possible DNS tunneling / dynamic resolution) mapping to **T1568** (https://attack.mitre.org/techniques/T1568/) and its sub-technique **T1568.002 (Domain Generation Algorithms)**.
+- **Zeek HTTP pivot** — the captured `GET /gate.php?id=...` path, `host`, and `user_agent` appear in `http.log`; pivot on the exact URI and a rare/hard-coded User-Agent to find the same beacon elsewhere. This corresponds to **T1071.001 (Web Protocols)** (https://attack.mitre.org/techniques/T1071/001/).
+- **Suricata signature** — convert the extracted domain/URI/UA into a rule (`alert dns` on the query name; `alert http` with `http.uri`/`http.user_agent` content matches). Suricata rule keyword syntax is documented in the Suricata rules reference (https://docs.suricata.io/en/latest/rules/index.html).
+- **Beacon-interval analytics** — regular, low-jitter callbacks visible in Zeek `conn.log` timing support hunting **T1071 (Application Layer Protocol)** (https://attack.mitre.org/techniques/T1071/) and data leaving over the C2 channel, **T1041 (Exfiltration Over C2 Channel)** (https://attack.mitre.org/techniques/T1041/) — note the query-string `id=` value the beacon exfiltrates.
 
 ## Attacker perspective
-Attackers assume their malware may be detonated in a sandbox, so C2 clients probe for exactly the flat, over-eager responses these emulators produce — a real HTTPS gate has a specific certificate CN and returns particular status codes, whereas INetSim serves a generic default object for any URL. Malware may therefore fingerprint the environment (checking cert issuers, non-routable resolver replies, or that every domain resolves) and go dormant to evade analysis, an example of T1497 (Virtualization/Sandbox Evasion). From the offensive tooling side, adversaries themselves run fake DNS/HTTP responders (like fakedns or rogue listeners) during phishing and MITM operations. The artifacts they leave for defenders include emulator or responder log files, unexpected local listeners on 53/80/443, generated self-signed certificates, and captured PCAPs showing every callback attempt.
+Attackers assume their malware may be detonated in a sandbox, so C2 clients probe for exactly the flat, over-eager responses these emulators produce — a real HTTPS gate has a specific certificate CN and returns particular status codes, whereas INetSim serves a generic default object for any URL (https://www.inetsim.org/documentation.html). Concrete evasion TTPs mapped to **T1497 (Virtualization/Sandbox Evasion)** (https://attack.mitre.org/techniques/T1497/):
+- **Resolution sanity checks (T1497.001, System Checks)** — malware notices that *every* domain, including a random never-registered name, resolves to the same address (INetSim's `dns_default_ip` behavior), or that a deliberately non-existent domain does *not* return NXDOMAIN, and concludes it is in emulation.
+- **TLS certificate inspection** — code pins or validates the C2 certificate issuer/CN; INetSim's auto-generated self-signed cert fails the check, so the sample goes dormant (**T1497 / execution guardrails, T1480**, https://attack.mitre.org/techniques/T1480/).
+- **Time/beacon delays (T1497.003)** — long sleeps or jitter to outlast an automated sandbox's capture window.
+
+On the offensive tooling side, adversaries themselves run fake DNS/HTTP responders (e.g. `dnschef`, rogue listeners) during phishing and MITM operations. Artifacts these techniques leave for defenders: emulator/responder log files, unexpected local listeners on 53/80/443 (visible via `ss -tulpn`), generated self-signed certificates, and captured PCAPs showing every callback attempt.
 
 ## Answer key
 Sample: `exercise/beacon_client.sh` — benign inert bash beacon simulator, generated on-VM (see generator above). Compute and record its digest with `sha256sum exercise/beacon_client.sh` (the validator holds the reference digest for the committed copy).
@@ -108,19 +122,36 @@ grep -Eo 'GET [^ ]+' ~/lab38/log/*.log | head -n 5
 # Confirm the beacon received a served reply object
 file /tmp/beacon_reply.bin                                 # -> data / HTML (INetSim default object)
 ```
-Findings: (a) `update.malware-lab.example` resolves to `127.0.0.1`; (b) the beacon requested `GET /gate.php?id=203.0.113.10`, logged by INetSim's HTTP service; the download `/tmp/beacon_reply.bin` is INetSim's benign default object.
+Findings: (a) `update.malware-lab.example` resolves to `127.0.0.1` (INetSim's `dns_default_ip`); (b) the beacon requested `GET /gate.php?id=203.0.113.10`, logged by INetSim's HTTP service under the configured log-dir; the download `/tmp/beacon_reply.bin` is INetSim's benign default object. Log-file location and per-service logging are per the INetSim manual (https://www.inetsim.org/documentation.html).
 
 ## MITRE ATT&CK & DFIR phase
-- **T1071 – Application Layer Protocol** (HTTP/DNS C2 observed via the emulator).
-- **T1568 – Dynamic Resolution** (arbitrary domains resolving to the simulated IP).
-- **T1041 – Exfiltration Over C2 Channel** (beacon query-string data captured).
-- **T1497 – Virtualization/Sandbox Evasion** (why emulators must look realistic).
-- **DFIR phase:** Examination / Analysis (dynamic malware analysis) — feeding extracted IOCs into the Identification phase of downstream hunts.
+- **T1071 – Application Layer Protocol** (HTTP/DNS C2 observed via the emulator) — https://attack.mitre.org/techniques/T1071/; sub-technique **T1071.001 – Web Protocols** — https://attack.mitre.org/techniques/T1071/001/.
+- **T1568 – Dynamic Resolution** (arbitrary domains resolving to the simulated IP) — https://attack.mitre.org/techniques/T1568/.
+- **T1041 – Exfiltration Over C2 Channel** (beacon query-string data captured) — https://attack.mitre.org/techniques/T1041/.
+- **T1497 – Virtualization/Sandbox Evasion** (why emulators must look realistic) — https://attack.mitre.org/techniques/T1497/.
+- **DFIR phase:** Examination / Analysis (dynamic malware analysis) — feeding extracted IOCs into the Identification phase of downstream hunts (NIST SP 800-61r2 incident-handling phases, https://csrc.nist.gov/pubs/sp/800/61/r2/final).
 
 ## Sources
-- REMnux — INetSim tool docs: https://docs.remnux.org/discover-the-tools/handle+network+interactions/simulate+internet+services
-- REMnux — FakeNet-NG tool docs: https://docs.remnux.org/discover-the-tools/handle+network+interactions/intercept+network+connections
-- INetSim official project site & manual: https://www.inetsim.org/
-- Mandiant/FLARE FakeNet-NG repository: https://github.com/mandiant/flare-fakenet-ng
+- REMnux — simulate internet services (INetSim): https://docs.remnux.org/discover-the-tools/handle+network+interactions/simulate+internet+services
+- REMnux — intercept network connections (FakeNet-NG): https://docs.remnux.org/discover-the-tools/handle+network+interactions/intercept+network+connections
+- REMnux project site: https://docs.remnux.org/
+- INetSim official project site: https://www.inetsim.org/
+- INetSim documentation/manual (config keys `service_bind_address`, `dns_default_ip`, `start_service`; service logging): https://www.inetsim.org/documentation.html
+- INetSim downloads (current release / version): https://www.inetsim.org/downloads.html
+- Kali Linux — inetsim tool page (APT install): https://www.kali.org/tools/inetsim/
+- Mandiant/FLARE FakeNet-NG repository (Diverter, listeners, `packets_*.pcap` output, root requirement): https://github.com/mandiant/flare-fakenet-ng
+- `ss(8)` man page (flag behavior for `-tulpn`): https://man7.org/linux/man-pages/man8/ss.8.html
+- Security Onion documentation (Zeek, Suricata, Elastic/Kibana pivots): https://docs.securityonion.net/
+- Suricata rules reference (rule keyword syntax for DNS/HTTP content matches): https://docs.suricata.io/en/latest/rules/index.html
 - SANS FOR610 — Reverse-Engineering Malware (dynamic analysis with simulated network): https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
-- MITRE ATT&CK T1071: https://attack.mitre.org/techniques/T1071/ and T1497: https://attack.mitre.org/techniques/T1497/
+- MITRE ATT&CK: T1071 https://attack.mitre.org/techniques/T1071/ · T1071.001 https://attack.mitre.org/techniques/T1071/001/ · T1568 https://attack.mitre.org/techniques/T1568/ · T1041 https://attack.mitre.org/techniques/T1041/ · T1497 https://attack.mitre.org/techniques/T1497/ · T1480 https://attack.mitre.org/techniques/T1480/
+- IANA reserved/special-use domains and RFC 2606 / RFC 5737 (safe `example`/`.example`/TEST-NET addresses): https://www.iana.org/domains/reserved
+- NIST SP 800-61r2 (incident-handling / DFIR phases): https://csrc.nist.gov/pubs/sp/800/61/r2/final
+
+## Related modules
+- [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives); correlate emulator-observed C2 with in-memory network artifacts.
+- [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives); turn extracted domains/URIs/User-Agents into hunting rules.
+- [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives); recover on-disk payloads a beacon would otherwise fetch.
+- [Plaso super-timeline deep-dive](../23-plaso-supertimeline/README.md) -- same learning path (Deep-dives); place detonation network events on a unified timeline.
+
+<!-- cyberlab-enriched: v1 -->
