@@ -37,6 +37,7 @@
 | 41 | [41-web-app-testing](modules/lab-linux/41-web-app-testing/README.md) | Web app testing (Burp Suite / nmap) | 2 | PASS | Y |
 | 47 | [47-ransomware-memory-case](modules/lab-linux/47-ransomware-memory-case/README.md) | Scenario: ransomware memory investigation | 3 | PASS | Y |
 | 48 | [48-phishing-doc-case](modules/lab-linux/48-phishing-doc-case/README.md) | Scenario: phishing document investigation | 3 | PASS | Y |
+| 49 | [49-intrusion-timeline-case](modules/lab-linux/49-intrusion-timeline-case/README.md) | Scenario: intrusion timeline reconstruction | 3 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
