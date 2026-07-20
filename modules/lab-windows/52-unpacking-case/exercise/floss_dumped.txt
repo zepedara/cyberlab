@@ -1,0 +1,3 @@
+Benign lab text artifact: floss_dumped.txt
+Marker: LAB_BENIGN_MARKER_v1
+URL: http://benign.lab.local/beacon

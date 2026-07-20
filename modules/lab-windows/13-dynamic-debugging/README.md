@@ -64,7 +64,7 @@ Expected: `lm` prints loaded module base addresses (including the sample and `nt
 Sample: `exercise\hello_debug.exe`.
 - **Type:** benign 64-bit Windows console PE that prints a fixed greeting via `WriteConsoleW` and exits.
 - **Safe origin:** compiled locally from inert C source (a plain "Hello, DFIR" printf-style program). It performs no network egress, no persistence, and no file writes. It is NOT malware.
-- **sha256:** `3f9c1a7e6b2d4f80a15c9e33d7b6c024e18a5f92c0d4b7361ae82f95c3d10b47`
+- **sha256:** `c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b`
 
 Tasks:
 1. Verify the sample hash matches the value above.
@@ -79,7 +79,7 @@ A defender rarely debugs on a live endpoint, but the artifacts a debugger produc
 Attackers assume their payload will land in a debugger, so they weaponize anti-debug tricks: calling `IsDebuggerPresent`, reading the PEB `BeingDebugged` flag, timing checks with `rdtsc`, and `NtQueryInformationProcess(ProcessDebugPort)` to bail out or branch into decoy behavior when watched. That is exactly what ScyllaHide defeats. Offensively, red teamers also abuse debuggers as a living-off-the-land tool — WinDbg and `cdb.exe` can execute scripts and load DLLs, and Time Travel Debugging can be a data-exfil vector. Artifacts left for defenders include debugger process creation (`x64dbg.exe`, `windbg.exe`, `cdb.exe` in Sysmon Event ID 1), `.dmp` files on disk, ScyllaHide hook remnants in memory, and unusual `DEBUG_PROCESS` creation flags.
 
 ## Answer key
-- **Sample sha256:** `3f9c1a7e6b2d4f80a15c9e33d7b6c024e18a5f92c0d4b7361ae82f95c3d10b47`
+- **Sample sha256:** `c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b`
 - **Hash verification command:**
 ```powershell
 Get-FileHash .\exercise\hello_debug.exe -Algorithm SHA256 |

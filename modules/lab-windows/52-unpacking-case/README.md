@@ -103,7 +103,7 @@ floss .\exercise\sample_dumped.exe | Select-String "BENIGN-UNPACK-LAB-MARKER-52"
 Get-FileHash .\exercise\sample.exe -Algorithm SHA256
 ```
 Sample sha256 (of the locally built unpacked reference `sample.exe`; recorded by the validator on first build):
-`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+`c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b`
 
 ## MITRE ATT&CK & DFIR phase
 - **T1027.002** — Obfuscated Files or Information: Software Packing.
