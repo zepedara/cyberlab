@@ -27,6 +27,7 @@
 | 26 | [26-metasploit-workflow](modules/lab-linux/26-metasploit-workflow/README.md) | Metasploit Framework workflow (training range) | 2 | PASS | Y |
 | 32 | [32-remnux-static-triage](modules/lab-linux/32-remnux-static-triage/README.md) | REMnux static triage (DIE/ssdeep/pefile) | 3 | PASS | Y |
 | 33 | [33-binwalk-firmware](modules/lab-linux/33-binwalk-firmware/README.md) | binwalk firmware & embedded extraction | 2 | PASS | Y |
+| 34 | [34-clamav-scanning](modules/lab-linux/34-clamav-scanning/README.md) | ClamAV signature scanning | 2 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
