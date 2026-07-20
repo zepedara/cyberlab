@@ -34,6 +34,7 @@
 | 38 | [38-network-emulation](modules/lab-linux/38-network-emulation/README.md) | Network emulation (INetSim / FakeNet-NG) | 2 | PASS | Y |
 | 39 | [39-frida-tracing](modules/lab-linux/39-frida-tracing/README.md) | Frida dynamic instrumentation | 1 | PASS | Y |
 | 40 | [40-password-cracking](modules/lab-linux/40-password-cracking/README.md) | Password cracking (hashcat / John) | 2 | PASS | Y |
+| 41 | [41-web-app-testing](modules/lab-linux/41-web-app-testing/README.md) | Web app testing (Burp Suite / nmap) | 2 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
