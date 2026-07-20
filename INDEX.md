@@ -29,6 +29,7 @@
 | 33 | [33-binwalk-firmware](modules/lab-linux/33-binwalk-firmware/README.md) | binwalk firmware & embedded extraction | 2 | PASS | Y |
 | 34 | [34-clamav-scanning](modules/lab-linux/34-clamav-scanning/README.md) | ClamAV signature scanning | 2 | PASS | Y |
 | 35 | [35-radare2-intro](modules/lab-linux/35-radare2-intro/README.md) | radare2 / Cutter reverse engineering | 2 | PASS | Y |
+| 36 | [36-oletools-deep](modules/lab-linux/36-oletools-deep/README.md) | oletools macro analysis deep-dive | 2 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
