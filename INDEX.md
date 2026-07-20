@@ -67,6 +67,7 @@
 | 53 | [53-dotnet-malware-case](modules/lab-windows/53-dotnet-malware-case/README.md) | Scenario: .NET malware analysis | 3 | PASS | Y |
 | 54 | [54-shellcode-case](modules/lab-windows/54-shellcode-case/README.md) | Scenario: shellcode extraction & analysis | 2 | PASS | Y |
 | 55 | [55-doc-detonation-case](modules/lab-windows/55-doc-detonation-case/README.md) | Scenario: document detonation with network sim | 2 | PASS | Y |
+| 56 | [56-static-triage-case](modules/lab-windows/56-static-triage-case/README.md) | Scenario: rapid static triage | 4 | PASS | Y |
 
 ## Coverage matrix
 
