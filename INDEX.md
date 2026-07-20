@@ -18,6 +18,7 @@
 | 09 | [09-deobfuscation](modules/lab-linux/09-deobfuscation/README.md) | Deobfuscation | 4 | PASS | Y |
 | 10 | [10-malicious-documents](modules/lab-linux/10-malicious-documents/README.md) | Malicious documents | 5 | PASS | Y |
 | 11 | [11-offensive-kali](modules/lab-linux/11-offensive-kali/README.md) | Offensive / network (Kali subset) | 6 | PASS | Y |
+| 20 | [20-volatility-deep](modules/lab-linux/20-volatility-deep/README.md) | Volatility 3 deep-dive (memory plugins & workflow) | 2 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
