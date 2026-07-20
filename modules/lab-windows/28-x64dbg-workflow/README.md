@@ -6,9 +6,9 @@ When malware authors want to hide what their program does, they often "pack" or 
 ## Tools covered
 | Tool | Install | Purpose |
 |---|---|---|
-| x64dbg | choco install x64dbg (FLARE-VM) | Open-source user-mode debugger for 32/64-bit Windows binaries; step, breakpoint, dump memory |
-| ScyllaHide | bundled x64dbg plugin (FLARE-VM) | Anti-anti-debug plugin that masks debugger presence from evasive samples |
-| WinDbg | FLARE-VM package | Microsoft debugger for user-mode, kernel-mode, and crash/memory-dump analysis |
+| x64dbg | `choco install x64dbg` (FLARE-VM) | Open-source user-mode debugger for 32/64-bit Windows binaries; step, breakpoint, dump memory. See project site https://x64dbg.com/ and docs https://help.x64dbg.com/ |
+| ScyllaHide | bundled x64dbg plugin (FLARE-VM) | Anti-anti-debug plugin that masks debugger presence from evasive samples. See https://github.com/x64dbg/ScyllaHide |
+| WinDbg | FLARE-VM package | Microsoft debugger for user-mode, kernel-mode, and crash/memory-dump analysis. See https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/ |
 
 ## Learning objectives
 - Launch a benign target under x64dbg and set breakpoints on common unpacking APIs.
@@ -24,7 +24,10 @@ Get-ChildItem "C:\Tools\x64dbg\release\x64\x64dbg.exe" | Select-Object Name, Len
 Get-ChildItem "C:\Tools\x64dbg\release\x64\plugins\ScyllaHide.dp64" | Select-Object Name
 where.exe windbg.exe
 # Expected: x64dbg.exe and ScyllaHide.dp64 listed; windbg.exe path printed
+# Note: exact install paths depend on the FLARE-VM/Chocolatey layout; if the path
+# differs, locate the binaries with:  Get-Command x64dbg -ErrorAction SilentlyContinue
 ```
+> The 64-bit ScyllaHide plugin uses the `.dp64` extension and the 32-bit build uses `.dp32`; x64dbg loads plugins matching its bitness from the `plugins` folder next to the debugger executable (ScyllaHide README, https://github.com/x64dbg/ScyllaHide).
 
 ## Guided walkthrough
 1. Generate the benign packed sample (see Hands-on exercise) and confirm it exists.
@@ -32,12 +35,14 @@ where.exe windbg.exe
 Get-FileHash -Algorithm SHA256 .\exercise\packed_hello.exe
 # Expected: prints a SHA256 hex digest for the sample
 ```
+*Why:* `Get-FileHash` (a built-in PowerShell cmdlet, default algorithm SHA256) fingerprints the exact bytes you will debug so the OEP/RVA notes you record are tied to one build. See https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash
 
 2. Open x64dbg from the command line and load the target for debugging.
 ```powershell
 & "C:\Tools\x64dbg\release\x64\x64dbg.exe" ".\exercise\packed_hello.exe"
 # Expected: x64dbg GUI opens, paused at the system/entry breakpoint
 ```
+*Why:* By default x64dbg pauses at the **system breakpoint** (inside ntdll, before the program's entry point) and can also stop at the module **Entry Breakpoint**; both are configurable under Options → Preferences → Events. Starting paused lets you arm breakpoints before any packer code runs. See https://help.x64dbg.com/en/latest/gui/menus/options/Preferences.html
 
 3. In the x64dbg command bar, set breakpoints on APIs a packer typically calls to allocate and hand off to unpacked code, then run.
 ```
@@ -45,11 +50,12 @@ bp VirtualAlloc
 bp VirtualProtect
 run
 ```
-Expected observable: execution pauses when the unpacking stub allocates RWX memory; the CPU pane shows the API call and register arguments.
+*Why:* Packers commonly reserve/commit memory for the decompressed image (`VirtualAlloc`) and then flip page protections to executable before the tail jump (`VirtualProtect`). Breaking on these APIs catches the moment unpacked bytes are prepared. `VirtualAlloc` allocates/commits pages in the calling process's address space; `VirtualProtect` changes protection (e.g. to `PAGE_EXECUTE_READWRITE`, value `0x40`) on committed pages — the new protection is passed in the third argument, so inspect the register holding it (on x64 that is `r8d`). See https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc and https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect
+Expected observable: execution pauses when the unpacking stub allocates/re-protects memory; the CPU pane shows the API call and, following the x64 calling convention (`rcx, rdx, r8, r9`), the register arguments. Note: for a simple UPX stub you may reach the OEP by other means (see step 5) even if these particular APIs are not hit — UPX decompresses in place and jumps to the OEP via a tail jump.
 
-4. Enable ScyllaHide before continuing so evasive checks are neutralized. In the menu choose **Plugins -> ScyllaHide -> Options**, tick the x64dbg profile, then continue. Expected: `IsDebuggerPresent`/`CheckRemoteDebuggerPresent`/`NtQueryInformationProcess` checks now return "no debugger."
+4. Enable ScyllaHide before continuing so evasive checks are neutralized. In the menu choose **Plugins -> ScyllaHide -> Options**, tick the x64dbg profile, then continue. ScyllaHide hooks the checks a sample uses to detect a debugger — including hiding the PEB `BeingDebugged` flag (which `IsDebuggerPresent` reads), spoofing `NtQueryInformationProcess` classes such as `ProcessDebugPort`/`ProcessDebugFlags`/`ProcessDebugObjectHandle`, and neutralizing `CheckRemoteDebuggerPresent` and `NtSetInformationThread(ThreadHideFromDebugger)`. Expected: those checks now report "no debugger present." See the option descriptions in https://github.com/x64dbg/ScyllaHide
 
-5. After the stub finishes, use the built-in Scylla dumper (**Plugins -> Scylla**) at the suspected OEP to dump the process and rebuild imports. Expected: a rebuilt `packed_hello_dump.exe` written to disk.
+5. After the stub finishes, use the built-in Scylla dumper (**Plugins -> Scylla**) at the suspected OEP to dump the process and rebuild imports. In Scylla: run **IAT Autosearch**, then **Get Imports**, then **Dump**, then **Fix Dump** on the dumped file. Expected: a rebuilt `packed_hello_dump.exe` written to disk. *Why:* the running process has a resolved Import Address Table (IAT) in memory but the raw dump's IAT pointers must be rebuilt into an importable form so the dumped PE loads statically; Scylla reconstructs the import directory and fixes the dump. See the Scylla project https://github.com/NtQuery/Scylla and the x64dbg docs https://help.x64dbg.com/
 
 6. If a target crashes, capture and inspect the dump in WinDbg.
 ```powershell
@@ -58,6 +64,7 @@ Expected observable: execution pauses when the unpacking stub allocates RWX memo
 #   !analyze -v
 # Expected: faulting module, exception code, and reconstructed call stack
 ```
+*Why:* the `-z` switch opens a crash/dump file for post-mortem debugging, and the `!analyze -v` extension performs verbose automated analysis (fault bucket, exception record, and call stack). See https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/windbg-command-line-options and https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/-analyze
 
 ## Hands-on exercise
 **Sample:** `exercise\packed_hello.exe` — a benign 64-bit console program that prints `Hello from OEP` and is compressed with UPX (inert, no network activity, no persistence). It is safe because it is generated locally from source you control and only calls `printf`.
@@ -75,17 +82,30 @@ cl.exe /nologo /Fe:.\exercise\hello_plain.exe .\exercise\hello.c
 Copy-Item .\exercise\hello_plain.exe .\exercise\packed_hello.exe
 upx --best .\exercise\packed_hello.exe
 ```
+> `cl.exe` is the MSVC compiler driver; `/Fe` names the output executable and `/nologo` suppresses the banner (https://learn.microsoft.com/en-us/cpp/build/reference/fe-name-exe-file). `upx --best` selects the best available compression ratio; UPX is a reversible in-place packer and `upx -d` can restore the original for comparison (https://upx.github.io/ and https://github.com/upx/upx).
 
 **Task:** Load `packed_hello.exe` in x64dbg, enable ScyllaHide, break on `VirtualProtect`, reach the OEP, and dump/rebuild the unpacked image. Record the OEP relative address and confirm the dumped binary still prints `Hello from OEP`.
 
 ## SOC analyst perspective
-A SOC analyst rarely debugs on a production endpoint, but the artifacts of unpacking directly shape detections. Manually unpacking a captured sample in x64dbg yields the *real* code, strings, and C2 indicators that packed static scans miss — those IOCs feed Suricata and YARA rules distributed via Security Onion. Understanding packer behavior (RWX allocation via `VirtualAlloc`/`VirtualProtect`, self-modifying memory) maps to MITRE ATT&CK T1027.002 (Software Packing) and T1055 (Process Injection); analysts can then hunt Sysmon Event ID 8 (CreateRemoteThread) and EID 10 (ProcessAccess) in Security Onion to spot the same technique live. WinDbg dump triage (`!analyze -v`) turns a crashing endpoint into a story: faulting module and stack often reveal the injected or exploited component.
+A SOC analyst rarely debugs on a production endpoint, but the artifacts of unpacking directly shape detections. Manually unpacking a captured sample in x64dbg yields the *real* code, strings, and C2 indicators that packed static scans miss — those IOCs feed Suricata and YARA rules distributed via Security Onion.
+
+Concrete mapping and detection logic:
+- **Software packing — T1027.002 (parent T1027).** UPX-packed PEs carry telltale `UPX0`/`UPX1` section names and high section entropy; hunt on-disk with YARA/entropy scanning and pivot to VirusTotal-style packer identification. UPX itself is legitimate, so treat packing as an enrichment signal, not a verdict. (https://attack.mitre.org/techniques/T1027/002/)
+- **Process injection / RWX hand-off — T1055.** Live, the same "allocate then re-protect executable" pattern maps to Sysmon telemetry. In Security Onion, pivot in Elastic/Kibana on Sysmon **Event ID 8** (CreateRemoteThread) and **Event ID 10** (ProcessAccess with dangerous access masks such as `0x1F0FFF`/`PROCESS_ALL_ACCESS` or `0x1FFFFF`). (https://attack.mitre.org/techniques/T1055/ ; Sysmon event reference https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon)
+- **Suricata/Zeek pivots.** Once unpacking exposes C2 hosts/URIs, convert them into Suricata rules and correlate with Zeek `conn.log`, `dns.log`, and `http.log` in Security Onion; the Zeek `files.log`/file extraction and PE analyzer can flag executable transfers. (Security Onion docs https://docs.securityonion.net/ ; Zeek logs https://docs.zeek.org/en/master/logs/index.html ; Suricata rules https://docs.suricata.io/en/latest/rules/index.html)
+- **Dump triage.** WinDbg `!analyze -v` on a crashing endpoint turns a fault into a story: faulting module, exception code, and stack often reveal the injected or exploited component. (https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/-analyze)
 
 ## Attacker perspective
-Attackers pack and obfuscate payloads to defeat signature scanners and slow analysis (T1027 / T1027.002), and add anti-debug checks — `IsDebuggerPresent`, `NtQueryInformationProcess`, timing traps, and `NtSetInformationThread` thread-hiding (T1622 Debugger Evasion) — so the sample behaves differently or bails out when watched. ScyllaHide exists precisely to neutralize those checks, letting an analyst reach the original entry point anyway. Offensive tooling itself leaves artifacts: RWX memory regions, unbacked executable memory, decompressed strings in the process heap, and dumped images with rebuilt import tables. Defenders find these via memory scanning (pe-sieve/HollowsHunter), EDR memory-integrity alerts, and Sysmon process-access telemetry.
+Attackers pack and obfuscate payloads to defeat signature scanners and slow analysis (**T1027 / T1027.002**), and add anti-debug checks so the sample behaves differently or bails out when watched (**T1622 Debugger Evasion**). Concrete TTPs and the checks ScyllaHide neutralizes:
+- **PEB inspection:** reading `BeingDebugged` (via `IsDebuggerPresent`) or the `NtGlobalFlag` field.
+- **Syscall queries:** `NtQueryInformationProcess` with `ProcessDebugPort` (0x07), `ProcessDebugObjectHandle` (0x1E), or `ProcessDebugFlags` (0x1F). (https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntqueryinformationprocess)
+- **Thread hiding:** `NtSetInformationThread(ThreadHideFromDebugger)` to detach debug events.
+- **Remote check / timing traps:** `CheckRemoteDebuggerPresent` and `rdtsc`/`GetTickCount` timing deltas.
+
+These map to MITRE ATT&CK T1622 (https://attack.mitre.org/techniques/T1622/). Artifacts the technique leaves for defenders: RWX / unbacked executable memory regions, decompressed strings and reconstructed IAT visible in the live process, and dumped images whose section layout differs from the on-disk packed file. Evasion continues after unpacking — e.g. process hollowing / injection to run from a benign host process (T1055). Defenders find these via memory scanning (pe-sieve / HollowsHunter, https://github.com/hasherezade/pe-sieve), EDR memory-integrity alerts, and Sysmon process-access telemetry (EID 8/10).
 
 ## Answer key
-- Expected OEP: the unpacking stub jumps to the real `main`/CRT startup; in x64dbg it appears as a `jmp` into a lower-address code region after `VirtualProtect` returns. Note the relative virtual address shown in the CPU pane.
+- Expected OEP: the unpacking stub jumps to the real `main`/CRT startup; in x64dbg it appears as a `jmp` into a lower-address code region after the UPX stub finishes (for UPX the tail jump lands on the original entry point). Note the relative virtual address (RVA) shown in the CPU pane. A reliable way to catch a UPX tail jump is to set a hardware/memory breakpoint on the packed section or single-step the final `jmp`.
 - Commands that produce findings:
 ```
 bp VirtualProtect
@@ -97,6 +117,12 @@ run
 & .\exercise\packed_hello_dump.exe
 # Expected output: Hello from OEP
 ```
+- Cross-check by unpacking with UPX directly (UPX is reversible) and comparing behavior:
+```powershell
+upx -d .\exercise\packed_hello.exe -o .\exercise\unpacked_ref.exe
+& .\exercise\unpacked_ref.exe
+# Expected output: Hello from OEP  (confirms your x64dbg dump matches the reference)
+```
 - Sample integrity: compute the SHA256 of your locally built target and record it in the module log; because it is UPX-packed from your own source the digest is reproducible per build. Confirm it matches after generation:
 ```powershell
 Get-FileHash -Algorithm SHA256 .\exercise\packed_hello.exe | Format-List
@@ -104,16 +130,44 @@ Get-FileHash -Algorithm SHA256 .\exercise\packed_hello.exe | Format-List
 ```
 
 ## MITRE ATT&CK & DFIR phase
-- **T1027 / T1027.002** — Obfuscated Files or Information: Software Packing.
-- **T1055** — Process Injection (RWX allocation / hand-off patterns observed while debugging).
-- **T1622** — Debugger Evasion (anti-debug checks neutralized by ScyllaHide).
-- **DFIR phase:** Examination / Analysis (dynamic malware analysis and dump triage), feeding Reporting/Detection-engineering.
+- **T1027 / T1027.002** — Obfuscated Files or Information: Software Packing. https://attack.mitre.org/techniques/T1027/002/
+- **T1055** — Process Injection (RWX allocation / hand-off patterns observed while debugging). https://attack.mitre.org/techniques/T1055/
+- **T1622** — Debugger Evasion (anti-debug checks neutralized by ScyllaHide). https://attack.mitre.org/techniques/T1622/
+- **DFIR phase:** Examination / Analysis (dynamic malware analysis and dump triage), feeding Reporting/Detection-engineering. See NIST SP 800-86 phases (Collection, Examination, Analysis, Reporting) https://csrc.nist.gov/pubs/sp/800/86/final
 
 ## Sources
-- FLARE-VM package list and installation — https://github.com/mandiant/flare-vm
-- x64dbg official documentation — https://help.x64dbg.com/
-- ScyllaHide project (anti-anti-debug plugin) — https://github.com/x64dbg/ScyllaHide
-- Microsoft WinDbg / Debugging Tools for Windows — https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/
-- SANS FOR610 Reverse-Engineering Malware course — https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
-- MITRE ATT&CK T1027.002 Software Packing — https://attack.mitre.org/techniques/T1027/002/
-- MITRE ATT&CK T1622 Debugger Evasion — https://attack.mitre.org/techniques/T1622/
+Claim → authoritative source mapping (all URLs are real, official/vendor/authoritative pages):
+
+- FLARE-VM package list and installation → https://github.com/mandiant/flare-vm
+- x64dbg project site and official documentation (breakpoints `bp`, `run`, system/entry breakpoint behavior, Scylla plugin) → https://x64dbg.com/ and https://help.x64dbg.com/
+- x64dbg Preferences/Events (system breakpoint & entry breakpoint options) → https://help.x64dbg.com/en/latest/gui/menus/options/Preferences.html
+- ScyllaHide project — plugin extensions (`.dp64`/`.dp32`), anti-anti-debug option coverage (PEB `BeingDebugged`, `NtQueryInformationProcess`, `NtSetInformationThread`, `CheckRemoteDebuggerPresent`) → https://github.com/x64dbg/ScyllaHide
+- Scylla import reconstruction / dumping (IAT Autosearch, Get Imports, Dump, Fix Dump) → https://github.com/NtQuery/Scylla
+- Microsoft WinDbg / Debugging Tools for Windows → https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/
+- WinDbg command-line options (`-z` to open a dump) → https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/windbg-command-line-options
+- WinDbg `!analyze -v` extension → https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/-analyze
+- Windows `VirtualAlloc` (allocate/commit pages) → https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
+- Windows `VirtualProtect` (change page protection; `PAGE_EXECUTE_READWRITE` = 0x40) → https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect
+- `NtQueryInformationProcess` (ProcessDebugPort/Flags/ObjectHandle classes) → https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntqueryinformationprocess
+- `Get-FileHash` (SHA256 default) → https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash
+- MSVC `cl.exe` `/Fe` and `/nologo` flags → https://learn.microsoft.com/en-us/cpp/build/reference/fe-name-exe-file and https://learn.microsoft.com/en-us/cpp/build/reference/nologo-suppress-startup-banner
+- UPX packer (`--best`, `-d` decompress, in-place reversible packing, `UPX0`/`UPX1` sections) → https://upx.github.io/ and https://github.com/upx/upx
+- Sysmon events (EID 8 CreateRemoteThread, EID 10 ProcessAccess) → https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+- Security Onion documentation (Suricata/Zeek/Elastic pivots) → https://docs.securityonion.net/
+- Zeek log reference (`conn.log`, `dns.log`, `http.log`, `files.log`) → https://docs.zeek.org/en/master/logs/index.html
+- Suricata rules documentation → https://docs.suricata.io/en/latest/rules/index.html
+- pe-sieve / HollowsHunter (memory scanning for injected/unbacked code) → https://github.com/hasherezade/pe-sieve
+- SANS FOR610 Reverse-Engineering Malware course → https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+- NIST SP 800-86 (DFIR process phases) → https://csrc.nist.gov/pubs/sp/800/86/final
+- MITRE ATT&CK T1027 Obfuscated Files or Information → https://attack.mitre.org/techniques/T1027/
+- MITRE ATT&CK T1027.002 Software Packing → https://attack.mitre.org/techniques/T1027/002/
+- MITRE ATT&CK T1055 Process Injection → https://attack.mitre.org/techniques/T1055/
+- MITRE ATT&CK T1622 Debugger Evasion → https://attack.mitre.org/techniques/T1622/
+
+## Related modules
+- [Dynamic debugging](../13-dynamic-debugging/README.md) -- shares scyllahide for anti-anti-debug during live analysis.
+- [WinDbg debugging deep-dive](../44-windbg-deep/README.md) -- shares windbg for deeper user/kernel and dump triage.
+- [Scenario: packed-malware unpacking workflow](../52-unpacking-case/README.md) -- shares x64dbg in an end-to-end unpacking case.
+- [Scenario: shellcode extraction & analysis](../54-shellcode-case/README.md) -- shares x64dbg for extracting and analyzing shellcode.
+
+<!-- cyberlab-enriched: v1 -->
