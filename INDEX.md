@@ -54,6 +54,7 @@
 | 30 | [30-pe-static-deep](modules/lab-windows/30-pe-static-deep/README.md) | PE static analysis deep-dive | 3 | PASS | Y |
 | 31 | [31-shellcode-deep](modules/lab-windows/31-shellcode-deep/README.md) | Shellcode analysis deep-dive | 2 | PASS | Y |
 | 42 | [42-floss-strings](modules/lab-windows/42-floss-strings/README.md) | FLOSS obfuscated-string extraction | 2 | PASS | Y |
+| 43 | [43-pe-bear-deep](modules/lab-windows/43-pe-bear-deep/README.md) | PE-bear structure analysis deep-dive | 2 | PASS | Y |
 
 ## Coverage matrix
 
