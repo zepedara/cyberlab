@@ -11,6 +11,11 @@ When a computer is running, its short-term memory (RAM) holds a live snapshot of
 | aeskeyfind | `apt install aeskeyfind` | Locates AES key schedules resident in a memory dump |
 | rsakeyfind | `apt install rsakeyfind` | Locates RSA private keys/certificates resident in a memory dump |
 
+Notes on the tool facts above (verify against source):
+- Volatility 3 is a Python framework that is OS-agnostic on input and selects `windows.*`, `linux.*`, or `mac.*` plugins depending on the image; the CLI entry point is `vol` (also `vol.py`). See the official docs (Volatility Foundation / readthedocs).
+- bulk_extractor scans any input (disk image, memory dump, raw file) for *features* using scanners, and writes one feature file per scanner (`url.txt`, `email.txt`, `domain.txt`, etc.); it can also carve a `packets.pcap` from network-looking data. See the simsong/bulk_extractor repo.
+- aeskeyfind and rsakeyfind originate from the Princeton "Lest We Remember" cold-boot research; aeskeyfind searches for AES key *schedules* (the expanded round keys), and rsakeyfind searches for RSA private keys/BER-encoded structures.
+
 ## Learning objectives
 - Verify the memory-forensics toolchain is installed and runnable on LAB-LINUX.
 - Enumerate processes and network artifacts from a RAM image using Volatility 3 plugins.
@@ -26,31 +31,32 @@ bulk_extractor -V
 aeskeyfind 2>&1 | head -n 1
 rsakeyfind 2>&1 | head -n 1
 ```
-Expected output: `vol` prints Volatility 3 usage/banner; `bulk_extractor -V` prints a version like `bulk_extractor 2.x.x`; `aeskeyfind` and `rsakeyfind` print their usage lines because they were invoked with no input argument.
+Expected output: `vol` prints Volatility 3 usage/banner (the framework's argparse help; `vol` is the console entry point installed by the `volatility3` package — see the Volatility 3 docs and Kali package page). `bulk_extractor -V` prints a version banner such as `bulk_extractor 2.x.x` (the `-V` flag is documented in the simsong/bulk_extractor repo). `aeskeyfind` and `rsakeyfind` print their usage lines because they were invoked with no input argument (both require a memory-image path as their argument, per the Princeton "Lest We Remember" tool documentation).
 
 ## Guided walkthrough
-1. `vol -f <image> windows.info` — confirms Volatility can read the dump and reports OS/build. Here we run the help to see available plugins first.
+Each command below is annotated with WHY it is run and what nuance to read in the output.
+
+1. `vol -f $IMAGE windows.info` — confirms Volatility can actually parse the dump and reports the OS/kernel build; this is the first sanity check because every downstream `windows.*` plugin depends on Volatility correctly identifying the profile/symbols for the image. Before touching a real image, list what plugins exist:
 ```bash
 vol -h | grep -i -E "pslist|netscan|windows.info" | head -n 10
 ```
-Expected: plugin names such as `windows.pslist`, `windows.netscan`, `windows.info` are listed.
+Expected: plugin names such as `windows.pslist`, `windows.netscan`, `windows.info` are listed. WHY: Volatility 3 replaced the v2 profile system with automatic symbol-table detection, so plugin names are namespaced by OS (`windows.`, `linux.`, `mac.`). Seeing them confirms the framework and its symbol packs are installed (Volatility 3 docs). NOTE: the synthetic `sample.mem` in this module is an inert byte blob with **no** OS structures, so `windows.info`/`windows.pslist` will not return a valid Windows profile against it — those steps illustrate the workflow you would run against a real Windows RAM capture.
 
-2. Enumerate processes from the sample image (see Hands-on exercise for the sample path).
+2. Enumerate processes from a real Windows image (workflow illustration):
 ```bash
-cd exercise
-vol -f sample.mem windows.pslist | head -n 20
+vol -f $IMAGE windows.pslist | head -n 20
 ```
-Expected: a table of PID, PPID, ImageFileName, and creation times for processes captured in RAM.
+Expected: a table with PID, PPID, ImageFileName, Offset(V), Threads, Handles, and creation/exit times for processes that were present in the kernel's active process list. WHY: `windows.pslist` walks the doubly-linked `EPROCESS` list (`ActiveProcessLinks`), which is the same list the OS uses — so a rootkit that unlinks a process can hide from it. That is exactly why analysts follow up with `windows.psscan` (pool-tag scanning, which finds unlinked/terminated processes) and `windows.malfind` (injected/RWX private memory). Discrepancies between `pslist` and `psscan` are a classic hiding indicator (Volatility 3 docs; SANS Memory Forensics cheat sheet).
 
-3. Sweep the raw dump for human-readable features with bulk_extractor.
+3. Sweep the raw dump for human-readable features with bulk_extractor. This step DOES work on `sample.mem` because bulk_extractor is content-agnostic — it does not need OS structures, only byte patterns.
 ```bash
 cd exercise
 mkdir -p be_out
 bulk_extractor -o be_out sample.mem
 ls be_out
-cat be_out/url.txt | head -n 10
+head -n 10 be_out/url.txt
 ```
-Expected: `be_out/` contains feature files (`url.txt`, `email.txt`, `domain.txt`, etc.); `url.txt` lists offsets and recovered URLs.
+Expected: `be_out/` contains feature files (`url.txt`, `email.txt`, `domain.txt`, and reporting files like `report.xml`); `url.txt` lists recovered URLs prefixed by their byte offset. WHY: bulk_extractor ignores file systems and parses the raw byte stream with independent scanners, so it recovers features even from unallocated, fragmented, or non-file data such as a RAM dump. Each line is `offset\tfeature\tcontext`, and the leading offset is what you cite as evidence of *where* the artifact lived (simsong/bulk_extractor repo).
 
 4. Search memory for cryptographic key material.
 ```bash
@@ -58,7 +64,7 @@ cd exercise
 aeskeyfind sample.mem
 rsakeyfind sample.mem
 ```
-Expected: `aeskeyfind` prints any 128/256-bit AES key schedules found (or "No keys found"); `rsakeyfind` prints candidate RSA keys/certificates (or none).
+Expected: `aeskeyfind` prints any 128/256-bit AES key schedules found (or "No keys found"); `rsakeyfind` prints candidate RSA keys/certificates (or none). WHY: aeskeyfind does not look for the raw key bytes alone — it looks for the *expanded AES key schedule*, because the entropy/structure of the round-key expansion is statistically detectable in RAM even after the process context is gone. This is the technique from the Princeton "Lest We Remember" cold-boot work, and it is why keys used for disk/full-volume encryption or C2 are recoverable from a memory capture (Princeton CITP memory research).
 
 ## Hands-on exercise
 Work inside this module's `exercise/` directory.
@@ -74,10 +80,29 @@ Tasks:
 3. Record the recovered artifacts and the offsets bulk_extractor reports.
 
 ## SOC analyst perspective
-In a SOC, memory forensics is the go-to when disk and log evidence look clean but a host is still behaving oddly — the classic sign of fileless or in-memory malware. An analyst pulls a RAM image from a suspect endpoint, runs `vol windows.pslist`/`windows.malfind`/`windows.netscan` to spot hidden processes, injected code, and hidden C2 sockets, then runs bulk_extractor to pull URLs, domains, and credentials that alerts referenced. Findings feed directly back into Security Onion: recovered C2 domains and IPs become Suricata/Zeek IOC hunts and pivot points across all monitored hosts, letting the team confirm scope. Recovered AES/RSA keys via aeskeyfind/rsakeyfind can decrypt captured traffic or ransomware payloads. This ties to ATT&CK T1055 (Process Injection) and T1620 (Reflective Loading) during the DFIR examination phase.
+In a SOC, memory forensics is the go-to when disk and log evidence look clean but a host is still behaving oddly — the classic sign of fileless or in-memory malware. An analyst pulls a RAM image from a suspect endpoint, then works a repeatable Volatility 3 triage sequence:
+
+- `vol -f $IMAGE windows.pslist` vs `vol -f $IMAGE windows.psscan` — compare the active-list view against pool-tag scanning; a PID present in `psscan` but absent from `pslist` suggests DKOM/unlinking to hide a process (maps to **T1055** family; see Volatility 3 docs and SANS Memory Forensics cheat sheet).
+- `vol -f $IMAGE windows.malfind` — flags process memory that is private, committed, and executable (RWX) with no backing file — the fingerprint of injected/reflectively-loaded code (**T1055 Process Injection**, **T1620 Reflective Code Loading**).
+- `vol -f $IMAGE windows.netscan` — recovers TCP/UDP endpoints and owning PIDs, exposing C2 sockets even when the live OS `netstat` was tampered with (supports scoping **T1071 Application Layer Protocol** and **T1573 Encrypted Channel**).
+- `vol -f $IMAGE windows.cmdline` / `windows.dlllist` — recovers command lines and loaded modules for suspicious PIDs (**T1059 Command and Scripting Interpreter**).
+
+Findings feed directly back into Security Onion for scope confirmation:
+- Recovered C2 domains/IPs → hunt in **Zeek** `conn.log`, `dns.log`, `ssl.log`, and `http.log` (pivot in Kibana/Hunt on `destination.ip` / `dns.query`), and check whether **Suricata** raised matching alerts on those flows.
+- Turn a recovered IOC into a **Suricata** rule or a Zeek intel-framework entry to sweep every monitored host, not just the imaged endpoint.
+- bulk_extractor's carved `packets.pcap` and recovered URLs/emails give concrete selectors to pivot on across the Elastic data in Security Onion.
+
+Recovered AES/RSA keys via aeskeyfind/rsakeyfind can decrypt captured traffic or ransomware payloads for confirmation. This work sits in the DFIR **examination/analysis** phase. Relevant ATT&CK techniques: **T1055 (Process Injection)**, **T1620 (Reflective Code Loading)**, **T1573 (Encrypted Channel)**, **T1071 (Application Layer Protocol)**. (References: Volatility 3 docs; SANS Memory Forensics cheat sheet; Security Onion docs; MITRE ATT&CK technique pages.)
 
 ## Attacker perspective
-Attackers deliberately avoid touching disk to evade EDR and file-based detection — living-off-the-land, process injection (T1055), reflective DLL loading (T1620), and encrypted C2 all keep the malicious logic in RAM. From the attacker's viewpoint, memory is their hiding place, but it is also the very thing these tools expose: injected regions, unlinked processes, and network sockets remain visible to Volatility even when the running OS is lied to. Encryption keys used for C2 or ransomware, plaintext credentials, and decrypted config blobs sit in memory in recoverable form, which aeskeyfind/rsakeyfind and bulk_extractor harvest. The artifacts left for defenders include anomalous private memory, orphaned handles, decrypted strings, and key schedules that never appear on disk — a strong reason attackers try to force reboots or clear RAM.
+Attackers deliberately avoid touching disk to evade EDR and file-based detection — living-off-the-land, process injection (**T1055**), reflective DLL/code loading (**T1620**), and encrypted C2 (**T1573**) all keep the malicious logic in RAM. Concrete TTPs and the artifacts they leave in memory:
+
+- **Process injection (T1055)** — e.g. `VirtualAllocEx` + `WriteProcessMemory` + `CreateRemoteThread`, or process hollowing. Leaves **private, committed, RWX regions with no backing image file** — precisely what `windows.malfind` surfaces.
+- **Reflective code loading (T1620)** — a PE mapped and relocated in memory without `LoadLibrary`, so it appears in no module list. Artifacts: executable private memory whose MZ/PE header is present but the region is not in `windows.dlllist`.
+- **DKOM / process unlinking** — removing an `EPROCESS` from `ActiveProcessLinks` to hide from `pslist`; the pool allocation still exists, so `windows.psscan` still finds it — the mismatch is the tell.
+- **Encrypted C2 (T1573)** — the session key must exist in RAM to encrypt/decrypt traffic, so aeskeyfind can recover the AES key schedule; ransomware key material and decrypted config blobs likewise persist in RAM.
+
+Evasion the adversary attempts: forcing a reboot or power-off to destroy RAM before capture, anti-analysis that detects a hypervisor/acquisition, in-memory encryption of payloads until just-in-time execution, and minimizing time keys are resident. But the residual artifacts — anomalous RWX private memory, orphaned/unlinked pool objects, live sockets, decrypted strings, and key schedules that never appear on disk — remain visible to a memory capture, which is why memory forensics is effective against fileless intrusions. (References: MITRE ATT&CK T1055/T1620/T1573; Volatility 3 docs; SANS Memory Forensics cheat sheet; Princeton CITP memory research.)
 
 ## Answer key
 Sample sha256: `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
@@ -92,14 +117,14 @@ bulk_extractor -o be_out sample.mem
 grep -i "benign.lab.local" be_out/url.txt
 grep -i "analyst@lab.local" be_out/email.txt
 ```
-Expected: `url.txt` shows `http://benign.lab.local/beacon` with a byte offset; `email.txt` shows `analyst@lab.local`.
+Expected: `url.txt` shows `http://benign.lab.local/beacon` with a byte offset; `email.txt` shows `analyst@lab.local`. Each match line is `offset<TAB>feature<TAB>context`, so the leading number is the byte offset in `sample.mem` where the string was found (feature-file format per simsong/bulk_extractor).
 
 2. Recover the planted AES key:
 ```bash
 cd exercise
 aeskeyfind sample.mem
 ```
-Expected: aeskeyfind reports at least one 256-bit AES key (hex) with the offset where the key schedule was located.
+Expected: aeskeyfind reports at least one 256-bit AES key (hex) with the offset where the key schedule was located (aeskeyfind detects the expanded round-key schedule, not just the raw key bytes — Princeton CITP memory research).
 
 3. (Optional) confirm no RSA keys are planted:
 ```bash
@@ -109,19 +134,36 @@ rsakeyfind sample.mem
 Expected: rsakeyfind reports no RSA private keys for this synthetic sample.
 
 ## MITRE ATT&CK & DFIR phase
-- **T1055 – Process Injection** — detected via `vol windows.malfind`/`windows.pslist`.
-- **T1620 – Reflective Code Loading** — in-memory-only code surfaced by Volatility.
-- **T1573 – Encrypted Channel** — recovered keys (aeskeyfind/rsakeyfind) enable decryption.
-- **T1005 – Data from Local System** — feature carving (bulk_extractor) of in-memory data.
+- **T1055 – Process Injection** — detected via `vol windows.malfind`/`windows.pslist` vs `windows.psscan`. https://attack.mitre.org/techniques/T1055/
+- **T1620 – Reflective Code Loading** — in-memory-only code (no module-list entry) surfaced by Volatility. https://attack.mitre.org/techniques/T1620/
+- **T1573 – Encrypted Channel** — recovered keys (aeskeyfind/rsakeyfind) enable decryption of C2/traffic. https://attack.mitre.org/techniques/T1573/
+- **T1071 – Application Layer Protocol** — C2 endpoints recovered with `vol windows.netscan`, pivoted in Zeek. https://attack.mitre.org/techniques/T1071/
+- **T1059 – Command and Scripting Interpreter** — command lines recovered with `vol windows.cmdline`. https://attack.mitre.org/techniques/T1059/
+- **T1005 – Data from Local System** — feature carving (bulk_extractor) of in-memory data. https://attack.mitre.org/techniques/T1005/
 - **DFIR phase:** Collection (RAM capture) → **Examination / Analysis** (this module's focus) → Reporting.
 
 ## Sources
-- Volatility 3 documentation — https://volatility3.readthedocs.io/
-- SANS Memory Forensics (FOR508 / cheat sheets) — https://www.sans.org/posters/memory-forensics-cheat-sheet/
-- REMnux tools (Memory) — https://docs.remnux.org/discover-the-tools/investigate+memory
-- bulk_extractor (Digital Corpora / project) — https://github.com/simsong/bulk_extractor
-- aeskeyfind / rsakeyfind (citp / Princeton "Lest We Remember") — https://citp.princeton.edu/our-work/memory/
-- Kali Tools — volatility3 — https://www.kali.org/tools/volatility3/
-- Kali Tools — bulk-extractor — https://www.kali.org/tools/bulk-extractor/
-- MITRE ATT&CK T1055 — https://attack.mitre.org/techniques/T1055/
-- MITRE ATT&CK T1620 — https://attack.mitre.org/techniques/T1620/
+Claim → source mapping (all URLs are official/authoritative pages):
+
+- Volatility 3 is OS-agnostic on input, uses automatic symbol detection, and exposes `windows.*`/`linux.*`/`mac.*` plugins via the `vol` entry point (`windows.info`, `windows.pslist`, `windows.psscan`, `windows.malfind`, `windows.netscan`, `windows.cmdline`, `windows.dlllist`) — Volatility 3 documentation: https://volatility3.readthedocs.io/
+- `windows.pslist` walks `ActiveProcessLinks` while `windows.psscan` uses pool-tag scanning (mismatch = hiding/DKOM); `malfind` flags RWX private memory; triage sequencing — SANS Memory Forensics cheat sheet/poster: https://www.sans.org/posters/memory-forensics-cheat-sheet/
+- Volatility 3 package/CLI availability on Kali (`vol`) — Kali Tools volatility3: https://www.kali.org/tools/volatility3/
+- bulk_extractor scans raw byte streams (content-agnostic), writes per-scanner feature files (`url.txt`, `email.txt`, `domain.txt`), can carve `packets.pcap`, feature-file offset format, and the `-V` version flag — bulk_extractor project repo: https://github.com/simsong/bulk_extractor
+- bulk-extractor package on Kali — Kali Tools bulk-extractor: https://www.kali.org/tools/bulk-extractor/
+- aeskeyfind detects expanded AES key schedules and rsakeyfind detects RSA private-key structures in RAM; origin of the technique (cold-boot / "Lest We Remember") — Princeton CITP memory research: https://citp.princeton.edu/our-work/memory/
+- REMnux memory-investigation tooling context — REMnux docs: https://docs.remnux.org/discover-the-tools/investigate+memory
+- Security Onion analysis workflow, Zeek logs (`conn.log`, `dns.log`, `ssl.log`, `http.log`), Suricata alerting, and Kibana/Hunt pivots — Security Onion documentation: https://docs.securityonion.net/
+- MITRE ATT&CK T1055 (Process Injection) — https://attack.mitre.org/techniques/T1055/
+- MITRE ATT&CK T1620 (Reflective Code Loading) — https://attack.mitre.org/techniques/T1620/
+- MITRE ATT&CK T1573 (Encrypted Channel) — https://attack.mitre.org/techniques/T1573/
+- MITRE ATT&CK T1071 (Application Layer Protocol) — https://attack.mitre.org/techniques/T1071/
+- MITRE ATT&CK T1059 (Command and Scripting Interpreter) — https://attack.mitre.org/techniques/T1059/
+- MITRE ATT&CK T1005 (Data from Local System) — https://attack.mitre.org/techniques/T1005/
+
+## Related modules
+- [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- shares bulk_extractor; deepens the Volatility plugin workflow used here.
+- [Scenario: ransomware memory investigation](../47-ransomware-memory-case/README.md) -- shares bulk_extractor; applies key-recovery and memory triage to a ransomware case.
+- [File carving](../05-file-carving/README.md) -- shares bulk_extractor; focuses on recovering embedded artifacts from raw byte streams.
+- [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares bulk_extractor; places memory analysis inside a full host-triage workflow.
+
+<!-- cyberlab-enriched: v1 -->
