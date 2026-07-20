@@ -21,6 +21,7 @@
 | 20 | [20-volatility-deep](modules/lab-linux/20-volatility-deep/README.md) | Volatility 3 deep-dive (memory plugins & workflow) | 2 | PASS | Y |
 | 21 | [21-yara-authoring](modules/lab-linux/21-yara-authoring/README.md) | YARA rule authoring & threat hunting | 2 | PASS | Y |
 | 22 | [22-sleuthkit-mastery](modules/lab-linux/22-sleuthkit-mastery/README.md) | The Sleuth Kit command mastery | 2 | PASS | Y |
+| 23 | [23-plaso-supertimeline](modules/lab-linux/23-plaso-supertimeline/README.md) | Plaso super-timeline deep-dive | 3 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
