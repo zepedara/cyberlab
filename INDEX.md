@@ -65,6 +65,7 @@
 | 46 | [46-cutter-windows](modules/lab-windows/46-cutter-windows/README.md) | Cutter (Rizin) RE on Windows | 2 | PASS | Y |
 | 52 | [52-unpacking-case](modules/lab-windows/52-unpacking-case/README.md) | Scenario: packed-malware unpacking workflow | 3 | PASS | Y |
 | 53 | [53-dotnet-malware-case](modules/lab-windows/53-dotnet-malware-case/README.md) | Scenario: .NET malware analysis | 3 | PASS | Y |
+| 54 | [54-shellcode-case](modules/lab-windows/54-shellcode-case/README.md) | Scenario: shellcode extraction & analysis | 2 | PASS | Y |
 
 ## Coverage matrix
 
