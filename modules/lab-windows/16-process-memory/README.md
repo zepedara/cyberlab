@@ -190,6 +190,51 @@ For **reflective code loading** (MITRE ATT&CK [T1574.009: Reflective Code Loadin
 - [CISA Alert (AA22-152A) on Process Injection](https://www.cisa.gov/uscert/ncas/alerts/aa22-152a)
 - [Elastic Security Labs: Detecting Process Hollowing](https://www.elastic.co/security-labs/detecting-process-hollowing-with-elastic-security)
 
+
+### Essential Commands & Features
+
+Beyond the basic scanning and dumping demonstrated earlier, `pe-sieve` includes three flags critical for automation, analysis, and integration.  
+- **`--json`** – Outputs results as structured JSON. Ideal for feeding into log shippers or orchestration tools.  
+  *Example:* `pe-sieve /pid 1234 --json` (redirect output to a parser).  
+  *When:* You want to automatically flag suspicious modules via SIEM rules.  
+
+- **`--diff`** – Compares two process memory dumps to highlight changes (e.g., after an infection becomes active). Accepts two dump file paths.  
+  *Example:* `pe-sieve --diff dump_before.bin dump_after.bin`  
+  *When:* Investigating process anomalies that occur over time (e.g., post-execution shellcode injection).  
+
+- **`--quiet`** – Suppresses banner and progress lines; only prints results (exit code + JSON/stats). Essential for scripted workflows.  
+  *Example:* `pe-sieve /pid 5678 --quiet --json`  
+  *When:* Running from a SOAR playbook where clean output and exit codes are required.  
+
+These flags map to two MITRE ATT&CK techniques **not** covered earlier:  
+- **[T1003](https://attack.mitre.org/techniques/T1003) OS Credential Dumping** – `pe-sieve` uncovers injected code that has dumped `lsass` process memory.  
+- **[T1059](https://attack.mitre.org/techniques/T1059) Command and Scripting Interpreter** – Injected shellcode often launches `cmd.exe` or PowerShell; `--diff` reveals such new executable regions.  
+
+For more details, see the official `pe-sieve` documentation: [hshrzd.github.io/pe-sieve](https://hshrzd.github.io/pe-sieve/). For an integration walkthrough with process injection detection, refer to the Varonis blog on advanced memory forensics: [www.varonis.com/blog/process-injection-detection](https://www.varonis.com/blog/process-injection-detection).
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, process memory is a goldmine for credential theft, code injection, and evasion. Attackers frequently abuse **T1055.011 (Process Injection: Extra Window Memory Injection)** to inject malicious payloads into legitimate processes (e.g., `explorer.exe` or `svchost.exe`), blending with normal activity while bypassing application whitelisting. For credential harvesting, **T1555.003 (Credentials from Password Stores: Credentials from Web Browsers)** is commonly used to extract plaintext passwords or session tokens from browser memory (e.g., Chrome’s `Local State` or Firefox’s `key4.db`), often via tools like Mimikatz or custom shellcode.
+
+**Concrete TTPs:**
+- **Dumping LSASS memory** via `MiniDumpWriteDump` (e.g., using `comsvcs.dll` or `ProcDump`) to extract NTLM hashes or Kerberos tickets.
+- **Reflective DLL injection** (a variant of T1055) to load malicious code directly into memory without touching disk, evading EDR hooks.
+- **Hooking API calls** (e.g., `CryptUnprotectData`) to intercept decrypted credentials in transit.
+
+**Artifacts & Detection:**
+- Unusual process handles (e.g., `lsass.exe` accessed by non-system processes).
+- Memory regions with `PAGE_EXECUTE_READWRITE` permissions in unexpected processes.
+- Suspicious module loads (e.g., `amsi.dll` or `clr.dll` in non-.NET processes).
+
+**Evasion Considerations:**
+- **Direct syscalls** (bypassing `ntdll.dll` hooks) to avoid user-mode API monitoring.
+- **Process hollowing** (T1055.012) to replace legitimate process memory with malicious code while preserving the original image.
+- **Obfuscating strings** (e.g., XOR-encoded payloads) to evade static memory scans.
+
+**Sources:**
+- [CrowdStrike: Process Injection Techniques](https://www.crowdstrike.com/blog/process-injection-techniques/)
+- [NCC Group: Memory Forensics for Incident Response](https://research.nccgroup.com/2021/01/28/memory-forensics-for-incident-response/)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -232,3 +277,11 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://www.elastic.co/security-labs/detecting-process-hollowing-with-elastic-security
 
 <!-- cyberlab-enriched: v4 -->
+- https://attack.mitre.org/techniques/T1003
+- https://attack.mitre.org/techniques/T1059
+- https://hshrzd.github.io/pe-sieve/
+- https://www.varonis.com/blog/process-injection-detection
+- https://www.crowdstrike.com/blog/process-injection-techniques/
+- https://research.nccgroup.com/2021/01/28/memory-forensics-for-incident-response/
+
+<!-- cyberlab-enriched: v5 -->
