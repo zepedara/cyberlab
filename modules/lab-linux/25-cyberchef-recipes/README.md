@@ -118,6 +118,42 @@ Expected findings: `/tmp/decoded.txt` contains a defanged download command refer
 - **T1566.001** — Phishing: Spearphishing Attachment (potential delivery vector) — https://attack.mitre.org/techniques/T1566/001/
 - **DFIR phase:** Examination / Analysis (static deobfuscation and IOC extraction).
 
+
+### Essential Commands & Features
+
+CyberChef’s CLI (`cyberchef`) and Didier Stevens’ `base64dump.py` offer powerful flags to streamline analysis. Below are the most useful undemonstrated commands, with concrete examples and tactical use cases.
+
+#### CyberChef CLI Flags
+- **`--input <file>`**: Process a file directly instead of stdin. Use when analyzing disk artifacts (e.g., logs, malware dumps).
+  ```bash
+  cyberchef --input suspicious.log --recipe 'From_Base64("A-Za-z0-9+/=",true)' --output decoded.txt
+  ```
+- **`--output <file>`**: Save results to a file. Critical for preserving decoded payloads (e.g., **T1132.001 Data Encoding: Standard Encoding**).
+  ```bash
+  cyberchef --input encoded.bin --recipe 'Gunzip()' --output extracted.exe
+  ```
+- **`--mods <module>`**: Load external modules (e.g., `pefile` for PE parsing). Essential for **T1055.002 Process Injection: Portable Executable Injection**.
+  ```bash
+  cyberchef --mods pefile --input malware.exe --recipe 'Parse_PE()'
+  ```
+
+#### `base64dump.py` Flags
+- **`-s` (strings)**: Extract strings from base64-encoded data. Use to identify embedded scripts (e.g., **T1059.007 Command and Scripting Interpreter: JavaScript**).
+  ```bash
+  base64dump.py -s suspicious.txt
+  ```
+- **`-a` (all encodings)**: Test multiple encodings (e.g., UTF-16, EBCDIC). Vital for obfuscated payloads (e.g., **T1027.001 Obfuscated Files or Information: Binary Padding**).
+  ```bash
+  base64dump.py -a encoded.bin
+  ```
+
+**Sources**:
+- CyberChef CLI Docs: [https://github.com/gchq/CyberChef/wiki/Command-Line-Interface](https://github.com/gchq/CyberChef/wiki/Command-Line-Interface)
+- Didier Stevens’ Tools Guide: [https://blog.didierstevens.com/programs/base64dump/](https://blog.didierstevens.com/programs/base64dump/)
+
+### Threat Hunting & Detection Engineering
+To enhance threat hunting and detection engineering capabilities, CyberChef can be utilized to analyze logs from various sources, such as Windows Event IDs, Zeek, or Suricata. For instance, analyzing Windows Event ID 4688 (Process Creation) can help detect techniques like [T1625](https://attack.mitre.org/techniques/T1625/) - "T1625: Compile After Delivery" and [T1497](https://attack.mitre.org/techniques/T1497/) - "T1497: Virtualization/Sandbox Evasion". By focusing on specific fields like `CommandLine` or `ParentProcessId`, security teams can identify suspicious process creations that may indicate malicious activity. Additionally, threat hunters can pivot on IP addresses, domains, or file hashes to uncover related events and identify potential attack patterns. By leveraging these capabilities, security teams can improve their detection engineering and threat hunting workflows. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -142,3 +178,11 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) — same learning path (Deep-dives); turn recovered IOCs into detection rules.
 
 <!-- cyberlab-enriched: v2 -->
+- https://github.com/gchq/CyberChef/wiki/Command-Line-Interface](https://github.com/gchq/CyberChef/wiki/Command-Line-Interface
+- https://blog.didierstevens.com/programs/base64dump/](https://blog.didierstevens.com/programs/base64dump/
+- https://attack.mitre.org/techniques/T1625/
+- https://attack.mitre.org/techniques/T1497/
+- https://www.cisa.gov/
+- https://www.nist.gov/
+
+<!-- cyberlab-enriched: v3 -->
