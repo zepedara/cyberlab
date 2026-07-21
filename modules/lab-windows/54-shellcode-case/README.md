@@ -150,6 +150,34 @@ Once shellcode behavior is profiled in **scdbg** or **x64dbg**, pivot to threat 
 ### Adversary Emulation & Red-Team Perspective
 From an adversary's perspective, the 54-shellcode-case can be exploited to execute arbitrary code on a target system. An attacker may utilize techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - "User Execution" to trick a user into executing the malicious shellcode, or [T1625](https://attack.mitre.org/techniques/T1625) - "Sensitive Information Cache" to cache sensitive information and evade detection. The adversary may also attempt to evade detection by modifying the shellcode to avoid signature-based detection, or by using anti-debugging techniques to hinder analysis. Artifacts left behind by the attacker may include unusual network activity, suspicious process creation, or modifications to system files. To detect and respond to such threats, defenders should monitor system logs for suspicious activity and implement robust security controls, such as input validation and memory protection. For more information on adversary emulation and red-team tactics, see the [Cyber and Infrastructure Security Agency (CISA) - Red Team](https://www.cisa.gov/red-team) and [Center for Internet Security (CIS) - Red Team](https://www.cisecurity.org/white-papers/cis-red-team-operations/).
 
+
+### Essential Commands & Features
+
+The `scdbg` tool provides advanced debugging capabilities for analyzing shellcode behavior. Below are key commands and features not yet demonstrated, with concrete examples and use cases:
+
+- **`-f <offset>` (File Offset)**: Skips the first *N* bytes of the input file before execution. Useful for bypassing obfuscation layers (e.g., packers) or focusing on embedded shellcode.
+  **Example**: `scdbg -f 0x200 -foff shellcode.bin`
+  **Use Case**: Analyzing shellcode embedded after a 512-byte header (e.g., **T1027.010: Obfuscated Files or Information**).
+
+- **`-fopen <handle>` (Custom File Handle)**: Simulates file operations by redirecting shellcode’s file I/O to a specified handle. Critical for analyzing malware that reads/writes files (e.g., **T1553.005: Subvert Trust Controls: Mark-of-the-Web Bypass**).
+  **Example**: `scdbg -fopen C:\temp\malicious.dll -foff shellcode.bin`
+
+- **`-break <API>` (Breakpoint API)**: Pauses execution at a specific Windows API call (e.g., `CreateProcessA`). Ideal for dynamic analysis of process injection (**T1055.002: Process Injection: Portable Executable Injection**).
+  **Example**: `scdbg -break VirtualAlloc -foff shellcode.bin`
+
+- **`-i` (Interactive Mode)**: Enables step-by-step execution with user input. Useful for manual inspection of register states or memory changes.
+  **Example**: `scdbg -i -foff shellcode.bin`
+
+- **`-d <addr> <size>` (Dump Memory)**: Dumps a memory region to a file for offline analysis. Essential for extracting decrypted payloads or configuration data.
+  **Example**: `scdbg -d 0x401000 0x1000 -foff shellcode.bin`
+
+**Sources**:
+- [Sandsprite’s scdbg Documentation](http://sandsprite.com/blogs/index.php?uid=7&pid=152)
+- [REMnux Tools Guide: scdbg](https://docs.remnux.org/discover-the-tools/analyze+malicious+files/shellcode#scdbg)
+
+### Common Pitfalls & Result Validation
+When working with shellcode, analysts often make mistakes by not properly validating their findings, leading to false conclusions. One common pitfall is incorrectly identifying the technique used by an adversary, such as mistaking [T1588](https://attack.mitre.org/techniques/T1588) - "Obtain Capabilities" for [T1595](https://attack.mitre.org/techniques/T1595) - "Active Scanning". To avoid this, it's essential to thoroughly analyze the shellcode and understand the context in which it's being used. Analysts should also be aware of the potential for shellcode to be used in conjunction with other techniques, such as [T1588](https://attack.mitre.org/techniques/T1588) and [T1595](https://attack.mitre.org/techniques/T1595), to achieve the adversary's goals. By carefully validating their findings and considering the broader context, analysts can ensure accurate and reliable results. For more information on shellcode analysis and technique identification, see the Cyber and Infrastructure Security Agency's (CISA) [https://us-cert.cisa.gov](https://us-cert.cisa.gov) and the National Institute of Standards and Technology's (NIST) [https://www.nist.gov](https://www.nist.gov).
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -186,3 +214,10 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.cisecurity.org/white-papers/cis-red-team-operations/
 
 <!-- cyberlab-enriched: v2 -->
+- https://docs.remnux.org/discover-the-tools/analyze+malicious+files/shellcode#scdbg
+- https://attack.mitre.org/techniques/T1588
+- https://attack.mitre.org/techniques/T1595
+- https://us-cert.cisa.gov](https://us-cert.cisa.gov
+- https://www.nist.gov](https://www.nist.gov
+
+<!-- cyberlab-enriched: v3 -->
