@@ -162,6 +162,61 @@ Adversaries weaponize network emulation to test and refine their TTPs before eng
 - SANS: "Protocol Tunneling and the Threat of DNS" – https://www.sans.org/white-papers/1040/  
 - Microsoft Learn: "Encrypted Channel: Symmetric Cryptography" – https://learn.microsoft.com/en-us/defender-for-identity/cas-isp-alert-encrypted-channel
 
+
+### Essential Commands & Features
+
+#### **INetSim: Custom SMTP/FTP/HTTPS Certificates**
+To emulate realistic services with valid TLS certificates (critical for **T1557.002 "Adversary-in-the-Middle: ARP Cache Poisoning"** or **T1573.002 "Encrypted Channel: Asymmetric Cryptography"**), replace INetSim’s default self-signed certs. Generate a custom certificate (e.g., using OpenSSL) and configure INetSim to use it:
+
+```bash
+# Generate a custom certificate (example for HTTPS)
+openssl req -x509 -newkey rsa:4096 -keyout custom.key -out custom.crt -days 365 -nodes -subj "/CN=example.com"
+
+# Configure INetSim to use the custom cert (edit /etc/inetsim/inetsim.conf)
+https_bind_port 443
+https_key custom.key
+https_cert custom.crt
+```
+
+Restart INetSim (`sudo systemctl restart inetsim`) to apply changes. Use this when malware validates certificate chains or when testing HTTPS exfiltration (e.g., **T1048.002 "Exfiltration Over Alternative Protocol: Exfiltration Over Asymmetric Encrypted Non-C2 Protocol"**).
+
+---
+
+#### **FakeNet-NG: Protocol-Specific Listeners & YAML Overrides**
+FakeNet-NG’s default listeners lack protocol-specific emulation (e.g., DNS tunneling or SMTP). Override configurations via YAML to enable granular control:
+
+```yaml
+# Example: Custom SMTP listener with TLS (save as custom.yaml)
+ListenerConfig:
+  - Port: 25
+    Protocol: SMTP
+    SSL: true
+    Response: "220 mail.example.com ESMTP Ready"
+```
+
+Run FakeNet-NG with the override:
+```bash
+fakenet -c custom.yaml
+```
+
+This is essential for emulating **T1071.003 "Application Layer Protocol: Mail Protocols"** or **T1567.002 "Exfiltration Over Web Service: Exfiltration to Cloud Storage"**. For DNS tunneling (e.g., **T1071.004 "Application Layer Protocol: DNS"**), add a DNS listener with custom responses.
+
+**Sources:**
+- INetSim Custom Certificates: [https://www.inetsim.org/documentation.html#configuration](https://www.inetsim.org/documentation.html#configuration)
+- FakeNet-NG YAML Overrides: [https://github.com/fireeye/flare-fakenet-ng/blob/master/docs/Configuration.md](https://github.com/fireeye/flare-fakenet-ng/blob/master/docs/Configuration.md)
+
+### Threat Hunting & Detection Engineering
+
+Once the emulated network is live, hunt for **T1021.006 Remote Services: Windows Remote Management (WinRM)** and **T1560.001 Archive Collected Data: Archive via Utility**. Begin by querying Windows Event Logs for Event ID **4104** (Script Block Logging) on hosts where PowerShell remoting (`Enter-PSSession -ComputerName`) is executed. Look for encoded commands (`-EncodedCommand`) or base64 blobs in the `ScriptBlockText` field, which often indicate obfuscated payloads. Cross-reference these with **Event ID 91** (WinRM service creation) in the `Microsoft-Windows-WinRM/Operational` log to identify lateral movement.
+
+On the network side, use **Zeek’s `conn.log`** to hunt for non-standard WinRM ports (TCP 5985/5986) originating from unexpected internal IPs. Pivot to **Zeek’s `files.log`** to detect **T1560.001** by filtering for `mime_type="application/x-7z-compressed"` or `mime_type="application/zip"` where the `source` field is `WinRM` and the `rx_hosts` field includes multiple internal IPs (indicating data staging).
+
+For Suricata, monitor for **SMB2 `Tree Connect` requests** (SMB2 header `Command=0x03`) to `IPC$` shares followed by **WinRM authentication** (HTTP `POST /wsman` with `Authorization: Negotiate`). Alert on sequences where the same source IP performs both actions within a 5-minute window.
+
+**Sources:**
+- [Microsoft WinRM Security and Auditing (Event ID 4104)](https://docs.microsoft.com/en-us/powershell/scripting/learn/deep-dives/everything-about-scriptblocklogging?view=powershell-7.3)
+- [Hunt Evil: Your Practical Guide to Threat Hunting (SANS)](https://www.sans.org/blog/hunt-evil-your-practical-guide-to-threat-hunting/)
+
 ## Sources
 - REMnux — simulate internet services (INetSim): https://docs.remnux.org/discover-the-tools/handle+network+interactions/simulate+internet+services
 - REMnux — intercept network connections (FakeNet-NG): https://docs.remnux.org/discover-the-tools/handle+network+interactions/intercept+network+connections
@@ -195,3 +250,9 @@ Adversaries weaponize network emulation to test and refine their TTPs before eng
 - https://learn.microsoft.com/en-us/defender-for-identity/cas-isp-alert-encrypted-channel
 
 <!-- cyberlab-enriched: v3 -->
+- https://www.inetsim.org/documentation.html#configuration](https://www.inetsim.org/documentation.html#configuration
+- https://github.com/fireeye/flare-fakenet-ng/blob/master/docs/Configuration.md](https://github.com/fireeye/flare-fakenet-ng/blob/master/docs/Configuration.md
+- https://docs.microsoft.com/en-us/powershell/scripting/learn/deep-dives/everything-about-scriptblocklogging?view=powershell-7.3
+- https://www.sans.org/blog/hunt-evil-your-practical-guide-to-threat-hunting/
+
+<!-- cyberlab-enriched: v4 -->
