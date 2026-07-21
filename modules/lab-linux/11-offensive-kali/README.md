@@ -41,7 +41,7 @@ Expected output: `nmap` prints a version banner (e.g. `Nmap version 7.9x`; curre
 # -sT full TCP connect scan against loopback; -Pn skips ping; scan a small port range
 nmap -sT -Pn -p 1-1024 127.0.0.1
 ```
-Why: `-sT` performs a full TCP *connect()* scan, which completes the three-way handshake using the OS socket API rather than crafting raw SYN packets — it needs no root privileges but is noisier and fully logged by the target (documented at https://nmap.org/book/scan-methods-connect-scan.html). `-Pn` treats the host as online and skips host discovery (ping) — appropriate for loopback and for hosts that drop ICMP (https://nmap.org/book/man-host-discovery.html). `-p 1-1024` limits the scan to the well-known/privileged port range to keep the run short.
+Why: `-sT` performs a full TCP *connect()* scan, which completes the three-way handshake using the OS socket API rather than crafting raw SYN packets — it needs no root privileges but is noisier and fully logged by the target (documented at https://nmap.org/book/scan-methods-connect-scan.html). `-Pn` treats the host as online and skips host discovery (ping) — appropriate for loopback and for hosts that drop ICMP (https://nmap.org/book/man-host-discovery.html). `-p 1-1024` limits the scan to the well-known/privileged port range to keep the run short. Nuance: because `-sT` uses the OS `connect()` call, each probe leaves a completed connection in the target's application logs — the opposite of the stealthy half-open `-sS` SYN scan (which never sends the final ACK). This is precisely why `-sT` is more detectable on the target and `-sS` is more detectable at the network flow layer.
 Expected observable output: a table of `PORT STATE SERVICE` rows. Nmap's port states are `open`, `closed`, `filtered`, `unfiltered`, `open|filtered`, and `closed|filtered` (defined at https://nmap.org/book/man-port-scanning-basics.html). On a stock lab VM most ports show `closed`; any listening local service (e.g. `631/tcp open ipp` for CUPS) is displayed.
 
 2. `metasploit-framework` — run an auxiliary port scanner (no exploit, no payload).
@@ -49,7 +49,7 @@ Expected observable output: a table of `PORT STATE SERVICE` rows. Nmap's port st
 # Non-interactive: run one auxiliary module against loopback then exit
 msfconsole -q -x "use auxiliary/scanner/portscan/tcp; set RHOSTS 127.0.0.1; set PORTS 1-100; run; exit"
 ```
-Why: `-q` suppresses the startup banner and `-x` runs a semicolon-separated command string then hands back control (both documented at https://docs.rapid7.com/metasploit/msfconsole-commands-tutorial/). Auxiliary modules perform scanning, fuzzing, and enumeration but do **not** deliver exploit payloads, so this step is safe and generates no shellcode. The `auxiliary/scanner/portscan/tcp` module and its `RHOSTS`/`PORTS` options are part of the Metasploit module tree (https://docs.rapid7.com/metasploit/).
+Why: `-q` suppresses the startup banner and `-x` runs a semicolon-separated command string then hands back control (both documented at https://docs.rapid7.com/metasploit/msfconsole-commands-tutorial/). Auxiliary modules perform scanning, fuzzing, and enumeration but do **not** deliver exploit payloads, so this step is safe and generates no shellcode. The `auxiliary/scanner/portscan/tcp` module and its `RHOSTS`/`PORTS` options are part of the Metasploit module tree (https://docs.rapid7.com/metasploit/). Nuance: the module opens sequential TCP connections just like `-sT`, so from a defender's flow record it is indistinguishable from an nmap connect scan — the *tool* is not what you detect, the *behaviour* is.
 Expected observable output: lines like `[+] 127.0.0.1:  - 127.0.0.1:22 - TCP OPEN` for any open port, followed by `Auxiliary module execution completed`.
 
 3. `hydra` — show the built-in service coverage (documentation only; no live attack here).
@@ -97,22 +97,25 @@ Tasks:
 ## SOC analyst perspective
 As a defender you rarely run these tools against production, but you must *recognise their footprint*. Concrete detection logic and Security Onion pivots:
 
-- **nmap sweeps (T1046 Network Service Discovery — https://attack.mitre.org/techniques/T1046/).** In Security Onion, a scan lights up Zeek `conn.log` as a burst of short-lived connections from one source to many destination ports/hosts; pivot on `id.orig_h` and count distinct `id.resp_p` per source over a short window. TCP connect scans (`-sT`) show as complete handshakes with immediate teardown; SYN scans show many half-open attempts (`history` fields like `S` with no completion). Suricata portscan/scan rules (Emerging Threats `ET SCAN` category) fire on these patterns. Zeek log reference: https://docs.zeek.org/en/master/logs/conn.html; Security Onion analysis workflow: https://docs.securityonion.net/en/2.4/.
-- **Metasploit auxiliary/exploit traffic (T1190 Exploit Public-Facing Application — https://attack.mitre.org/techniques/T1190/).** Often triggers ET signatures and can leave distinctive request bytes; pivot to Zeek `http.log`/`ssl.log` and Suricata alerts in the Alerts/Hunt interfaces.
-- **hydra online guessing (T1110 Brute Force / T1110.001 Password Guessing — https://attack.mitre.org/techniques/T1110/001/).** Produces a flood of failed authentications. On Windows pivot to Security event **ID 4625** (an account failed to log on — https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4625); on Linux/SSH pivot to `/var/log/auth.log` failures (surfaced by Security Onion). Threshold on failures-per-source-per-account per unit time.
-- **Burp/web tampering (T1071.001 Application Layer Protocol: Web — https://attack.mitre.org/techniques/T1071/001/).** Looks like HTTP with anomalous headers/methods; pivot on Zeek `http.log` `user_agent`, `method`, and `uri` fields.
-- **Offline john/hashcat cracking (T1110.002 Password Cracking — https://attack.mitre.org/techniques/T1110/002/).** Silent on the wire, so the detection opportunity is *upstream*: the credential dump (**T1003 OS Credential Dumping** — https://attack.mitre.org/techniques/T1003/) or the SAM/NTDS access that fed the hashes. On Windows, watch for suspicious access to `ntds.dit`/registry hives and process access to LSASS (Sysmon Event ID 10).
+- **nmap sweeps (T1046 Network Service Discovery — https://attack.mitre.org/techniques/T1046/).** In Security Onion, a scan lights up Zeek `conn.log` as a burst of short-lived connections from one source to many destination ports/hosts; pivot on `id.orig_h` and count distinct `id.resp_p` per source over a short window. Detection logic: TCP connect scans (`-sT`) show `conn.log` records with `conn_state` of `SF` (normal establish + teardown) or `RSTO`, and a `history` value beginning with a full handshake (e.g. `ShAdDaf`) — each port fully connected. Half-open SYN scans (`-sS`) instead leave `conn.log` records with `conn_state` `S0` (SYN sent, no reply) or `REJ` and a truncated `history` such as `S` with no completing ACK — a *high count of `S0`/`REJ` records from one `id.orig_h` to many `id.resp_p`* is a strong scan signal. Suricata portscan/scan rules (Emerging Threats `ET SCAN` category) fire on these patterns. Zeek `conn.log` field/`conn_state` reference: https://docs.zeek.org/en/master/logs/conn.html; Security Onion analysis workflow: https://docs.securityonion.net/en/2.4/.
+- **Metasploit auxiliary/exploit traffic (T1190 Exploit Public-Facing Application — https://attack.mitre.org/techniques/T1190/).** Often triggers ET signatures and can leave distinctive request bytes; pivot to Zeek `http.log`/`ssl.log` and Suricata alerts in the Alerts/Hunt interfaces. Hunt pivot: default Meterpreter reverse-HTTPS C2 frequently presents self-signed TLS — pivot on Zeek `ssl.log` `validation_status` values indicating a self-signed/untrusted chain and unusual `server_name` (SNI), and on `x509.log` self-signed issuer/subject matches (https://docs.zeek.org/en/master/logs/ssl.html).
+- **hydra online guessing (T1110 Brute Force / T1110.001 Password Guessing — https://attack.mitre.org/techniques/T1110/001/).** Produces a flood of failed authentications. On Windows pivot to Security event **ID 4625** (an account failed to log on — https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4625) and correlate the eventual **ID 4624** success with `LogonType 3` (network) to catch a brute-force *breakthrough*; on Linux/SSH pivot to `/var/log/auth.log` `Failed password` lines (surfaced by Security Onion, and by Zeek `ssh.log` `auth_success`/`auth_attempts` fields — https://docs.zeek.org/en/master/logs/ssh.html). Detection logic: threshold on failures-per-source-per-account per unit time; a spike of 4625 immediately followed by a 4624 from the same source IP is the highest-fidelity signal.
+- **Burp/web tampering (T1071.001 Application Layer Protocol: Web — https://attack.mitre.org/techniques/T1071/001/).** Looks like HTTP with anomalous headers/methods; pivot on Zeek `http.log` `user_agent`, `method`, and `uri` fields. Hunt pivot: an unmodified Burp browser fingerprint or scanner traffic often shows repetitive `uri` fuzzing with a stable `user_agent`; sudden variation in `status_code` (many 500/403 for one client) also flags tampering.
+- **Offline john/hashcat cracking (T1110.002 Password Cracking — https://attack.mitre.org/techniques/T1110/002/).** Silent on the wire, so the detection opportunity is *upstream*: the credential dump (**T1003 OS Credential Dumping** — https://attack.mitre.org/techniques/T1003/) or the SAM/NTDS access that fed the hashes. Detection logic:
+  - **LSASS access (T1003.001 — https://attack.mitre.org/techniques/T1003/001/):** Sysmon **Event ID 10** (ProcessAccess) where `TargetImage` ends in `lsass.exe` and `GrantedAccess` includes memory-read masks such as `0x1010`/`0x1410` from a non-system `SourceImage` — a classic Mimikatz/procdump footprint (Sysmon reference: https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon).
+  - **NTDS.dit extraction (T1003.003 — https://attack.mitre.org/techniques/T1003/003/):** on a DC, watch for `ntdsutil`/`vssadmin` shadow-copy creation and access to `%SystemRoot%\NTDS\ntds.dit`; correlate Windows Security **Event ID 4688** (process creation) for `vssadmin.exe create shadow` (https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688).
+  - **SAM/SECURITY hive access (T1003.002 — https://attack.mitre.org/techniques/T1003/002/):** `reg save HKLM\SAM` / `HKLM\SYSTEM` command lines in 4688 or Sysmon **Event ID 1** (process creation) are a common local-hash-theft precursor.
 
-Correlate host EDR, Zeek, and Suricata alerts in Security Onion to reconstruct the intrusion chain.
+Threat-hunting pivots to run proactively: (1) in Zeek `conn.log`, aggregate `id.orig_h` by `count(distinct id.resp_p)` and flag any internal host touching >100 ports in <60s; (2) in Elastic, build a failed-then-successful auth sequence on `winlog.event_id:4625` followed by `4624` from the same `source.ip`; (3) hunt Sysmon EID 10 targeting `lsass.exe` from unexpected parents. Correlate host EDR, Zeek, and Suricata alerts in Security Onion to reconstruct the intrusion chain.
 
 ## Attacker perspective
 Offensively these tools form a full reconnaissance-to-credentials pipeline, and each stage maps to concrete ATT&CK TTPs and leaves recoverable artifacts.
 
-- **Reconnaissance with nmap (T1046 — https://attack.mitre.org/techniques/T1046/, T1595 Active Scanning — https://attack.mitre.org/techniques/T1595/).** Maps live hosts and open services. SYN scans (`-sS`, requires root) minimise the attacker's own connection state and can slip past connection-based logging, but still generate many probe packets visible in flow logs; timing templates (`-T0`–`-T5`, https://nmap.org/book/man-performance.html) let an attacker slow scans to evade rate-based detection. Full connect scans (`-sT`) are more likely to appear in application logs on the target.
-- **Metasploit (T1190 exploitation, T1059 Command and Scripting Interpreter — https://attack.mitre.org/techniques/T1059/).** Auxiliary scanners enumerate; exploit modules can spawn Meterpreter sessions. Artifacts: payload stagers, distinctive C2 traffic, and sometimes files on disk. Evasion via encoders, staged payloads, and encrypted C2 — but network C2 remains detectable in Zeek/Suricata.
-- **Burp (T1071.001 web protocol, T1190).** Manipulates web requests, hunts injection flaws, and bypasses client-side controls. Tampered requests may carry anomalous headers/parameter ordering.
-- **hydra (T1110 / T1110.001).** Brute-forces exposed logins (SSH, RDP, HTTP forms), generating large authentication-failure spikes; attackers throttle attempts or spray a few passwords across many accounts (T1110.003 Password Spraying — https://attack.mitre.org/techniques/T1110/003/) to stay under lockout/alert thresholds.
-- **john / hashcat (T1110.002 — https://attack.mitre.org/techniques/T1110/002/).** Crack hashes captured from a compromised host. Offline and stealthy, but presupposes an earlier credential-theft event (T1003) that is visible in host telemetry — giving defenders multiple points to catch the activity.
+- **Reconnaissance with nmap (T1046 — https://attack.mitre.org/techniques/T1046/, T1595 Active Scanning — https://attack.mitre.org/techniques/T1595/, and specifically T1595.001 Scanning IP Blocks / T1595.002 Vulnerability Scanning — https://attack.mitre.org/techniques/T1595/002/).** Maps live hosts and open services. SYN scans (`-sS`, requires root) minimise the attacker's own connection state and can slip past connection-based logging, but still generate many probe packets visible in flow logs (as bursts of `S0` half-open records in Zeek `conn.log`); timing templates (`-T0`–`-T5`, https://nmap.org/book/man-performance.html) let an attacker slow scans to evade rate-based detection. Full connect scans (`-sT`) are more likely to appear in application logs on the target. Artifacts left: target application/auth logs, firewall/flow records, and (for `-sV` version probes) distinctive service-banner requests.
+- **Metasploit (T1190 exploitation, T1059 Command and Scripting Interpreter — https://attack.mitre.org/techniques/T1059/, and T1071.001 web C2).** Auxiliary scanners enumerate; exploit modules can spawn Meterpreter sessions. Artifacts: payload stagers, distinctive C2 traffic, and sometimes files on disk. Evasion via encoders, staged payloads, and encrypted C2 — but network C2 remains detectable in Zeek/Suricata (e.g. self-signed TLS in `ssl.log`/`x509.log`, or beaconing periodicity in `conn.log` connection intervals).
+- **Burp (T1071.001 web protocol, T1190).** Manipulates web requests, hunts injection flaws, and bypasses client-side controls. Tampered requests may carry anomalous headers/parameter ordering, a static tool `user_agent`, and repetitive `uri` fuzzing visible in Zeek `http.log`.
+- **hydra (T1110 / T1110.001).** Brute-forces exposed logins (SSH, RDP, HTTP forms), generating large authentication-failure spikes (Windows 4625, Zeek `ssh.log` failed `auth_attempts`); attackers throttle attempts or spray a few passwords across many accounts (T1110.003 Password Spraying — https://attack.mitre.org/techniques/T1110/003/) to stay under lockout/alert thresholds — spraying produces *few failures per account but many distinct target accounts from one source*, an inversion of the classic guessing pattern.
+- **john / hashcat (T1110.002 — https://attack.mitre.org/techniques/T1110/002/).** Crack hashes captured from a compromised host. Offline and stealthy, but presupposes an earlier credential-theft event (T1003, with sub-techniques T1003.001 LSASS Memory, T1003.002 SAM, T1003.003 NTDS — https://attack.mitre.org/techniques/T1003/003/) that is visible in host telemetry (Sysmon EID 10 on LSASS, 4688 for `vssadmin`/`reg save`) — giving defenders multiple points to catch the activity before a single hash is cracked.
 
 ## Answer key
 Recovered plaintext for `exercise/lab_hash.txt` is **`cyberlab`**.
@@ -136,17 +139,24 @@ Sample sha256 (must match): `818ed600ef221d270821b1a874576c4668251740ce274506247
 ## MITRE ATT&CK & DFIR phase
 - **T1046** Network Service Discovery — `nmap`, Metasploit auxiliary scanners (DFIR phase: *identification*). https://attack.mitre.org/techniques/T1046/
 - **T1595** Active Scanning — external `nmap` reconnaissance (DFIR phase: *identification*). https://attack.mitre.org/techniques/T1595/
+- **T1595.002** Vulnerability Scanning — nmap `-sV`/scripting reconnaissance (DFIR phase: *identification*). https://attack.mitre.org/techniques/T1595/002/
 - **T1110** Brute Force — parent technique (DFIR phase: *detection / identification*). https://attack.mitre.org/techniques/T1110/
 - **T1110.001** Password Guessing — `hydra` online guessing. https://attack.mitre.org/techniques/T1110/001/
 - **T1110.002** Password Cracking — `john`, `hashcat` offline hash cracking (DFIR phase: *examination / analysis*). https://attack.mitre.org/techniques/T1110/002/
+- **T1110.003** Password Spraying — low-and-slow `hydra` across many accounts (DFIR phase: *identification*). https://attack.mitre.org/techniques/T1110/003/
 - **T1003** OS Credential Dumping — upstream source of hashes fed to crackers (DFIR phase: *analysis*). https://attack.mitre.org/techniques/T1003/
+- **T1003.001** LSASS Memory — Sysmon EID 10 on `lsass.exe` (DFIR phase: *analysis*). https://attack.mitre.org/techniques/T1003/001/
+- **T1003.002** Security Account Manager — `reg save HKLM\SAM` (DFIR phase: *analysis*). https://attack.mitre.org/techniques/T1003/002/
+- **T1003.003** NTDS — `ntds.dit`/`vssadmin` extraction on a DC (DFIR phase: *analysis*). https://attack.mitre.org/techniques/T1003/003/
 - **T1190** Exploit Public-Facing Application — Metasploit exploit modules, Burp-driven web attacks (DFIR phase: *identification*). https://attack.mitre.org/techniques/T1190/
-- **T1071.001** Application Layer Protocol: Web — Burp Suite HTTP tampering (DFIR phase: *examination*). https://attack.mitre.org/techniques/T1071/001/
+- **T1071.001** Application Layer Protocol: Web — Burp Suite HTTP tampering, Meterpreter HTTP(S) C2 (DFIR phase: *examination*). https://attack.mitre.org/techniques/T1071/001/
+- **T1059** Command and Scripting Interpreter — Metasploit payload execution (DFIR phase: *analysis*). https://attack.mitre.org/techniques/T1059/
 
 ## Sources
 Claim → source mapping (all URLs are official tool docs, project repos, MITRE ATT&CK, Microsoft Learn, SANS, or Security Onion docs):
 
 - nmap `-sT` connect scan behavior — https://nmap.org/book/scan-methods-connect-scan.html
+- nmap `-sS` SYN (half-open) scan behavior — https://nmap.org/book/synscan.html
 - nmap `-Pn` / host discovery — https://nmap.org/book/man-host-discovery.html
 - nmap port states (`open`/`closed`/`filtered`…) — https://nmap.org/book/man-port-scanning-basics.html
 - nmap timing templates (`-T0`–`-T5`) / performance — https://nmap.org/book/man-performance.html
@@ -167,18 +177,27 @@ Claim → source mapping (all URLs are official tool docs, project repos, MITRE 
 - hashcat (project + downloads) — https://hashcat.net/hashcat/
 - hashcat (Kali package) — https://www.kali.org/tools/hashcat/
 - rockyou wordlist (Kali package) — https://www.kali.org/tools/wordlists/
-- Zeek conn.log fields — https://docs.zeek.org/en/master/logs/conn.html
+- Zeek conn.log fields / `conn_state` / `history` — https://docs.zeek.org/en/master/logs/conn.html
+- Zeek ssl.log / x509 fields (`validation_status`, `server_name`) — https://docs.zeek.org/en/master/logs/ssl.html
+- Zeek ssh.log fields (`auth_success`, `auth_attempts`) — https://docs.zeek.org/en/master/logs/ssh.html
+- Sysmon (Event ID 1 process create, Event ID 10 ProcessAccess) — https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
 - MITRE ATT&CK T1046 Network Service Discovery — https://attack.mitre.org/techniques/T1046/
 - MITRE ATT&CK T1595 Active Scanning — https://attack.mitre.org/techniques/T1595/
+- MITRE ATT&CK T1595.002 Vulnerability Scanning — https://attack.mitre.org/techniques/T1595/002/
 - MITRE ATT&CK T1110 Brute Force — https://attack.mitre.org/techniques/T1110/
 - MITRE ATT&CK T1110.001 Password Guessing — https://attack.mitre.org/techniques/T1110/001/
 - MITRE ATT&CK T1110.002 Password Cracking — https://attack.mitre.org/techniques/T1110/002/
 - MITRE ATT&CK T1110.003 Password Spraying — https://attack.mitre.org/techniques/T1110/003/
 - MITRE ATT&CK T1003 OS Credential Dumping — https://attack.mitre.org/techniques/T1003/
+- MITRE ATT&CK T1003.001 LSASS Memory — https://attack.mitre.org/techniques/T1003/001/
+- MITRE ATT&CK T1003.002 Security Account Manager — https://attack.mitre.org/techniques/T1003/002/
+- MITRE ATT&CK T1003.003 NTDS — https://attack.mitre.org/techniques/T1003/003/
 - MITRE ATT&CK T1190 Exploit Public-Facing Application — https://attack.mitre.org/techniques/T1190/
 - MITRE ATT&CK T1071.001 Web Protocols — https://attack.mitre.org/techniques/T1071/001/
 - MITRE ATT&CK T1059 Command and Scripting Interpreter — https://attack.mitre.org/techniques/T1059/
 - Windows Security Event 4625 (failed logon) — https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4625
+- Windows Security Event 4624 (successful logon / LogonType) — https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624
+- Windows Security Event 4688 (process creation) — https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688
 - SANS DFIR resources — https://www.sans.org/cyber-security-courses/?focus-area=digital-forensics
 - Security Onion documentation — https://docs.securityonion.net/en/2.4/
 
@@ -186,6 +205,6 @@ Claim → source mapping (all URLs are official tool docs, project repos, MITRE 
 - [Metasploit Framework workflow (training range)](../26-metasploit-workflow/README.md) -- shares metasploit-framework for hands-on exploitation practice.
 - [Password cracking (hashcat / John)](../40-password-cracking/README.md) -- shares hashcat and goes deeper on cracking techniques and hash types.
 - [Web app testing (Burp Suite / nmap)](../41-web-app-testing/README.md) -- shares burpsuite and nmap for focused web application assessment.
-- [Disk & filesystem forensics](../01-disk-forensics/README.md) -- same Foundations
+- [Disk & filesystem forensics](../01-disk-forensics/README.md) -- same Foundations learning path, covering the disk artifacts that credential-dumping leaves behind.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
