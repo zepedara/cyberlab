@@ -93,8 +93,15 @@ During incident response a defender receives a disk image from a suspected-compr
 - **Deleted-tool recovery → T1070.004 (File Deletion).** Run `fls -r -d -o $OFFSET $IMAGE` to enumerate every deleted directory entry, then `icat` the ones that match known-bad names or extensions. The presence of recently deleted executables/scripts in staging or temp paths is a strong signal of anti-forensic cleanup. MITRE: https://attack.mitre.org/techniques/T1070/004/ .
 - **Timestamp anomalies → T1070.006 (Timestomp).** Use `istat -o $OFFSET $IMAGE $INODE` and compare timestamps. On NTFS, defenders correlate `$STANDARD_INFORMATION` vs `$FILE_NAME` times; a `$STANDARD_INFORMATION` created time that is *earlier* than or grossly inconsistent with the `$FILE_NAME` time (or sub-second precision zeroed out) suggests timestomping. MITRE: https://attack.mitre.org/techniques/T1070/006/ . SANS FOR508 filesystem timeline guidance and the SANS Windows Forensics posters describe MFT timestamp comparison (https://www.sans.org/posters/windows-forensic-analysis/).
 - **Staging directories → T1074 / collection → T1005.** A `mactime` timeline that shows a burst of file *creations* in one directory shortly before an exfil-related network event is classic data staging. MITRE: https://attack.mitre.org/techniques/T1074/ and https://attack.mitre.org/techniques/T1005/ .
+- **File and Directory Discovery → T1083.** The `fls` command enumerates the file system, mirroring an attacker's reconnaissance. A timeline showing rapid, sequential enumeration of directories like `C:\Users\`, `C:\Windows\System32\`, or `/etc/` can indicate post-exploitation discovery. MITRE: https://attack.mitre.org/techniques/T1083/ .
+- **Ingress Tool Transfer → T1105.** A timeline entry showing a file creation in a temporary directory (e.g., `C:\Windows\Temp\` or `/tmp/`) followed by a `mactime` "B" (born) timestamp that aligns with a Zeek `files.log` entry for a file transfer over HTTP/SMB can confirm lateral movement or tool download. MITRE: https://attack.mitre.org/techniques/T1105/ .
 
 **Security Onion pivots.** Feed the `mactime` timeline alongside network telemetry: pivot from a **Suricata** alert or a **Zeek** `files.log`/`conn.log` entry (file hash, transfer time, destination) in the Security Onion Elastic stack to the exact on-disk file and timestamp produced by TSK, tying the network indicator to the host artifact. Security Onion documents Zeek, Suricata, and the Elastic-based investigation workflow: https://docs.securityonion.net/ (see the Zeek and Suricata sections). Zeek log reference: https://docs.zeek.org/en/master/logs/index.html ; Suricata docs: https://docs.suricata.io/ .
+
+**Detection Engineering Logic:**
+- **Windows Event ID 4663 (File System Object Access)** can be correlated with `fls` output. A file accessed (Event ID 4663) with a `Process Name` of a suspicious binary (e.g., `powershell.exe`) and a `Access Mask` indicating `DELETE` access, followed by the absence of the file in a live directory listing but its presence in `fls -d` output, confirms T1070.004. Source: Microsoft Learn on Event ID 4663 (https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4663).
+- **Zeek `files.log` field `seen.bytes` vs. `icat` recovered size.** If a file transferred over the network (logged in `files.log` with `tx_hosts` and `rx_hosts`) has a `seen.bytes` value, compare it to the size of a recovered deleted file from `icat`. A mismatch may indicate partial transfer or file corruption, which could be a sign of evasion. Source: Zeek documentation on `files.log` (https://docs.zeek.org/en/master/logs/files.html).
+- **Suricata `fileinfo` keyword and file storage.** Suricata can extract files via the `file-store` feature. The hash of a file extracted by Suricata (e.g., SHA256) can be compared to the hash of a file recovered via `icat` to confirm the same artifact was both transferred and stored on disk. Source: Suricata File Extraction and Storage (https://docs.suricata.io/en/suricata-7.0.0/file-extraction/file-extraction.html).
 
 ## Attacker perspective
 An adversary who wants to hide activity will delete tools, clear logs, and timestomp files — but on most file systems deletion only unlinks the directory entry, leaving the data and metadata recoverable until overwritten.
@@ -103,8 +110,10 @@ An adversary who wants to hide activity will delete tools, clear logs, and times
 - **T1070.004 File Deletion.** Deleting dropped tooling (`rm`, `del`, secure-delete utilities) removes the live directory entry but, on FAT/NTFS/ext, typically leaves recoverable metadata and unallocated data units. Artifacts: `fls`-visible deleted entries (`* ` prefix), orphaned inodes/MFT records, and file content still readable via `icat` until the clusters are reallocated. MITRE: https://attack.mitre.org/techniques/T1070/004/ .
 - **T1070.006 Timestomp.** Rewriting timestamps (e.g. with tools that set `$STANDARD_INFORMATION` times) to blend a malicious file into surrounding "normal" files. Artifacts: MAC-time inconsistencies exposed by `istat` — e.g. a modified time predating the created time, `$STANDARD_INFORMATION`/`$FILE_NAME` mismatches on NTFS, or implausibly round timestamps. MITRE: https://attack.mitre.org/techniques/T1070/006/ .
 - **T1074 Data Staged / T1005 Data from Local System.** Collecting and staging files before exfiltration leaves creation clusters and timeline bursts that survive later deletion. MITRE: https://attack.mitre.org/techniques/T1074/ and https://attack.mitre.org/techniques/T1005/ .
+- **T1083 File and Directory Discovery.** Attackers often enumerate directories to locate valuable data. This leaves a trace in the `$MFT` or inode timestamps (`istat` accessed times) and in the `fls` timeline as a cluster of `a` (accessed) timestamps across many directories in a short period. MITRE: https://attack.mitre.org/techniques/T1083/ .
+- **T1105 Ingress Tool Transfer.** Downloading tools to a victim host creates file system artifacts. Even if the file is deleted, `fls` can show the deleted entry in the download directory (e.g., `/tmp/`, `C:\Windows\Temp\`), and `icat` can recover the tool binary for analysis. MITRE: https://attack.mitre.org/techniques/T1105/ .
 
-**Evasion and its limits.** To truly defeat recovery an attacker must overwrite the data (wiping/secure-delete) or destroy the volume — mere deletion is not enough, and even overwriting can leave slack-space fragments. An attacker may run TSK-style tools themselves to check what residue their operations leave. Every recovered deleted file, every mismatched timestamp, and every unallocated data unit becomes evidence a defender can extract with `fls`, `istat`, and `icat` (see TSK man pages linked in the walkthrough).
+**Evasion and its limits.** To truly defeat recovery an attacker must overwrite the data (wiping/secure-delete) or destroy the volume — mere deletion is not enough, and even overwriting can leave slack-space fragments. An attacker may run TSK-style tools themselves to check what residue their operations leave. Every recovered deleted file, every mismatched timestamp, and every unallocated data unit becomes evidence a defender can extract with `fls`, `istat`, and `icat` (see TSK man pages linked in the walkthrough). Advanced attackers may use **T1027 Obfuscated Files or Information** (https://attack.mitre.org/techniques/T1027/) to hide malicious content within otherwise benign-looking files, but `icat` can still extract the raw bytes for further analysis. They may also use **T1564 Hide Artifacts** (https://attack.mitre.org/techniques/T1564/) by storing data in hidden or alternate data streams (ADS), which `fls` can reveal on NTFS volumes when used with the `-s` flag to display ADS streams.
 
 ## Answer key
 Sample sha256: `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
@@ -133,6 +142,8 @@ Expected: `timeline` rows show `secret.txt` as the most recent deletion event (l
 - **T1070.004** — Indicator Removal: File Deletion (recovered via `fls`/`icat`). https://attack.mitre.org/techniques/T1070/004/
 - **T1070.006** — Indicator Removal: Timestomp (exposed via `istat` MAC-time analysis). https://attack.mitre.org/techniques/T1070/006/
 - **T1005** — Data from Local System (https://attack.mitre.org/techniques/T1005/); **T1074** — Data Staged (https://attack.mitre.org/techniques/T1074/), identified through file enumeration/timeline bursts.
+- **T1083** — File and Directory Discovery (detected via `fls` timeline showing rapid directory access). https://attack.mitre.org/techniques/T1083/
+- **T1105** — Ingress Tool Transfer (correlated via timeline file creation events and network logs). https://attack.mitre.org/techniques/T1105/
 - **DFIR phases:** Examination and Analysis (evidence acquisition assumed complete; TSK operates read-only on the acquired image), feeding into Reporting. This maps to the classic DFIR/NIST SP 800-86 phases of Examination → Analysis → Reporting (https://csrc.nist.gov/pubs/sp/800/86/final).
 
 ## Sources
@@ -142,7 +153,7 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - TSK per-command behavior and flags:
   - `mmls` (volume/partition listing, sector offsets, `-b`): https://www.sleuthkit.org/sleuthkit/man/mmls.html
   - `fsstat` (file-system details, `-o`): https://www.sleuthkit.org/sleuthkit/man/fsstat.html
-  - `fls` (file/deleted-entry listing, `-r`, `-d`, `-m`, `-o`): https://www.sleuthkit.org/sleuthkit/man/fls.html
+  - `fls` (file/deleted-entry listing, `-r`, `-d`, `-m`, `-o`, `-s` for ADS): https://www.sleuthkit.org/sleuthkit/man/fls.html
   - `istat` (metadata/MAC times/data units): https://www.sleuthkit.org/sleuthkit/man/istat.html
   - `icat` (content recovery to stdout): https://www.sleuthkit.org/sleuthkit/man/icat.html
   - `mactime` (body-file → timeline, `-b`, `-d`): https://www.sleuthkit.org/sleuthkit/man/mactime.html
@@ -158,10 +169,18 @@ Claim → source mapping (all URLs are real, authoritative pages):
   - T1070.006 Timestomp: https://attack.mitre.org/techniques/T1070/006/
   - T1005 Data from Local System: https://attack.mitre.org/techniques/T1005/
   - T1074 Data Staged: https://attack.mitre.org/techniques/T1074/
+  - T1083 File and Directory Discovery: https://attack.mitre.org/techniques/T1083/
+  - T1105 Ingress Tool Transfer: https://attack.mitre.org/techniques/T1105/
+  - T1027 Obfuscated Files or Information: https://attack.mitre.org/techniques/T1027/
+  - T1564 Hide Artifacts: https://attack.mitre.org/techniques/T1564/
 - Security Onion / NIDS pivots:
   - Security Onion docs (Zeek, Suricata, Elastic investigation): https://docs.securityonion.net/
   - Zeek log reference: https://docs.zeek.org/en/master/logs/index.html
+  - Zeek `files.log` documentation: https://docs.zeek.org/en/master/logs/files.html
   - Suricata docs: https://docs.suricata.io/
+  - Suricata File Extraction and Storage: https://docs.suricata.io/en/suricata-7.0.0/file-extraction/file-extraction.html
+- Windows Event Log correlation:
+  - Microsoft Learn on Event ID 4663 (File System Object Access): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4663
 - DFIR phase model — NIST SP 800-86 (Guide to Integrating Forensic Techniques into Incident Response): https://csrc.nist.gov/pubs/sp/800/86/final
 
 ## Related modules
@@ -170,4 +189,4 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares sleuth kit as part of a complete Linux host triage workflow.
 - [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives), pairing memory forensics with the disk forensics covered here.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
