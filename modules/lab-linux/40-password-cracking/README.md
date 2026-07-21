@@ -149,6 +149,49 @@ sha256sum exercise/hash.txt
 - **T1070.001** — Indicator Removal: Clear Windows Event Logs (evasion). https://attack.mitre.org/techniques/T1070/001/
 - **DFIR phase:** Examination / Analysis (recovering plaintext from seized hashes) supporting Identification and Containment (forcing resets on exposed accounts).
 
+
+### Essential Commands & Features
+
+Hashcat’s **mask attacks** (`-a 3`) and **hybrid modes** (`-a 6`/`-a 7`) enable targeted brute-forcing by combining wordlists with customizable patterns. Below are the most critical undemonstrated commands and features, including incremental and mask-based attacks, to optimize password cracking for real-world scenarios.
+
+#### **1. Incremental Mode (`--increment`)**
+Use when the password length is unknown but likely falls within a range. This mode tests all lengths sequentially from `--increment-min` to `--increment-max`.
+**Example**: Crack a WPA2 handshake (hash mode `22000`) with lengths 4–8 using a custom charset:
+```bash
+hashcat -m 22000 -a 3 --increment --increment-min 4 --increment-max 8 handshake.hc22000 ?d?d?d?d?d?d?d?d
+```
+*Applies to*: [T1110.003 Brute Force: Password Spraying](https://attack.mitre.org/techniques/T1110/003/) (when targeting weak patterns).
+
+---
+
+#### **2. Mask Attacks (`-a 3`)**
+Use when partial password structure is known (e.g., "password123" → `?l?l?l?l?l?l?l?d?d?d`). Masks use placeholders:
+- `?l` = lowercase, `?u` = uppercase, `?d` = digits, `?s` = special chars.
+**Example**: Crack an NTLM hash (`-m 1000`) with a known prefix ("Summer") and 2-digit suffix:
+```bash
+hashcat -m 1000 -a 3 hashes.txt Summer?d?d
+```
+*Applies to*: [T1187 Forced Authentication](https://attack.mitre.org/techniques/T1187/) (when cracking relayed hashes with predictable formats).
+
+---
+
+#### **3. Hybrid Modes (`-a 6`/`-a 7`)**
+Combine wordlists with masks for efficiency. Use `-a 6` (wordlist + mask) or `-a 7` (mask + wordlist).
+**Example**: Append 2 digits to each word in `rockyou.txt` for a SHA-1 hash (`-m 100`):
+```bash
+hashcat -m 100 -a 6 hashes.txt rockyou.txt ?d?d
+```
+
+**Key Flags**:
+- `--potfile-disable`: Ignore hashcat’s potfile (force re-cracking).
+- `--show`: Display cracked hashes from a previous session.
+
+**Sources**:
+-
+
+### Threat Hunting & Detection Engineering
+To detect password cracking attempts, threat hunters can monitor Windows Event ID 4625 (Failed Logon) and analyze the `LogonType` field to identify potential brute-force attacks. Additionally, they can inspect Zeek's `http` log to identify suspicious HTTP requests with high failure rates, indicating potential password spraying attempts. These tactics are associated with [T1589](https://attack.mitre.org/techniques/T1589/) - "Verify Security Software" and [T1204](https://attack.mitre.org/techniques/T1204/) - "User Execution", where attackers may attempt to verify the security software configuration or execute malicious code to crack passwords. Threat hunters can pivot on these findings by analyzing network logs for unusual patterns, such as multiple failed login attempts from a single IP address, and inspecting system logs for signs of malicious code execution. For more information on threat hunting and detection engineering, visit the [Cybersecurity and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) website or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) Special Publication 800-53.
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -188,3 +231,11 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives)
 
 <!-- cyberlab-enriched: v2 -->
+- https://attack.mitre.org/techniques/T1110/003/
+- https://attack.mitre.org/techniques/T1187/
+- https://attack.mitre.org/techniques/T1589/
+- https://attack.mitre.org/techniques/T1204/
+- https://www.cisa.gov/
+- https://www.nist.gov/
+
+<!-- cyberlab-enriched: v3 -->
