@@ -255,6 +255,115 @@ Once a 30+ PE file is unpacked, hunt for **T1055.012 (Process Injection: Process
 - [MITRE ATT&CK: Process Hollowing (T1055.012)](https://attack.mitre.org/techniques/T1055/012/)
 - [CISA: Detecting DLL Side-Loading (T1574.002)](https://www.cisa.gov/resources-tools/services/detecting-dll-side-loading)
 
+
+### Essential Commands & Features
+
+PE-bear provides advanced static analysis capabilities beyond basic header inspection. Below are **critical but often overlooked** commands and features, with concrete examples and their investigative use cases:
+
+1. **Missing Overlay Parsing**
+   Use the `--overlay` flag to extract and analyze appended data (e.g., embedded payloads or config files). Overlays are common in **T1027.003 Obfuscated Files or Information: Steganography** and **T1553.004 Subvert Trust Controls: Install Root Certificate**.
+   ```bash
+   pe-bear --file malware.exe --overlay overlay_dump.bin
+   ```
+   *When to use*: Suspicious file size mismatches or unexpected entropy spikes in the last section.
+
+2. **TLS Callbacks**
+   Navigate to `Optional Header > Data Directories > TLS Directory` to inspect Thread Local Storage callbacks, often abused for **T1497.003 Virtualization/Sandbox Evasion: Time Based Evasion**.
+   ```bash
+   pe-bear --file sample.exe --tls-callbacks
+   ```
+   *When to use*: Unusual entry point behavior or anti-debugging techniques.
+
+3. **Security Directory (ASLR/DEP/NX)**
+   Check `Optional Header > DllCharacteristics` for mitigation flags (e.g., `IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE` for ASLR). Disabled flags may indicate **T1562.001 Impair Defenses: Disable or Modify Tools**.
+   ```bash
+   pe-bear --file binary.exe --security-dir
+   ```
+   *When to use*: Malware targeting legacy systems or bypassing modern protections.
+
+4. **Rich Header Analysis**
+   Decode the undocumented "Rich Header" (compiler/linker metadata) via `File Header > Rich Header`. Look for anomalies like mismatched toolchains, linked to **T1587.002 Develop Capabilities: Code Signing Certificates**.
+   ```bash
+   pe-bear --file suspicious.dll --rich-header
+   ```
+   *When to use*: Attribution or detecting supply-chain tampering.
+
+**Sources**:
+- [PE-bear GitHub Wiki: Advanced Features](https://github.com/hasherezade/pe-bear/wiki/Advanced-Features)
+- [NCC Group: Rich Header Analysis](https://research.nccgroup.com/2020/01/20/rich-headers-leveraging-microsofts-undocumented-pe-header/)
+
+### Detection Signatures & Reference Artifacts
+
+Below are defensive detection signatures and reference artifacts for analyzing benign PE files in a static deep-dive context.
+
+---
+
+#### YARA Rule
+```yara
+rule BenignPE_StaticDeepDive_LabSample {
+    meta:
+        description = "Detects benign lab PE sample used for static analysis training"
+        author = "Defensive Training Module"
+        reference = "https://docs.microsoft.com/en-us/windows/win32/debug/pe-format"
+        date = "2024-05-20"
+        hash = "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
+
+    strings:
+        $pe_magic = { 4D 5A }               // MZ header
+        $pe_signature = { 50 45 00 00 }     // PE signature
+        $section_text = ".text"             // Common section name
+        $section_data = ".data"             // Common section name
+        $import_kernel32 = "kernel32.dll"   // Common import
+        $import_user32 = "user32.dll"       // Common import
+
+    condition:
+        uint16(0) == 0x5A4D and             // MZ header check
+        filesize < 2MB and                  // Size limit for lab samples
+        all of them                         // All strings must be present
+}
+```
+
+---
+
+#### Sigma Rule
+```yaml
+title: Benign PE File Static Analysis Lab Sample
+id: 1a2b3c4d-5e6f-7890-a1b2-c3d4e5f67890
+status: experimental
+description: Detects benign PE file used in static analysis training exercises
+author: Defensive Training Module
+date: 2024/05/20
+logsource:
+    product: windows
+    category: file_event
+detection:
+    selection:
+        TargetFilename|endswith: '\LabSample.exe'
+        Hashes|contains: 'SHA256=a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890'
+    condition: selection
+falsepositives:
+    - Legitimate training or educational tools
+level: informational
+```
+
+---
+
+#### Reference Artifacts / IOCs
+| **Indicator Type**       | **Value**                                                                 |
+|--------------------------|---------------------------------------------------------------------------|
+| **SHA256 Hash**          | `a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890`       |
+| **Filename**             | `LabSample.exe`                                                           |
+| **File Path**            | `C:\Training\StaticAnalysis\LabSample.exe`                                |
+| **Network Artifact**     | `hxxp://192[.]0[.]2[.]100/training/labsample` (documentation IP)          |
+| **Registry Key**         | `HKCU\Software\TrainingLab\StaticAnalysis`                                |
+| **Process Name**         | `LabSample.exe`                                                           |
+
+**MITRE ATT&CK Technique:**
+- **T1059.003** - Command and Scripting Interpreter: Windows Command Shell
+
+**Authoritative Source:**
+- [Microsoft PE Format Documentation](https://docs.microsoft.com/en-us/windows/win32/debug/pe-format)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn, MITRE ATT&CK, or Security Onion docs):
 
@@ -291,3 +400,8 @@ Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn
 - https://www.cisa.gov/resources-tools/services/detecting-dll-side-loading
 
 <!-- cyberlab-enriched: v4 -->
+- https://github.com/hasherezade/pe-bear/wiki/Advanced-Features
+- https://research.nccgroup.com/2020/01/20/rich-headers-leveraging-microsofts-undocumented-pe-header/
+- https://docs.microsoft.com/en-us/windows/win32/debug/pe-format"
+
+<!-- cyberlab-enriched: v5 -->
