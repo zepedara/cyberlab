@@ -170,6 +170,48 @@ Select-String -Path .\exercise\decompiled\*.cs -Pattern "TGFi"
 - **T1543.003 — Windows Service** (installing as a service via .NET code): <https://attack.mitre.org/techniques/T1543/003/>.
 - **DFIR phase:** examination / analysis (static and dynamic malware analysis of a recovered artifact), feeding identification and reporting.
 
+
+```markdown
+### Essential Commands & Features
+
+Once you’ve loaded a .NET assembly in **dnSpyEx**, these **undemonstrated** debugging and patching features are critical for deep deobfuscation and adversary emulation:
+
+1. **Conditional Breakpoints (Debug → Breakpoints → Conditional)**
+   Use when analyzing **T1059.007 Command-Line Interface** or **T1106 Native API** calls to pause execution only when specific arguments are passed.
+   *Example*:
+   ```csharp
+   // Set a breakpoint in `System.Diagnostics.Process.Start` to trigger only if the filename contains "cmd.exe"
+   args[0].ToString().Contains("cmd.exe")
+   ```
+
+2. **Step-Into/Over/Out (F11/F10/Shift+F11)**
+   Essential for tracing **T1574.002 Hijack Execution Flow: DLL Side-Loading** by stepping through obfuscated method calls.
+   *Example*:
+   ```csharp
+   // Step into a suspicious `Assembly.Load` call to inspect dynamically loaded payloads
+   Assembly.Load(byteArray);  // Press F11 to follow execution into the loaded assembly
+   ```
+
+3. **Inline IL Patching (Right-click method → Edit IL Instructions)**
+   Directly modify Intermediate Language to bypass anti-analysis checks (e.g., **T1480.001 Execution Guardrails: Environmental Keying**).
+   *Example*:
+   ```il
+   // Replace a `call` to `Environment.GetEnvironmentVariable` with a hardcoded "1" (ldc.i4.1)
+   IL_0000: ldc.i4.1  // Original: call string [mscorlib]System.Environment::GetEnvironmentVariable(string)
+   IL_0001: ret
+   ```
+
+4. **Save Patched Assembly (File → Save Module)**
+   Preserve edits for further analysis or re-execution. Always verify patches in a sandbox to avoid corrupting the original file.
+
+**Sources**:
+- [dnSpyEx Debugging Documentation (GitBook)](https://0xd4d.github.io/dnSpy/debugging.html)
+- [MITRE ATT&CK: T1059.007 & T1106](https://collaborate.mitre.org/attackics/index.php/Main_Page)
+```
+
+### Threat Hunting & Detection Engineering
+To detect and hunt threats related to .NET deobfuscation, focus on monitoring Windows Event IDs 4688 (Process Creation) and 4703 (Token Elevation Type) for suspicious process execution and elevation patterns. Analyze the `CommandLine` field for potential deobfuscation tool usage, such as invoking `csc.exe` or `vbc.exe` with unusual arguments. Additionally, inspect Zeek's `http` log for suspicious download activity, particularly focusing on the `User-Agent` field for non-standard or empty values. Threat hunters can pivot on these findings by investigating related techniques, such as [T1620: Reflective Code Loading](https://attack.mitre.org/techniques/T1620/) and [T1646: Netsh Helper DLL](https://attack.mitre.org/techniques/T1646/), which may indicate an adversary's attempt to execute code in memory or manipulate network settings. For further guidance on threat hunting and detection engineering, refer to the Cyber and Infrastructure Security Agency's (CISA) [Alert (AA20-133A)](https://us-cert.cisa.gov/ncas/alerts/aa20-133a) and the National Institute of Standards and Technology's (NIST) [Special Publication 800-150](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-150.pdf).
+
 ## Sources
 - dnSpyEx project (maintained fork of dnSpy; decompiler/debugger/editor + features): https://github.com/dnSpyEx/dnSpy
 - ILSpy decompiler & `ilspycmd` (console `-o` output, global-tool install): https://github.com/icsharpcode/ILSpy
@@ -212,3 +254,11 @@ Select-String -Path .\exercise\decompiled\*.cs -Pattern "TGFi"
 - [Ghidra decompiler & scripting deep-dive](../27-ghidra-scripting/README.md) -- same learning path (Deep-dives) for complementary native-code RE.
 
 <!-- cyberlab-enriched: v2 -->
+- https://0xd4d.github.io/dnSpy/debugging.html
+- https://collaborate.mitre.org/attackics/index.php/Main_Page
+- https://attack.mitre.org/techniques/T1620/
+- https://attack.mitre.org/techniques/T1646/
+- https://us-cert.cisa.gov/ncas/alerts/aa20-133a
+- https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-150.pdf
+
+<!-- cyberlab-enriched: v3 -->
