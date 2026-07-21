@@ -130,6 +130,50 @@ Expected: the stream listing marks the macro stream with `M`; `-s 3 -v` prints t
 - **T1221** — Template Injection (remote `.dotm` load to keep the macro out of the delivered file). https://attack.mitre.org/techniques/T1221/
 - **DFIR phase:** Identification and Examination (triage of a suspicious attachment and static extraction of IOCs).
 
+
+### Essential Commands & Features
+
+When analyzing malicious documents, leveraging advanced features of core tools like `olevba` and `pdf-parser` can uncover hidden threats. Below are the most useful commands and flags not yet demonstrated, with concrete examples and use cases.
+
+#### **OLEVBA (OLE/Office Malware Analysis)**
+- **`--decode`**: Decodes obfuscated strings (e.g., base64, hex) in macros. Use when macros contain encoded payloads.
+  ```bash
+  olevba --decode suspicious.doc
+  ```
+  *Targets*: [T1137.001: Office Application Startup](https://attack.mitre.org/techniques/T1137/001/) (Persistence via Office templates).
+
+- **`--deobfuscate`**: Attempts to simplify obfuscated VBA code. Critical for analyzing heavily obfuscated macros.
+  ```bash
+  olevba --deobfuscate malicious.xls
+  ```
+  *Targets*: [T1027.005: Indicator Removal from Tools](https://attack.mitre.org/techniques/T1027/005/) (Obfuscated files/scripts).
+
+- **`--extract`**: Extracts embedded files (e.g., OLE objects, executables) from documents.
+  ```bash
+  olevba --extract document.doc
+  ```
+
+#### **PDF-Parser (PDF Analysis)**
+- **`--search`**: Searches for specific strings (e.g., `/JavaScript`, `/OpenAction`) to identify malicious triggers.
+  ```bash
+  pdf-parser --search "/JavaScript" malicious.pdf
+  ```
+- **`--raw`**: Displays raw object data, bypassing parsing. Useful for analyzing malformed PDFs.
+  ```bash
+  pdf-parser --raw --object 5 malicious.pdf
+  ```
+- **`--filter`**: Applies filters (e.g., `/FlateDecode`) to decompress streams. Essential for inspecting compressed payloads.
+  ```bash
+  pdf-parser --filter --object 3 malicious.pdf
+  ```
+
+**Authoritative Sources**:
+- [Didier Stevens Suite Documentation](https://blog.didierstevens.com/programs/pdf-tools/)
+- [REMnux Tools Guide: PDF Analysis](https://docs.remnux.org/discover-the-tools/analyze+documents/pdf)
+
+### Threat Hunting & Detection Engineering
+To detect malicious document-based attacks, threat hunters can monitor Windows Event IDs 4663 and 4738 for suspicious file access and creation patterns. Specifically, they can look for instances where a document opens a suspicious executable or script, indicating potential use of [T1499: Signature Validation Bypass](https://attack.mitre.org/techniques/T1499) or [T1625: Graphical User Interface Window Capture](https://attack.mitre.org/techniques/T1625). In network logs, such as those collected by Zeek or Suricata, analysts can search for HTTP requests containing suspicious document-related keywords or anomalies in file transfer protocols. Threat hunters can pivot on these findings by investigating related Windows Event IDs, such as 4688 for process creation, to identify potential command and control (C2) communications or lateral movement. For deeper analysis, security teams can leverage tools like Sysinternals or Windows Management Instrumentation (WMI) to inspect system calls and registry modifications. More information on threat hunting and detection engineering can be found at [https://www.cisecurity.org/](https://www.cisecurity.org/) and [https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf](https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf).
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, Microsoft Learn, SANS, or recognized project docs):
 
@@ -162,3 +206,12 @@ Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, M
 - [Disk & filesystem forensics](../01-disk-forensics/README.md) -- same learning path (Foundations).
 
 <!-- cyberlab-enriched: v2 -->
+- https://attack.mitre.org/techniques/T1137/001/
+- https://attack.mitre.org/techniques/T1027/005/
+- https://docs.remnux.org/discover-the-tools/analyze+documents/pdf
+- https://attack.mitre.org/techniques/T1499
+- https://attack.mitre.org/techniques/T1625
+- https://www.cisecurity.org/](https://www.cisecurity.org/
+- https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf](https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf
+
+<!-- cyberlab-enriched: v3 -->
