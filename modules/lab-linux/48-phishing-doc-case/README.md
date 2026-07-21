@@ -172,6 +172,57 @@ Once the phishing document (`48-phishing-doc-case`) is detonated, adversaries of
 ### Adversary Emulation & Red-Team Perspective
 From an adversary's perspective, a phishing document case like the '48-phishing-doc' can be used to gain initial access to a target system through techniques such as **T1562: Impair Defenses** (https://attack.mitre.org/techniques/T1562) and **T1588: Obtain Capabilities** (https://attack.mitre.org/techniques/T1588). An attacker may use social engineering to trick a user into opening a malicious document, which then executes malicious code via VBA macros or PDF JavaScript. The adversary may also attempt to evade detection by using code obfuscation (T1027), anti-debugging techniques, and by leveraging WMI (T1047) for stealthy execution. Artifacts left behind include temporary files (`%TEMP%` OLE streams), registry modifications (Run keys – T1547.001), scheduled tasks (T1053.005), and network communication logs (Zeek `http.log`). To detect and respond, implement robust email filtering, endpoint detection (Sysmon), and network monitoring (Zeek, Suricata). For more information on adversary emulation and red-teaming, visit the [Cybersecurity and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [Center for Internet Security (CIS)](https://www.cisecurity.org/) websites.
 
+
+```markdown
+### Essential Commands & Features
+
+To deepen analysis of malicious Office documents, leverage these **undemonstrated but critical** commands and features in `olevba` and `oledump`:
+
+1. **`olevba --decode`**
+   Decodes obfuscated strings (e.g., hex, base64) in macros to reveal hidden payloads or C2 URLs.
+   *Example*:
+   ```bash
+   olevba --decode malicious.doc
+   ```
+   *When to use*: When macros contain encoded strings (e.g., `Chr(88)` or `base64` blobs). Directly maps to **MITRE ATT&CK T1140 (Deobfuscate/Decode Files or Information)**.
+
+2. **`olevba --deobfuscate`**
+   Attempts to simplify obfuscated VBA code (e.g., removing junk code, resolving string concatenation).
+   *Example*:
+   ```bash
+   olevba --deobfuscate malicious.doc
+   ```
+   *When to use*: For heavily obfuscated macros (e.g., `StrReverse` or `Mid` abuse). Aligns with **T1027.002 (Obfuscated Files or Information: Software Packing)**.
+
+3. **`oledump -d`**
+   Extracts raw stream data (e.g., embedded binaries, scripts) from OLE files for further analysis.
+   *Example*:
+   ```bash
+   oledump.py -d malicious.doc > stream.bin
+   ```
+   *When to use*: To dump non-macro artifacts (e.g., embedded executables or PowerShell scripts). Useful for **T1564.004 (Hide Artifacts: NTFS File Attributes)**.
+
+**Authoritative Sources**:
+- [Didier Stevens’ OLE Tools Documentation](https://blog.didierstevens.com/programs/oledump-py/)
+- [SANS FOR610: Reverse-Engineering Malware (OLE Analysis)](https://www.sans.org/blog/for610-reverse-engineering-malware-course-updates/)
+```
+
+### Common Pitfalls & Result Validation
+
+When analyzing phishing documents in the `48-phishing-doc-case`, analysts often misinterpret artifacts or overlook critical validation steps, leading to false positives or missed detections. **Common pitfalls** include:
+- **Assuming malicious intent from macros alone**: Not all macros are malicious (e.g., legitimate automation scripts). Validate by checking for **T1059.007 (JavaScript)** or **T1203 (Exploitation for Client Execution)** patterns, such as obfuscated PowerShell or shellcode execution.
+- **Ignoring embedded objects**: Attackers may hide payloads in OLE objects or images (e.g., **T1566.002 (Spearphishing Link)**). Use tools like `olevba` or `binwalk` to extract and inspect these components.
+- **Over-relying on static analysis**: Dynamic analysis (e.g., sandboxing) is essential to confirm behavior, as static indicators (e.g., suspicious URLs) may be benign or outdated.
+
+**Validation steps** to avoid false conclusions:
+1. **Cross-reference indicators**: Compare extracted IOCs (e.g., domains, IPs) with threat intelligence feeds (e.g., VirusTotal, AlienVault OTX).
+2. **Reconstruct the attack chain**: Confirm if the document triggers **T1106 (Native API)** calls or spawns unexpected processes (e.g., `cmd.exe` or `wscript.exe`).
+3. **Check for evasion techniques**: Look for **T1497 (Virtualization/Sandbox Evasion)**, such as delays or environment checks, which may suppress malicious behavior in automated analysis.
+
+**Authoritative sources**:
+- [CERT-EU: Phishing Document Analysis Guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Phishing.pdf)
+- [NIST SP 800-83: Guide to Malware Incident Prevention and Handling](https://csrc.nist.gov/publications/detail/sp/800-83/rev-1/final)
+
 ## Sources
 Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK, Microsoft Learn, or SANS):
 
@@ -199,3 +250,9 @@ Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK,
 - [oletools macro analysis deep-dive](../36-oletools-deep/README.md) -- shares oletools with a deeper VBA macro focus.
 
 <!-- cyberlab-enriched: v3 -->
+- https://blog.didierstevens.com/programs/oledump-py/
+- https://www.sans.org/blog/for610-reverse-engineering-malware-course-updates/
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Phishing.pdf
+- https://csrc.nist.gov/publications/detail/sp/800-83/rev-1/final
+
+<!-- cyberlab-enriched: v4 -->
