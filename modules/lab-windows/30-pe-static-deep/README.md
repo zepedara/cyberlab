@@ -156,6 +156,59 @@ Invariant validation marker string: `LAB-WINDOWS-BENIGN-MARKER-30`.
 - **T1518 — Software Discovery** (build fingerprinting via DIE compiler/linker identification, defensive context) — https://attack.mitre.org/techniques/T1518/
 - **DFIR phase:** Identification → Examination (static triage of a recovered artifact prior to dynamic analysis/reversing), consistent with the SANS FOR610 malware-analysis workflow (https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/).
 
+
+### Essential Commands & Features
+
+PE-bear provides advanced static analysis capabilities that go beyond basic PE parsing. Below are **critical but often overlooked commands and features**, each with a concrete example and use case:
+
+1. **Missing Overlay Parsing**
+   Use PE-bear’s overlay inspection to detect appended data (e.g., embedded payloads or obfuscated code). Overlays are common in malware leveraging **T1027.009 (Obfuscated Files or Information: Embedded Payloads)**.
+   *Example*:
+   ```bash
+   # Open a sample in PE-bear, navigate to the "Overlay" tab, and check for non-zero data.
+   pe-bear suspicious.exe
+   ```
+   *When to use*: Suspect packed executables or files with unusual entropy.
+
+2. **TLS Callbacks**
+   Inspect Thread Local Storage (TLS) callbacks to uncover execution hooks, often abused in **T1480.001 (Execution Guardrails: Environmental Keying)**.
+   *Example*:
+   ```bash
+   # In PE-bear, go to the "TLS" tab to view callback addresses.
+   pe-bear malware_with_tls.exe
+   ```
+   *When to use*: Analyzing samples with anti-debugging or sandbox evasion.
+
+3. **Debug Directory**
+   Examine the debug directory for artifacts like PDB paths, which may reveal developer environments or **T1622 (Debugger Evasion)** techniques.
+   *Example*:
+   ```bash
+   # Navigate to the "Debug" tab in PE-bear to extract PDB strings.
+   pe-bear sample_with_debug_info.exe
+   ```
+   *When to use*: Investigating leaked build paths or custom debuggers.
+
+4. **Rich Header Inspection**
+   Decode the Rich header to identify compiler signatures, useful for tracking toolchains in **T1587.001 (Develop Capabilities: Malware)**.
+   *Example*:
+   ```bash
+   # In PE-bear, go to the "Rich Header" tab to parse tool IDs and versions.
+   pe-bear compiled_with_visual_studio.exe
+   ```
+   *When to use*: Attribution or detecting custom-compiled malware.
+
+**Authoritative Sources**:
+- [PE-bear GitHub Wiki (Overlay/TLS/Debug/Rich Header Docs)](https://github.com/hasherezade/pe-bear/wiki)
+- [FireEye PE File Structure Deep Dive (Rich Header Analysis)](https://www.fireeye.com/blog/threat-research/2019/08/definitive-guide-to-detecting-and-preventing-ransomware.html)
+
+### Common Pitfalls & Result Validation
+
+Analysts often overestimate the completeness of static PE analysis, leading to false negatives or positives. A frequent pitfall is trusting unsigned or improperly signed binaries without verifying the certificate chain—attackers may embed stolen or self-signed certificates to evade scrutiny (T1553.002 **Code Signing**). Another mistake is assuming that all imports are legitimate; malware often obfuscates imports by using indirect calls or dynamic API resolution, which static import tables won't reveal. Similarly, omitting checks for environment-sensitive behavior—such as checking for debuggers, sandbox artifacts, or specific registry keys—can cause a sample to appear benign when it actually contains conditional logic triggered only outside analysis environments (T1497.001 **System Checks**). To validate findings, cross-check suspicious static artifacts (e.g., rare section names, high entropy, anomalous certificate relationships) against dynamic execution traces or community sandbox reports. Use reliable hash lookups on public threat databases and test the sample in a controlled sandbox to observe any anti-analysis routines. Avoid false conclusions by confirming that anomalies—like unexpected data in .rsrc or .text sections—are not caused by legitimate obfuscation tools or legitimate packing patterns. Document every indicator and its alternative benign explanation before labeling malware.
+
+Authoritative references:  
+https://www.mandiant.com/resources/static-analysis-malware-techniques  
+https://www.crowdstrike.com/blog/common-malware-analysis-mistakes/
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn, MITRE ATT&CK, or Security Onion docs):
 
@@ -180,3 +233,9 @@ Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn
 - [FLOSS obfuscated-string extraction](../42-floss-strings/README.md) -- shares floss and drills into stack/tight/decoded string recovery.
 
 <!-- cyberlab-enriched: v2 -->
+- https://github.com/hasherezade/pe-bear/wiki
+- https://www.fireeye.com/blog/threat-research/2019/08/definitive-guide-to-detecting-and-preventing-ransomware.html
+- https://www.mandiant.com/resources/static-analysis-malware-techniques
+- https://www.crowdstrike.com/blog/common-malware-analysis-mistakes/
+
+<!-- cyberlab-enriched: v3 -->
