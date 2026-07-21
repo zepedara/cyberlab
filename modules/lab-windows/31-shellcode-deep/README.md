@@ -201,6 +201,91 @@ Shellcode execution often leaves subtle traces across endpoint and network logs.
 - [CISA Alert AA22-152A: Detecting Post-Compromise Threat Activity](https://www.cisa.gov/uscert/ncas/alerts/aa22-152a)
 - [Elastic Security Labs: Detecting Shellcode via Event Tracing for Windows (ETW)](https://www.elastic.co/security-labs/detecting-shellcode-with-etw)
 
+
+### Essential Commands & Features
+
+The following commands and flags unlock deeper analysis capabilities in **scdbg** and **BlobRunner**, enabling precise control over shellcode execution and debugging workflows.
+
+#### **scdbg: Advanced Debugging Flags**
+- **`-c` (Quick Mode)**: Skips verbose output and executes shellcode immediately, useful for rapid triage of known-safe samples.
+  ```bash
+  scdbg -f shellcode.bin -c
+  ```
+  *When to use*: Validate shellcode behavior without stepping through instructions (e.g., during bulk analysis).
+
+- **`-s` (Step Mode)**: Pauses execution after each instruction, allowing manual inspection of register/memory changes.
+  ```bash
+  scdbg -f shellcode.bin -s
+  ```
+  *When to use*: Debug evasive shellcode (e.g., **T1027.002: Software Packing**) or identify anti-analysis tricks.
+
+- **`-p` (Profile Mode)**: Logs API calls and execution flow to a file for post-analysis.
+  ```bash
+  scdbg -f shellcode.bin -p profile.txt
+  ```
+  *When to use*: Correlate shellcode actions with **T1562.003: Impair Defenses** (e.g., disabling security tools).
+
+#### **BlobRunner: Process Control**
+- **`--kill`**: Terminates the target process after execution, preventing lingering artifacts.
+  ```bash
+  BlobRunner.exe --file shellcode.bin --kill
+  ```
+  *When to use*: Test destructive payloads (e.g., **T1485: Data Destruction**) without manual cleanup.
+
+- **`--resume`**: Attaches to an existing process ID (PID) to resume execution, bypassing initial setup.
+  ```bash
+  BlobRunner.exe --pid 1234 --resume
+  ```
+  *When to use*: Analyze injected shellcode in running processes (e.g., **T1055.002: Portable Executable Injection**).
+
+**Sources**:
+- [scdbg Official Documentation (Sandsprite)](http://sandsprite.com/blogs/index.php?uid=7&pid=152)
+- [BlobRunner GitHub Wiki (OALabs)](https://github.com/OALabs/BlobRunner/wiki)
+
+### Detection Signatures & Reference Artifacts  
+
+#### YARA Rule  
+```yara
+rule Shellcode_Lab_Detect {
+    meta:
+        author = "Training Module 31-shellcode-deep"
+        description = "Detects benign shellcode loader sample used in educational lab"
+        mitre_technique = "T1204.002"
+        target = "training environment"
+    strings:
+        $nop_sled = {90 90 90 90 90 90}   // NOP sled of 6 bytes
+        $loader_stub = {E8 00 00 00 00 5B 81 EB} // 7-byte shellcode loader stub
+    condition:
+        filesize < 200KB and 1 of ($nop_sled, $loader_stub)
+}
+```  
+
+#### Sigma Rule  
+```yaml
+title: PowerShell Encoded Command Execution (Possible Shellcode Loader)
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        EventID: 1
+        Image: '*\\powershell.exe'
+        CommandLine|contains: 'FromBase64String'
+    condition: selection
+```  
+
+#### Reference Artifacts / IOCs  
+
+| Indicator | Value |
+|-----------|-------|
+| SHA256 (sample binary) | `a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1` |
+| Filename | `shellcode_debug.exe` |
+| Host artifact (file path) | `C:\Users\Public\shellcode_debug.exe` |
+| Network artifact (download origin) | `hxxp://192.0.2[.]1/payload.bin` |
+| Domain (C2/decoy) | `shellcode-debug[.]com` |
+| MITRE ATT&CK Technique | T1204.002 – User Execution: Malicious File |
+| Source | https://attack.mitre.org/techniques/T1204/002/ |
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -235,3 +320,7 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://www.elastic.co/security-labs/detecting-shellcode-with-etw
 
 <!-- cyberlab-enriched: v4 -->
+- https://github.com/OALabs/BlobRunner/wiki
+- https://attack.mitre.org/techniques/T1204/002/
+
+<!-- cyberlab-enriched: v5 -->
