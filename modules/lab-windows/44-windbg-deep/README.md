@@ -169,6 +169,32 @@ int main(void){
 - **T1070.006** — Timestomp (adversary modifies file timestamps to hide artifacts) — https://attack.mitre.org/techniques/T1070/006/
 - **DFIR phase:** Examination / Analysis (deep-dive reverse engineering of a triaged artifact).
 
+
+### Essential Commands & Features
+To further enhance your WinDbg skills, it's crucial to understand and utilize essential commands and features. The `!analyze` command is vital for analyzing crash dumps, as seen in `!analyze -v`, which provides a detailed analysis of the crash. The `.frame` command, used as `.frame 0`, sets the current frame to the specified number, useful for examining specific parts of the call stack. For writing memory contents to a file, `.writemem` is used, for example, `.writemem C:\output\memory.dmp 0x00000000 0x0000FFFF`. The `dx` command allows for the examination of the data model, as in `dx @$cursession.Processes`, which displays the processes in the current debugging session. In kernel mode, commands like `lm` (list modules) and `!drvobj` (display driver objects) are indispensable, with `lm` used to list loaded modules and `!drvobj` to examine driver objects, such as `!drvobj 0x87654321`. These commands are particularly useful when investigating techniques like [T1496, Credential Dumping](https://attack.mitre.org/techniques/T1496/), and [T1005, Data from Local System](https://attack.mitre.org/techniques/T1005/), where analyzing system memory and driver interactions is critical. For more detailed information on these and other commands, refer to the official WinDbg documentation on [msdn.microsoft.com](https://msdn.microsoft.com/) and [dbgeng.dll documentation on docs.microsoft.com](https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/content/index).
+
+### Adversary Emulation & Red-Team Perspective
+
+Red teams abuse WinDbg as a Microsoft-signed binary to proxy execution of arbitrary code, bypassing application control policies (T1127: Trusted Developer Utilities Proxy Execution). For example, they launch WinDbg with a script file that uses `.dump` or `.writemem` to dump LSASS memory, then parse offline with Mimikatz. Parent PID spoofing (T1502: Parent PID Spoofing) masks the debugger’s launch—spawning it under `explorer.exe` or `svchost.exe` to evade process-tree analytics. Attackers also exploit WinDbg’s kernel debugging capabilities: attaching to a live kernel via network kd (`-k net:port=...`) enables stealthy kext injection or DKOM manipulation.
+
+**Artifacts left behind:**  
+- WinDbg process creation with non-standard parent PID (Event 4688).  
+- Loading of `dbgeng.dll`, `dbghelp.dll`, and `wow64.dll` (if 32-bit).  
+- `.dmp` crash dump files in `%TEMP%`, `%SystemRoot%\LiveKernelReports`, or user-writable directories.  
+- Command-line artifacts: `-k`, `-y` (symbol path to network share), `-c` (execute command on start).  
+- Network logs: outbound `RDP` or raw TCP connections for kernel debugging over the network.
+
+**Evasion considerations:**  
+- Use scripted commands via PowerShell to load WinDbg non-interactively.  
+- Delete dump files immediately after extraction (`del /f *.dmp`).  
+- Obfuscate command-line arguments with environment variables and long flags.  
+- Run the debugger from a renamed copy (e.g., `windbg_legacy.exe`) to bypass hash-based blocks.  
+- Bypass debugger detection checks by unloading the debug privilege token before launching WinDbg.
+
+**Sources:**  
+- SANS. “Application Whitelisting and the Blue Team’s Dilemma.” https://www.sans.org/white-papers/33995/  
+- Microsoft. “Getting Started with WinDbg (User-Mode).” https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/getting-started-with-windbg
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 - WinDbg overview, install location, and initial user-mode break — Microsoft Learn, *Debugging Tools for Windows (WinDbg)*: https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/ ; *Getting Started with WinDbg (User-Mode)*: https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/getting-started-with-windbg
@@ -212,3 +238,10 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Scenario: shellcode extraction & analysis](../54-shellcode-case/README.md) -- shares x64dbg
 
 <!-- cyberlab-enriched: v2 -->
+- https://attack.mitre.org/techniques/T1496/
+- https://attack.mitre.org/techniques/T1005/
+- https://msdn.microsoft.com/
+- https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/content/index
+- https://www.sans.org/white-papers/33995/
+
+<!-- cyberlab-enriched: v3 -->
