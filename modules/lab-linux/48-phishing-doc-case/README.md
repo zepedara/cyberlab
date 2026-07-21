@@ -134,6 +134,28 @@ Record the printed `sha256sum` values from the generator above as the authoritat
 - **T1059.001 / T1059.005** — Command & Scripting Interpreter (PowerShell / Visual Basic payload staging). https://attack.mitre.org/techniques/T1059/001/ and https://attack.mitre.org/techniques/T1059/005/
 - **DFIR phases:** Identification (triage the reported attachment) and Examination/Analysis (static macro/PDF dissection and IOC extraction).
 
+
+### Threat Hunting & Detection Engineering
+
+Once the phishing document (`48-phishing-doc-case`) is detonated, adversaries often **establish persistence** (MITRE ATT&CK [T1547.001: Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder](https://attack.mitre.org/techniques/T1547/001/)) or **schedule tasks** ([T1053.005: Scheduled Task/Job: Scheduled Task](https://attack.mitre.org/techniques/T1053/005/)) to maintain access. Hunt for these behaviors using **Windows Event Logs** and **network telemetry**:
+
+1. **Registry Modifications (T1547.001)**
+   - **Log Source**: Windows Security Event Log (`Event ID 4657` – Registry value modification).
+   - **Detection Logic**: Filter for `Object Name` containing `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` or `HKLM\...\Run` with `Operation Type` = `%%1906` (value set). Pivot on `Process Name` to identify suspicious parent processes (e.g., `winword.exe` spawning `reg.exe` or `powershell.exe`).
+   - **Hunting Query**: Use Sysmon (`Event ID 13`) to correlate registry writes with `TargetObject` matching `Run` keys and `Details` containing executable paths in user-writable directories (e.g., `%APPDATA%`).
+
+2. **Scheduled Tasks (T1053.005)**
+   - **Log Source**: Windows Task Scheduler Operational Log (`Event ID 106` – Task registered).
+   - **Detection Logic**: Look for tasks with `Task Name` containing random strings (e.g., `Updater_<GUID>`) or paths pointing to `%TEMP%`. Cross-reference with `Event ID 200` (action executed) to identify tasks running scripts (`*.vbs`, `*.ps1`) or binaries from suspicious locations.
+   - **Network Pivot**: Use Zeek’s `conn.log` to hunt for C2 callbacks from processes like `svchost.exe` (legitimate but often abused) with unusual parent-child relationships (e.g., `svchost.exe` spawned by `taskeng.exe`).
+
+**Authoritative Sources**:
+- [Microsoft Docs: Monitoring Registry Changes](https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/monitoring-active-directory-for-signs-of-compromise#monitoring-registry-changes)
+- [SANS Hunt Evil: Detecting Persistence Mechanisms](https://www.sans.org/blog/detecting-persistence-mechanisms/)
+
+### Adversary Emulation & Red-Team Perspective
+From an adversary's perspective, a phishing document case like the '48-phishing-doc' can be used to gain initial access to a target system through techniques such as [T1562: Impair Defenses](https://attack.mitre.org/techniques/T1562) and [T1588: Obtain Capabilities](https://attack.mitre.org/techniques/T1588). An attacker may use social engineering tactics to trick a user into opening a malicious document, which then executes malicious code, potentially leading to the installation of malware or the creation of a backdoor. The adversary may also attempt to evade detection by using code obfuscation and anti-debugging techniques. Artifacts left behind may include temporary files, registry modifications, and network communication logs. To detect and respond to such threats, it's essential to monitor system and network activity for suspicious behavior and to implement robust security controls, such as email filtering and endpoint detection and response. For more information on adversary emulation and red-teaming, visit the [Cybersecurity and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [Center for Internet Security (CIS)](https://www.cisecurity.org/) websites.
+
 ## Sources
 Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK, Microsoft Learn, or SANS):
 
@@ -157,3 +179,13 @@ Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK,
 - [oletools macro analysis deep-dive](../36-oletools-deep/README.md) -- shares oletools with a deeper VBA macro focus.
 
 <!-- cyberlab-enriched: v1 -->
+- https://attack.mitre.org/techniques/T1547/001/
+- https://attack.mitre.org/techniques/T1053/005/
+- https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/monitoring-active-directory-for-signs-of-compromise#monitoring-registry-changes
+- https://www.sans.org/blog/detecting-persistence-mechanisms/
+- https://attack.mitre.org/techniques/T1562
+- https://attack.mitre.org/techniques/T1588
+- https://www.cisa.gov/
+- https://www.cisecurity.org/
+
+<!-- cyberlab-enriched: v2 -->
