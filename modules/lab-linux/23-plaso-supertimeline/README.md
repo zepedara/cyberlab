@@ -110,6 +110,53 @@ Sample sha256 (`bodyfile.txt`): `ad0a859947384b0ad9e942aaa37633ba181b3f2c701d0d3
 - **T1041** — Exfiltration Over C2 Channel (detected via staging file writes and network connections) — https://attack.mitre.org/techniques/T1041/
 - **DFIR phase:** Examination & Analysis (timeline reconstruction), supporting Identification of the earliest compromise indicator.
 
+
+### Essential Commands & Features
+
+Plaso’s `log2timeline.py` and `psteal.py` offer powerful, undemonstrated capabilities for targeted forensic analysis. Below are the most useful commands, flags, and features to enhance your supertimeline workflows:
+
+1. **Multi-threaded Processing (`--workers`)**
+   Accelerate timeline generation by leveraging multiple CPU cores. Ideal for large datasets (e.g., enterprise disk images).
+   ```bash
+   log2timeline.py --workers 4 timeline.plaso evidence.raw
+   ```
+   *Use case*: Reduces processing time for high-volume artifacts (e.g., **T1027.002 Obfuscated Files or Information: Software Packing**).
+
+2. **Time Range Filtering (`--date-filter`)**
+   Extract events within a specific timeframe (e.g., during an incident window). Format: `YYYY-MM-DD..YYYY-MM-DD`.
+   ```bash
+   log2timeline.py --date-filter "2023-10-01..2023-10-07" timeline.plaso evidence.raw
+   ```
+   *Use case*: Isolates activity tied to **T1071.001 Application Layer Protocol: Web Protocols** (e.g., C2 beaconing).
+
+3. **Parser Presets (`--parsers`)**
+   Specify parsers by category (e.g., `winreg`, `webhist`) to avoid unnecessary overhead.
+   ```bash
+   log2timeline.py --parsers "winreg,webhist" timeline.plaso evidence.raw
+   ```
+   *Use case*: Focuses on registry modifications (e.g., **T1543.003 Create or Modify System Process: Windows Service**).
+
+4. **Hashing (`--hashers`)**
+   Generate hashes (MD5/SHA1/SHA256) for files during processing to support integrity checks.
+   ```bash
+   log2timeline.py --hashers "md5,sha256" timeline.plaso evidence.raw
+   ```
+   *Use case*: Validates file authenticity during malware analysis.
+
+5. **Storage File Splitting (`--storage-file-size`)**
+   Split large storage files into manageable chunks (e.g., 2GB).
+   ```bash
+   log2timeline.py --storage-file-size 2G timeline.plaso evidence.raw
+   ```
+   *Use case*: Facilitates partial analysis of massive datasets.
+
+**Sources**:
+- [NIST Computer Forensic Tool Testing (CFTT) - Plaso Guidelines](https://www.nist.gov/itl/ssd/software-quality-group/computer-forensics-tool-testing-program-cftt)
+- [DFIR Review: Plaso Advanced Features](https://www.dfir.review/plaso
+
+### Threat Hunting & Detection Engineering
+To effectively hunt and detect threats using the SuperTimeline, focus on analyzing log sources such as Windows Event IDs 4688 (Process Creation) and 4703 (Token Elevation Type), as well as Zeek's `http` and `dns` logs. Threat actors may employ techniques like [T1204](https://attack.mitre.org/techniques/T1204) (User Execution) and [T1218](https://attack.mitre.org/techniques/T1218) (Signed Binary Proxy Execution) to execute malicious code. Pivoting on fields like `Image` and `Command_Line` in Windows Event ID 4688 can help identify suspicious process creations. Additionally, analyzing `dns` logs for unusual domain name resolutions can indicate potential command and control (C2) communication. By integrating these detection logic components into a comprehensive threat hunting strategy, security teams can improve their ability to detect and respond to advanced threats. For more information on threat hunting and detection engineering, visit the [Cybok](https://cybok.org/) knowledge base or the [Center for Internet Security](https://www.cisecurity.org/) website.
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs / repos, MITRE ATT&CK, SANS, or recognized project docs):
 
@@ -140,3 +187,11 @@ Claim → source mapping (all URLs are official tool docs / repos, MITRE ATT&CK,
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives); pairs signatures with timeline findings.
 
 <!-- cyberlab-enriched: v2 -->
+- https://www.nist.gov/itl/ssd/software-quality-group/computer-forensics-tool-testing-program-cftt
+- https://www.dfir.review/plaso
+- https://attack.mitre.org/techniques/T1204
+- https://attack.mitre.org/techniques/T1218
+- https://cybok.org/
+- https://www.cisecurity.org/
+
+<!-- cyberlab-enriched: v3 -->
