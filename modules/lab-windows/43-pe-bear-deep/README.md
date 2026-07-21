@@ -1,7 +1,7 @@
 # 43 * PE-bear structure analysis deep-dive -- LAB-WINDOWS
 
 ## Overview (plain language)
-Every Windows program (.exe, .dll) follows a strict blueprint called the Portable Executable (PE) format. Think of it like the anatomy of a file: a header that says "I am a Windows program," a table listing which system functions it borrows, and named rooms (sections) holding code and data. PE-bear is a friendly visual tool that opens this blueprint and lays out each part in tables you can click through, so you can spot when something looks wrong — like a program that hides its imports, claims a fake compile date, or has a section that is packed and unreadable. Detect-It-Easy (DIE) is a companion tool that quickly guesses what compiler or packer built a file and flags suspicious signs like encryption or unusual entropy. Together they let a beginner examine a suspicious file safely, without running it, and build an early picture of whether it is normal software or something that has been tampered with to evade detection.
+Every Windows program (.exe, .dll) follows a strict blueprint called the Portable Executable (PE) format. Think of it like the anatomy of a file: a header that says "I am a Windows program," a table listing which system functions it borrows, and named rooms (sections) holding code and data. PE-bear is a friendly visual tool that opens this blueprint and lays out each part in tables you can click through, so you can spot when something looks wrong — like a program that hides its imports, claims a fake compile date, or has a section that is packed and unreadable. Detect-It-Easy (DIE) is a companion tool that quickly guesses what compiler or packer built a file and flags suspicious signs like encryption or unusual entropy. Together they let a beginner examine a suspicious file safely, without running it, and build an early picture of whether it is normal software or something that has been tampered with to evade detection ([github.com/hasherezade/pe-bear](https://github.com/hasherezade/pe-bear), [github.com/horsicq/Detect-It-Easy](https://github.com/horsicq/Detect-It-Easy)).
 
 ## Tools covered
 | Tool | Install | Purpose |
@@ -93,11 +93,14 @@ Concrete detection logic and MITRE mapping:
 - **Software packing — T1027.002** ([attack.mitre.org/techniques/T1027/002](https://attack.mitre.org/techniques/T1027/002/)): alert on PE sections with Shannon entropy ≥ 7.0, on `UPX0/UPX1` (or other non-`.text/.rdata/.data/.rsrc`) section names, and on writable+executable section flags (`IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_EXECUTE`) as defined in the PE spec ([learn.microsoft.com PE Format — Section Flags](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#section-flags)).
 - **Deobfuscate/Decode at runtime — T1140** ([attack.mitre.org/techniques/T1140](https://attack.mitre.org/techniques/T1140/)): a bootstrap import set of only `LoadLibraryA`/`GetProcAddress` indicates the IAT is rebuilt at runtime.
 - **Masquerading — T1036** ([attack.mitre.org/techniques/T1036](https://attack.mitre.org/techniques/T1036/)): forged `TimeDateStamp` or copied section names used to blend in.
+- **Process Injection via DLL — T1055.001** ([attack.mitre.org/techniques/T1055/001](https://attack.mitre.org/techniques/T1055/001/)): detect imports of `VirtualAllocEx`, `WriteProcessMemory`, `CreateRemoteThread`, or `LoadLibrary` combined with writable+executable sections, indicating potential DLL injection post-unpacking.
+- **Command and Scripting Interpreter — T1059.001** ([attack.mitre.org/techniques/T1059/001](https://attack.mitre.org/techniques/T1059/001/)): scan PE resources and raw sections for PowerShell-related strings (e.g., "powershell", "IEX", "Invoke-Expression") indicating post-unpacking script execution.
 
 Security Onion pivots:
 - **Zeek** logs `pe.log` (compile time, section names, is-64-bit, machine) and `files.log` (`mime_type`, `sha256`, `md5`) for observed transfers; pivot from a PE-bear finding to every host that downloaded the same `sha256`, and use `pe.log` section names to hunt look-alikes ([docs.zeek.org PE analyzer](https://docs.zeek.org/en/master/scripts/base/protocols/http/files.zeek.html), [securityonion.net docs](https://docs.securityonion.net/)).
 - **Suricata** can match on file `filesha256` / YARA-based `filemagic` rules to flag the hash or a UPX byte pattern on the wire ([suricata.readthedocs.io File Keywords](https://suricata.readthedocs.io/en/latest/rules/file-keywords.html)).
 - **Elastic (Kibana Discover/Hunt)**: pivot on `file.hash.sha256` and `file.pe.imphash` to cluster related samples; the imphash (import-hash) groups binaries that share the same import layout, a well-known triage pivot ([attack.mitre.org/techniques/T1027/002](https://attack.mitre.org/techniques/T1027/002/), [securityonion.net docs](https://docs.securityonion.net/)).
+- **Threat-hunting pivot**: Use Elasticsearch Query DSL to search for files with `file.pe.section characteristics: (IMAGE_SCN_MEM_WRITE AND IMAGE_SCN_MEM_EXECUTE)` AND `file.pe.entropy > 7.0` to identify potential packed binaries across the corpus.
 
 These indicators feed detection engineering: entropy and imphash values captured here become Suricata/YARA rules and Zeek `files.log`/`pe.log` enrichments in Security Onion, letting analysts correlate the file hash with alerts to scope an incident.
 
@@ -106,6 +109,8 @@ Attackers modify the PE structure specifically to defeat static detection. Concr
 - **Pack/crypt the payload (T1027.002)** so signature engines see only a high-entropy blob. Artifact: near-8.0 entropy in the packed section, `UPX0` with Raw size 0 / large Virtual size, and a shrunken import directory ([attack.mitre.org/techniques/T1027/002](https://attack.mitre.org/techniques/T1027/002/), [upx.github.io](https://upx.github.io/)).
 - **Strip/forge the IAT (T1140)** so real APIs are resolved at runtime via `LoadLibrary`/`GetProcAddress`. Artifact: a suspiciously small import table dominated by loader-resolution functions ([learn.microsoft.com PE Format — .idata](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-idata-section), [attack.mitre.org/techniques/T1140](https://attack.mitre.org/techniques/T1140/)).
 - **Masquerade (T1036)** by forging `TimeDateStamp`, copying legit section names, or overwriting/spoofing the Rich header (an undocumented MSVC-linker artifact between the DOS stub and PE header). Artifact: inconsistent or implausible timestamps and mismatched build metadata ([attack.mitre.org/techniques/T1036](https://attack.mitre.org/techniques/T1036/), [learn.microsoft.com PE Format](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format)).
+- **Enable DLL injection (T1055.001)** by marking sections as writable and executable to accommodate injected code or unpacked payloads. Artifact: PE sections with `IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_EXECUTE` characteristics, often coinciding with high entropy or unusual section names ([learn.microsoft.com PE Format — Section Flags](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#section-flags), [attack.mitre.org/techniques/T1055/001](https://attack.mitre.org/techniques/T1055/001/)).
+- **Employ command-line scripting (T1059.001)** post-unpacking to evade detection; attackers embed obfuscated PowerShell commands in resources or overlays. Artifact: strings like "IEX (New-Object Net.WebClient).DownloadString" in PE resources or raw sections, even when main code is packed ([attack.mitre.org/techniques/T1059/001](https://attack.mitre.org/techniques/T1059/001/), [learn.microsoft.com PowerShell Logging](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utils/about/about_logging?view=powershell-7.3)).
 - **Evasion nuance:** to hide from naive entropy heuristics, attackers may re-pad sections toward "normal" entropy, append large low-entropy overlays, or use custom packers whose signatures DIE does not yet know. Even then, mismatched Raw vs. Virtual sizes, writable+executable section flags, and a collapsed IAT remain recoverable purely by inspecting the file, without ever executing it.
 
 ## Answer key
@@ -132,6 +137,8 @@ Why these findings hold: UPX's own documentation describes it as a compressor th
 - **T1027.002** — Software Packing. https://attack.mitre.org/techniques/T1027/002/
 - **T1140** — Deobfuscate/Decode Files or Information. https://attack.mitre.org/techniques/T1140/
 - **T1036** — Masquerading (forged timestamps/section names). https://attack.mitre.org/techniques/T1036/
+- **T1055.001** — Dynamic-Link Library. https://attack.mitre.org/techniques/T1055/001/
+- **T1059.001** — Powershell. https://attack.mitre.org/techniques/T1059/001/
 - DFIR phase: **Examination / Analysis** (static triage of a collected artifact prior to dynamic analysis).
 
 ## Sources
@@ -150,15 +157,20 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - MITRE ATT&CK T1027.002 (Software Packing, imphash pivot) — https://attack.mitre.org/techniques/T1027/002/
 - MITRE ATT&CK T1140 (Deobfuscate/Decode) — https://attack.mitre.org/techniques/T1140/
 - MITRE ATT&CK T1036 (Masquerading) — https://attack.mitre.org/techniques/T1036/
+- MITRE ATT&CK T1055.001 (Dynamic-Link Library) — https://attack.mitre.org/techniques/T1055/001/
+- MITRE ATT&CK T1059.001 (Powershell) — https://attack.mitre.org/techniques/T1059/001/
 - Zeek file/PE logging (`files.log`, `pe.log`) — Zeek docs: https://docs.zeek.org/
 - Suricata file keywords (`filesha256`, filemagic/YARA) — Suricata docs: https://suricata.readthedocs.io/en/latest/rules/file-keywords.html
 - Security Onion (Suricata/Zeek/Elastic pivots) — Security Onion docs: https://docs.securityonion.net/
 - SANS FOR610 Reverse-Engineering Malware — https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+- PowerShell logging and detection — Microsoft Learn: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utils/about/about_logging?view=powershell-7.3
+- DLL injection techniques via Windows API — Microsoft Learn: https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order
 
 ## Related modules
-- [PE static analysis deep-dive](../30-pe-static-deep/README.md) -- shares pe-bear for deeper header/section/data-directory analysis.
-- [Static reverse engineering](../12-static-re/README.md) -- shares pe-bear within a broader static RE workflow.
-- [Scenario: packed-malware unpacking workflow](../52-unpacking-case/README.md) -- shares pe-bear and extends this packing detection into a full unpacking case.
-- [Scenario: rapid static triage](../56-static-triage-case/README.md) -- shares pe-bear for time-boxed triage decis
+- [PE static analysis deep-dive](../30-pe-static-deep/README.md) -- shares pe-bear
+- [Static reverse engineering](../12-static-re/README.md) -- shares pe-bear
+- [Scenario: packed-malware unpacking workflow](../52-unpacking-case/README.md) -- shares pe-bear
+- [Scenario: rapid static triage](../56-static-triage-case/README.md) -- shares pe-bear
+=== END MODULE ===
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
