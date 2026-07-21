@@ -96,6 +96,12 @@ Detection logic and hunts:
 - Embedded, compressed, or appended payloads map to ATT&CK **T1027** (Obfuscated Files or Information — https://attack.mitre.org/techniques/T1027/) and its sub-technique **T1027.009** (Embedded Payloads — https://attack.mitre.org/techniques/T1027/009/). The act of unpacking/decoding at runtime maps to **T1140** (Deobfuscate/Decode Files or Information — https://attack.mitre.org/techniques/T1140/).
 - After extraction, hash each recovered artifact (`sha256sum`) and scan the inner files with YARA/ClamAV so hunt queries can pivot on recovered inner IOCs. This work sits in the DFIR **Examination** phase (see SANS FOR508, https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/).
 
+**Deepened Detection Engineering:**
+- **Concrete Log Source & Field:** In Zeek's `files.log`, the `seen_bytes` field (or `total_bytes` in some deployments) indicates the total bytes transferred. A file with a declared `mime_type` of `image/jpeg` but a `seen_bytes` value significantly larger than typical JPEG sizes (e.g., >10MB for a standard web image) is anomalous. The `extracted` field, if present, indicates the file was written to disk for analysis. A hunt query in Elastic/Kibana could be: `files.mime_type:"image/jpeg" AND files.seen_bytes:>10000000`. This logic is documented in the Zeek `files.log` schema (https://docs.zeek.org/en/master/logs/files.html).
+- **Suricata EVE `fileinfo` Detection:** Suricata's `fileinfo` event includes `size` and `stored` (boolean) fields. An alert can be built using Suricata's rule language to flag files where `fileinfo.size` exceeds a threshold for its detected file type. Example rule logic (conceptual): `alert http any any -> any any (msg:"SUSPICIOUS - Large JPEG file"; fileinfo; content:"image/jpeg"; file_size:>10000000; sid:1000001;)`. This leverages Suricata's file extraction and identification capabilities (https://docs.suricata.io/en/latest/file-extraction/file-extraction.html).
+- **Additional MITRE ATT&CK Techniques:** The act of delivering a malicious payload hidden within a benign file also maps to **T1204.002** (User Execution: Malicious File), as the user may be tricked into opening the carrier file (https://attack.mitre.org/techniques/T1204/002/). Furthermore, the initial delivery vector often involves **T1566** (Phishing) to distribute the polyglot file (https://attack.mitre.org/techniques/T1566/). The analysis of the extracted payload may reveal follow-on techniques like **T1059** (Command and Scripting Interpreter) for execution.
+- **Threat-Hunting Pivot:** After identifying a suspicious file via size anomaly, extract its stored copy from the Zeek or Suricata archive. Run `binwalk -E` and note the entropy value. A file with a high-entropy (e.g., >0.95) region appended after a low-entropy header (like text) is a strong indicator of an appended, possibly encrypted payload. This entropy analysis is a core feature of binwalk, documented in its wiki (https://github.com/ReFirmLabs/binwalk/wiki/Usage). Correlate this finding with network connections (Zeek's `conn.log`) from the host that downloaded the file to identify potential C2 (Command and Control) activity, mapping to **T1071** (Application Layer Protocol) (https://attack.mitre.org/techniques/T1071/).
+
 ## Attacker perspective
 Attackers abuse embedded/appended data to smuggle payloads past naive inspection: appending an archive to a JPEG (a polyglot), stuffing a backdoored filesystem into a legitimate-looking firmware image, or compressing a stager to raise entropy and defeat string-based rules.
 
@@ -113,6 +119,12 @@ Artifacts the technique leaves (what a defender finds):
 - Carved secondary files that appear in `foremost`/Zeek output but were never meant to be visible.
 
 Evasion the attacker attempts: encrypting rather than merely compressing the payload (still high entropy, but no recognizable inner signatures), placing the payload where a naive parser stops reading, or splitting it so no single magic byte sequence is contiguous. Entropy and offset anomalies remain the durable tells even when signatures are suppressed.
+
+**Deepened Attacker Tradecraft & Artifacts:**
+- **Additional MITRE ATT&CK Techniques:** To execute the hidden payload, attackers often leverage **T1059.001** (PowerShell) or **T1059.004** (Unix Shell) scripts extracted from the carrier file (https://attack.mitre.org/techniques/T1059/001/, https://attack.mitre.org/techniques/T1059/004/). The initial access vector frequently involves **T1566.001** (Spearphishing Attachment) (https://attack.mitre.org/techniques/T1566/001/). Once executed, the payload may attempt **T1562.001** (Disable or Modify Tools) to hinder forensic tools like `binwalk` or AV scanners (https://attack.mitre.org/techniques/T1562/001/).
+- **Concrete Artifact Locations:** On a Windows system, execution of an extracted payload may create artifacts in the `%TEMP%` or `%APPDATA%` directories. Process creation logs (Windows Event ID 4688 or Sysmon Event ID 1) may show a parent process like `explorer.exe` or `winword.exe` spawning a child process from an unusual, temporary path with a mismatched file extension (e.g., `invoice.jpg.exe`). This is a key detection point documented in Microsoft's security guidance (https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688).
+- **Evasion Nuance:** Advanced attackers may use **T1027.002** (Software Packing) to compress *and* encrypt the inner payload, making signature scanning ineffective. However, `binwalk -E` will still show a high-entropy block. To evade entropy-based detection, an attacker might use **T1027.003** (Steganography) to hide data within the *noise* of a legitimate carrier file (e.g., an image), resulting in only a minor entropy increase that may blend into normal variance. This technique is described in the MITRE ATT&CK sub-technique (https://attack.mitre.org/techniques/T1027/003/).
+- **Operational Security (OPSEC):** A savvy attacker, after using `binwalk` to analyze and modify legitimate firmware, will attempt to clean up extracted files and temporary directories to avoid leaving the `_*.extracted` folders or modified filesystem images on disk, aligning with **T1070.004** (File Deletion) (https://attack.mitre.org/techniques/T1070/004/).
 
 ## Answer key
 Sample sha256 (of the file produced by the exact generator above — the validator holds the canonical digest; reproduce locally with `sha256sum firmware.bin`).
@@ -145,6 +157,10 @@ Expected: binwalk lists at least a `gzip compressed data` entry and a `JPEG imag
 - T1140 — Deobfuscate/Decode Files or Information (extracting/decompressing embedded layers): https://attack.mitre.org/techniques/T1140/
 - T1608 — Stage Capabilities (attacker embedding payloads in benign-looking files/firmware): https://attack.mitre.org/techniques/T1608/
 - T1608.001 — Upload Malware (staging the embedded payload for delivery): https://attack.mitre.org/techniques/T1608/001/
+- **T1204.002** — User Execution: Malicious File (user is tricked into opening the carrier file): https://attack.mitre.org/techniques/T1204/002/
+- **T1566.001** — Phishing: Spearphishing Attachment (common delivery vector for polyglot files): https://attack.mitre.org/techniques/T1566/001/
+- **T1027.003** — Obfuscated Files or Information: Steganography (hiding data within carrier file noise): https://attack.mitre.org/techniques/T1027/003/
+- **T1070.004** — Indicator Removal: File Deletion (cleaning up extracted/modified files post-exploitation): https://attack.mitre.org/techniques/T1070/004/
 - DFIR phase: **Examination / Analysis** (file triage, extraction, and artifact recovery) — see SANS FOR508: https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/
 
 ## Sources
@@ -175,8 +191,18 @@ Claim → source mapping (all URLs are to official/authoritative pages):
   - T1140: https://attack.mitre.org/techniques/T1140/
   - T1608: https://attack.mitre.org/techniques/T1608/
   - T1608.001: https://attack.mitre.org/techniques/T1608/001/
+  - T1204.002: https://attack.mitre.org/techniques/T1204/002/
+  - T1566.001: https://attack.mitre.org/techniques/T1566/001/
+  - T1027.003: https://attack.mitre.org/techniques/T1027/003/
+  - T1070.004: https://attack.mitre.org/techniques/T1070/004/
+  - T1059.001: https://attack.mitre.org/techniques/T1059/001/
+  - T1059.004: https://attack.mitre.org/techniques/T1059/004/
+  - T1562.001: https://attack.mitre.org/techniques/T1562/001/
+  - T1071: https://attack.mitre.org/techniques/T1071/
 - DFIR examination phase / incident response methodology — SANS FOR508:
   - https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/
+- Windows Process Creation Auditing (Event ID 4688) — Microsoft Learn:
+  - https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688
 
 ## Related modules
 - [File carving](../05-file-carving/README.md) -- shares foremost for header/footer recovery of embedded files.
@@ -184,4 +210,4 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives); scan extracted/carved artifacts with YARA.
 - [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives); filesystem-aware carving and metadata analysis.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
