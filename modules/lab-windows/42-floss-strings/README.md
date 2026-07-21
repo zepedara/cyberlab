@@ -171,6 +171,61 @@ Avoid confirmation bias by testing hypotheses with controlled samples. For examp
 - [FireEye FLARE FLOSS Documentation](https://www.fireeye.com/blog/threat-research/2016/06/floss_automatically_extracting.html)
 - [NIST National Software Reference Library (NSRL)](https://www.nist.gov/itl/ssd/software-quality-group/national-software-reference-library-nsrl)
 
+
+### Essential Commands & Features
+
+Use `floss --json` to produce machine-readable output ideal for programmatic ingestion or correlation with other tools. For example:
+```
+floss --json malware.bin > floss_results.json
+```
+Apply `--no-static` when you only want decoded strings (e.g., deobfuscated or XOR-ed data) from dynamic analysis, skipping the static string dump. This reduces noise on already-clean binaries:
+```
+floss --no-static malware.bin
+```
+Set `--max-length` and `--min-length` to filter string length. To ignore very short artifacts and focus on meaningful indicators, limit to 8–256 characters:
+```
+floss --min-length 8 --max-length 256 packed.exe
+```
+Use when hunting for configuration strings or C2 domains that have a typical length range.
+
+For capa, `-j/--json` outputs structured results suitable for integration with SOAR or SIEM:
+```
+capa -j sample.exe > capa_report.json
+```
+Add `-v/--verbose` to see all matched rules, not just the top‑level capabilities – critical when analyzing stealthy malware:
+```
+capa -v unpacked.dll
+```
+Suppress progress output with `-q/--quiet` when scripting or chaining commands:
+```
+capa -q -j malicious.exe | jq '.rules[] | select(.matches | length > 0)'
+```
+
+These commands directly support detecting techniques such as **T1055.001 (Process Injection: DLL Injection)** (e.g., by revealing injected DLL names or offsets) and **T1204.002 (User Execution: Malicious File)** (e.g., through extracted user‑facing strings like document macros). For further reading, see the FLOSS usage guide on GitHub and the SANS reading room article on automated string analysis.  
+https://github.com/mandiant/floss  
+https://www.sans.org/reading-room/whitepapers/malicious/malware-analysis-strings-33620
+
+### Threat Hunting & Detection Engineering
+
+When hunting for adversaries abusing **42-floss-strings** (or similar static-analysis tools), focus on **T1036.005 (Masquerading: Match Legitimate Name or Location)** and **T1562.002 (Impair Defenses: Disable Windows Event Logging)**. Attackers may rename `floss.exe` to blend into legitimate processes (e.g., `svchost.exe -k netsvcs`) or suppress logging to evade detection.
+
+**Detection Logic:**
+1. **Windows Event Logs (Sysmon Event ID 1)**:
+   - Hunt for process creation events where `OriginalFileName` (e.g., `floss.exe`) does not match the `Image` path (e.g., `C:\Temp\svchost.exe`). Pivot on `ProcessGuid` to correlate with **Event ID 11 (FileCreate)** for dropped binaries.
+   - Example fields: `Image`, `OriginalFileName`, `CommandLine`, `ParentImage`.
+
+2. **Zeek/Suricata Network Telemetry**:
+   - Monitor for **unusual outbound connections** from renamed `floss.exe` processes (e.g., `svchost.exe` contacting C2 over **T1071.001 (Application Layer Protocol: Web Protocols)**). Use Zeek’s `conn.log` to filter for `service == "http"` and `uid` tied to suspicious parent processes.
+   - Suricata can alert on **T1036.005** by detecting mismatched HTTP `User-Agent` strings (e.g., `floss/2.0` from a `svchost.exe` process).
+
+**Hunting Pivots:**
+- **Sysmon Event ID 23 (FileDelete)**: Look for cleanup of renamed `floss.exe` artifacts.
+- **Windows Security Log (Event ID 4688)**: Cross-reference `NewProcessName` with `floss.exe` hashes (e.g., via `SHA256Hash`).
+
+**Sources:**
+- [MITRE ATT&CK: T1036.005](https://attack.mitre.org/techniques/T1036/005/)
+- [SpecterOps: Detecting Masquerading with Sysmon](https://posts.specterops.io/detecting-masquerading-with-sysmon-8861b7b4c594)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE, SANS, Microsoft Learn, or recognized project docs):
 
@@ -208,3 +263,9 @@ Claim → source mapping (all URLs are official tool docs, MITRE, SANS, Microsof
 - https://www.nist.gov/itl/ssd/software-quality-group/national-software-reference-library-nsrl
 
 <!-- cyberlab-enriched: v3 -->
+- https://github.com/mandiant/floss
+- https://www.sans.org/reading-room/whitepapers/malicious/malware-analysis-strings-33620
+- https://attack.mitre.org/techniques/T1036/005/
+- https://posts.specterops.io/detecting-masquerading-with-sysmon-8861b7b4c594
+
+<!-- cyberlab-enriched: v4 -->
