@@ -105,6 +105,10 @@ Concrete detection logic and pivots:
 
 `esedbexport` also unlocks SRUM (network/app resource usage) and `ntds.dit` for credential-theft investigations, while `pffexport` reconstructs phishing mailboxes. During incident response you cross-reference exported timestamps against Security Onion alerts to confirm scope, giving IR teams offline, court-defensible parsing of the same artifacts Security Onion parses in near-real time. This directly supports detection of **T1078 Valid Accounts** (https://attack.mitre.org/techniques/T1078/) via logon anomalies and **T1003 OS Credential Dumping** (https://attack.mitre.org/techniques/T1003/) via NTDS access.
 
+**Additional detection logic:**
+- **T1021.001 (Exploit Public-Facing Application):** Look for `esedbexport` of `Windows.edb` in the context of a web server log (e.g., `event_data.SourceName` = "Web Server" or "IIS") to detect unauthorized access to ESE databases via web-facing applications. This can be detected by querying for `winlog.event_id:4688` where `winlog.event_data.NewProcessName` includes `esedbexport` and the parent process is a web server process (e.g., `inetmgr.exe` or `w3wp.exe`).
+- **T1053.005 (Scheduled Task/Job):** Use `evtxexport` to detect `event_id:4698` (scheduled task creation) where the task's command line includes `vshadowinfo` or `vshadowmount`. This can be detected by querying for `winlog.event_id:4698` where `winlog.event_data.CommandLine` includes `vshadowinfo` or `vshadowmount`.
+
 ## Attacker perspective
 An attacker who gains access to a host targets the very artifacts these libraries read.
 
@@ -112,6 +116,10 @@ An attacker who gains access to a host targets the very artifacts these librarie
 - **Dump `ntds.dit` from a domain controller — T1003.003 (https://attack.mitre.org/techniques/T1003/003/):** the live `ntds.dit` is locked, so attackers create a Volume Shadow Copy (e.g. `vssadmin create shadow` or `ntdsutil ... ifm`) and copy the file from the snapshot. ARTIFACTS: a new VSS store with a fresh creation time (surfaced by `vshadowinfo`), plus 4688 records for `vssadmin.exe`/`ntdsutil.exe`. EVASION: some tooling reads NTDS directly from raw NTFS to avoid `vssadmin`, but that still touches the disk and can leave USN/journal traces.
 - **Steal Outlook mailboxes — T1114 Email Collection (https://attack.mitre.org/techniques/T1114/):** copy `.pst`/`.ost` for staging/exfil. ARTIFACTS: `pffexport` reconstructs folders and, with `-m recovered`/`-m all`, deleted items an attacker thought were gone. EVASION: exporting a subset of folders reduces size for exfil but the file mtime/copy still leaves filesystem traces.
 - **BitLocker abuse for extortion — T1486 Data Encrypted for Impact (https://attack.mitre.org/techniques/T1486/):** enabling BitLocker or adding attacker-controlled protectors to lock out the owner. ARTIFACTS: new key-protector entries surfaced by `bdeinfo`, and BitLocker/`manage-bde` operation events. EVASION: attackers may remove recovery protectors to deny legitimate unlock, which `bdeinfo`'s protector enumeration still records at the volume-header level.
+
+**Additional attacker TTPs:**
+- **T1036.001 (Masquerading):** An attacker may use `esedbexport` to extract data from `ntds.dit` under the guise of a legitimate system process, such as `lsass.exe`, to avoid detection. This can be detected by correlating `esedbexport` execution with `event_id:4688` where `NewProcessName` is `esedbexport` and the parent process is `lsass.exe`.
+- **T1040 (Compromise Accounts):** Attackers may use `pffexport` to extract sensitive information from Outlook PST files and then use that information to compromise other accounts. This can be detected by correlating `pffexport` execution with `event_id:4688` where `NewProcessName` is `pffexport` and the parent process is a known email client like `outlook.exe`.
 
 Every one of these leaves recoverable evidence — shadow-copy creation times (`vshadowinfo`), event-log record gaps (`evtxexport`), new key protectors (`bdeinfo`), and ESE table access patterns (`esedbexport`) — all defender-findable trails.
 
@@ -138,6 +146,8 @@ Expected findings: `grep -c "Record number"` returns the total record count for 
 - **T1110** — Brute Force (4625→4624 correlation). https://attack.mitre.org/techniques/T1110/
 - **T1059** — Command and Scripting Interpreter (4688 process-creation analysis). https://attack.mitre.org/techniques/T1059/
 - **T1486** — Data Encrypted for Impact / BitLocker abuse (`bdeinfo` metadata review). https://attack.mitre.org/techniques/T1486/
+- **T1021.001** — Exploit Public-Facing Application (use of `esedbexport` on a web server). https://attack.mitre.org/techniques/T1021/001/
+- **T1053.005** — Scheduled Task/Job (use of `vshadowinfo` via scheduled task). https://attack.mitre.org/techniques/T1053/005/
 - **DFIR phase:** Examination & Analysis (parsing acquired artifacts) supporting Identification of scope.
 
 ## Sources
@@ -161,6 +171,14 @@ Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn
 - MITRE ATT&CK T1003 / T1003.003 (OS Credential Dumping / NTDS): https://attack.mitre.org/techniques/T1003/ and https://attack.mitre.org/techniques/T1003/003/
 - MITRE ATT&CK T1114 (Email Collection): https://attack.mitre.org/techniques/T1114/
 - MITRE ATT&CK T1078 (Valid Accounts): https://attack.mitre.org/techniques/T1078/
-- MITRE ATT&CK T1110 (Brute Force): https://attack.mitre
+- MITRE ATT&CK T1110 (Brute Force): https://attack.mitre.org/techniques/T1110/
+- MITRE ATT&CK T1021.001 (Exploit Public-Facing Application): https://attack.mitre.org/techniques/T1021/001/
+- MITRE ATT&CK T1053.005 (Scheduled Task/Job): https://attack.mitre.org/techniques/T1053/005/
 
-<!-- cyberlab-enriched: v1 -->
+## Related modules
+- [Disk & filesystem forensics](../01-disk-forensics/README.md) -- same learning path (Foundations)
+- [Memory forensics](../02-memory-forensics/README.md) -- same learning path (Foundations)
+- [Timeline / super-timelining](../03-timeline-analysis/README.md) -- same learning path (Foundations)
+- [Registry analysis](../04-registry-analysis/README.md) -- same learning path (Foundations)
+
+<!-- cyberlab-enriched: v2 -->
