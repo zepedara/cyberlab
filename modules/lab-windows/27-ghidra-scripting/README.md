@@ -207,6 +207,129 @@ Once Ghidra scripts have flagged suspicious code patterns (e.g., `VirtualAlloc` 
 - [MITRE ATT&CK: T1055.002](https://attack.mitre.org/techniques/T1055/002/)
 - [SpecterOps: Detecting Reflective DLL Injection](https://posts.specterops.io/defenders-think-in-graphs-too-part-1-572524c71e91) (Detection engineering for T1574.009)
 
+
+### Essential Commands & Features
+
+#### Ghidra Headless Batch Mode (`-process`)
+Use Ghidra’s headless analyzer to automate script execution without launching the GUI. This is critical for bulk analysis or CI/CD pipelines. The `-process` flag processes a single binary, while `-scriptPath` specifies the script directory.
+
+**Example:**
+```bash
+analyzeHeadless /path/to/project_dir ProjectName -import /malware/sample.exe -process -scriptPath /scripts -postScript CapaGhidra.py
+```
+**When to use:** Automate analysis of multiple samples (e.g., triaging **T1059.003 Command and Scripting Interpreter: Windows Command Shell** or **T1562.004 Impair Defenses: Disable or Modify System Firewall**).
+
+---
+
+#### Ghidra Python API (`currentScript`)
+Access the current script’s context via `currentScript` to interact with the program, listing, or decompiler. Useful for dynamic analysis or modifying program state.
+
+**Example:**
+```python
+from ghidra.app.script import GhidraScript
+currentScript = getState().getScript()
+func = currentScript.getFirstFunction()
+print(f"First function: {func.getName()}")
+```
+**When to use:** Programmatically enumerate functions or cross-reference data (e.g., identifying **T1574.007 Hijack Execution Flow: Path Interception by PATH Environment Variable**).
+
+---
+
+#### Capa Verbose/JSON Output (`-v`, `-j`)
+Capa’s `-v` (verbose) and `-j` (JSON) flags provide detailed or machine-readable output for integration with other tools. Verbose mode includes rule matches and addresses, while JSON is ideal for parsing.
+
+**Example:**
+```bash
+capa -v /malware/sample.exe  # Verbose output
+capa -j /malware/sample.exe  # JSON output
+```
+**When to use:** `-v` for manual review (e.g., **T1027.006 Obfuscated Files or Information: HTML Smuggling**), `-j` for automated pipelines.
+
+---
+
+**Sources:**
+- [Ghidra Headless Analyzer Docs (NSA)](https://ghidra.re/ghidra_docs/api/ghidra/app/util/headless/HeadlessAnalyzer.html)
+- [Capa Rule Development Guide (FireEye)](https://github.com/mandiant/capa/blob/master/doc/rules.md)
+
+### Detection Signatures & Reference Artifacts
+
+Below are defensive detection signatures and reference artifacts for identifying benign Ghidra scripting activity in a lab environment.
+
+---
+
+```yara
+rule GhidraScript_BenignLabSample {
+    meta:
+        description = "Detects benign Ghidra Python scripting artifacts in a lab environment"
+        author = "Defensive Training Module"
+        reference = "https://ghidra-sre.org/"
+        date = "2024-05-20"
+        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
+        mitre_attack = "T1059.001 Command and Scripting Interpreter: PowerShell"
+
+    strings:
+        $ghidra_head = "GhidraScript" nocase
+        $python_import = "import ghidra" nocase
+        $script_header = "# Ghidra Python Script" nocase
+        $api_call = "currentProgram.getFunctionManager()" nocase
+        $comment = "// Benign lab script" nocase
+        $script_name = "LabAnalysisScript.py" nocase
+
+    condition:
+        filesize < 50KB and (
+            $ghidra_head or
+            $python_import or
+            $script_header or
+            $api_call or
+            all of ($comment, $script_name)
+        )
+}
+```
+
+---
+
+```yaml
+title: Benign Ghidra Python Script Execution
+id: 1a2b3c4d-5e6f-7890-1234-567890abcdef
+status: experimental
+description: Detects benign Ghidra Python script execution in a lab environment
+author: Defensive Training Module
+date: 2024/05/20
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        Image|endswith: '\python.exe'
+        CommandLine|contains:
+            - 'ghidra'
+            - 'LabAnalysisScript.py'
+            - 'currentProgram.getFunctionManager()'
+    condition: selection
+falsepositives:
+    - Legitimate Ghidra scripting in a lab environment
+level: informational
+tags:
+    - attack.t1059.001
+    - attack.execution
+```
+
+---
+
+**Reference artifacts / IOCs**
+
+| SHA256 Hash | Filename | Host/Network Artifacts |
+|-------------|----------|------------------------|
+| `a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef` | `LabAnalysisScript.py` | Execution via `C:\ghidra\support\analyzeHeadless.bat` on `192.0.2.10` |
+| `b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef1` | `ghidra_scripts.log` | Log file at `C:\Users\LabUser\ghidra_scripts.log` containing benign API calls |
+| N/A | N/A | Network connection to `hxxp://example[.]com/ghidra-docs` (documentation only) |
+
+**MITRE ATT&CK Technique:**
+- [T1059.001 Command and Scripting Interpreter: PowerShell](https://attack.mitre.org/techniques/T1059/001/)
+
+**Authoritative Source:**
+- [Ghidra Official Documentation](https://ghidra-sre.org/)
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -241,3 +364,8 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - https://posts.specterops.io/defenders-think-in-graphs-too-part-1-572524c71e91
 
 <!-- cyberlab-enriched: v4 -->
+- https://ghidra.re/ghidra_docs/api/ghidra/app/util/headless/HeadlessAnalyzer.html
+- https://github.com/mandiant/capa/blob/master/doc/rules.md
+- https://ghidra-sre.org/"
+
+<!-- cyberlab-enriched: v5 -->
