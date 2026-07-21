@@ -148,6 +148,41 @@ To deepen analysis of malicious PDFs, leverage these **undocumented or underused
 ### Threat Hunting & Detection Engineering
 To detect malicious Office PDFs, threat hunters can focus on identifying suspicious activity related to [T1625: Kernel-mode Rootkits](https://attack.mitre.org/techniques/T1625) and [T1497: Defacement](https://attack.mitre.org/techniques/T1497). Monitoring Windows Event ID 4688 for unusual process creation, particularly those involving `winword.exe` or `excel.exe`, can help identify potential exploitation. Analyzing Zeek logs for HTTP requests with suspicious User-Agent headers or unusual PDF downloads can also indicate malicious activity. Threat hunters can pivot on these findings by investigating related network connections, examining system logs for signs of privilege escalation, and inspecting file system modifications. Additionally, monitoring for unusual registry modifications, such as changes to the `HKEY_CLASSES_ROOT` hive, can indicate attempts to establish persistence. For more information on threat hunting and detection engineering, see the [Cybersecurity and Infrastructure Security Agency (CISA) website](https://www.cisa.gov/) and the [National Institute of Standards and Technology (NIST) Special Publication 800-53](https://csrc.nist.gov/publications/detail/sp/800-53/revison/5/final).
 
+
+### Essential Commands & Features
+While the module introduces PDFStreamDumper’s basic parsing, three powerful features enable deeper forensic analysis of malicious PDFs. **Stream carving** (`-s`) isolates all embedded streams (e.g., JavaScript, executables) as separate files for independent inspection. Use when you suspect obfuscated payloads hidden in streams:  
+`pdfstreamdumper -s suspect.pdf /output/streams/`  
+This command extracts every stream object, useful for identifying dropped binaries or encoded scripts (cited as [T1204.001](https://attack.mitre.org/techniques/T1204/001/) *User Execution: Malicious File*).
+
+**Object filtering** (`-f`) narrows output to specific object numbers or types, ideal for isolating suspicious or unusually large objects in a complex document. Example:  
+`pdfstreamdumper -f /obj=3,0 suspect.pdf`  
+This shows only object 3 generation 0, allowing focused analysis of embedded content often used for initial access (e.g., [T1566.002](https://attack.mitre.org/techniques/T1566/002/) *Phishing: Spearphishing Link*).
+
+**Raw hex view** (accessible via `-x` or within interactive mode) displays the uninterpreted hexadecimal of any object or stream, crucial for detecting encoded scripts, shellcode, or hidden metadata that rendered view obscures. Use:  
+`pdfstreamdumper -x suspect.pdf -f /obj=5,0`  
+This outputs raw hex of object 5, enabling analysis of encoded payloads that bypass string-based detection.
+
+For further reading:
+- [NCSC Guide on Analysing Malicious PDFs](https://www.ncsc.gov.uk/guidance/malicious-pdf-analysis)
+- [CIS Benchmarks for PDF Security](https://www.cisecurity.org/benchmark/pdf)
+
+### Adversary Emulation & Red-Team Perspective
+
+From a red-team perspective, malicious Office and PDF files are a staple for initial access, leveraging **T1203 (Exploitation for Client Execution)** and **T1564.001 (Hide Artifacts: Hidden Files and Directories)** to bypass defenses. Attackers embed malicious macros (e.g., VBA or Excel 4.0) or JavaScript in PDFs, often using **T1027.006 (Obfuscated Files or Information: HTML Smuggling)** to evade static analysis. For example, a PDF might exploit **CVE-2023-21608** (Adobe Reader U3D memory corruption) to execute shellcode, while an Office document could use **T1204.002 (User Execution: Malicious File)** to trick users into enabling macros, dropping a payload via **T1105 (Ingress Tool Transfer)**.
+
+Artifacts include:
+- **Office**: Temporary files (`~$*.docx`), macro streams in OLE objects, and registry keys (e.g., `HKCU\Software\Microsoft\Office\<version>\Word\Security\Trusted Documents`).
+- **PDF**: Suspicious JavaScript streams (e.g., `/JS` or `/OpenAction`), embedded executables (e.g., `/Launch`), and anomalous cross-reference tables.
+
+Evasion tactics involve:
+- **Obfuscation**: XOR-encoded payloads, junk code, or split strings (e.g., `"p" & "o" & "w" & "e" & "r" & "s" & "h" & "e" & "l" & "l"`).
+- **Living-off-the-Land**: Using `mshta.exe` or `certutil.exe` to decode payloads (e.g., `certutil -decode`).
+- **Timing Delays**: Sleep functions or scheduled tasks to bypass sandbox analysis.
+
+**Sources**:
+- [CVE-2023-21608 Exploit Analysis (Qualys)](https://blog.qualys.com/vulnerabilities-threat-research/2023/01/10/adobe-reader-cve-2023-21608)
+- [Red Team Notes: Office & PDF Tradecraft (ired.team)](https://www.ired.team/offensive-security/initial-access/phishing-with-malicious-office-documents)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -188,3 +223,11 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://csrc.nist.gov/publications/detail/sp/800-53/revison/5/final
 
 <!-- cyberlab-enriched: v3 -->
+- https://attack.mitre.org/techniques/T1204/001/
+- https://attack.mitre.org/techniques/T1566/002/
+- https://www.ncsc.gov.uk/guidance/malicious-pdf-analysis
+- https://www.cisecurity.org/benchmark/pdf
+- https://blog.qualys.com/vulnerabilities-threat-research/2023/01/10/adobe-reader-cve-2023-21608
+- https://www.ired.team/offensive-security/initial-access/phishing-with-malicious-office-documents
+
+<!-- cyberlab-enriched: v4 -->
