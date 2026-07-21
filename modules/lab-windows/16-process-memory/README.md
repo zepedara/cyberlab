@@ -127,6 +127,22 @@ Expected: `Get-FileHash` returns `4B8D9F2A6C1E0D7B3F5A29C8E14D6072B9A0C3F18E5D47
 - **T1055.004 – Process Doppelganging**: adversaries may use process doppelganging to create a new process that appears to be legitimate but is actually malicious. https://attack.mitre.org/techniques/T1055/004/
 - **DFIR phase:** Identification (triage a suspect PID) and Examination/Analysis (dump and reconstruct memory-resident code for deeper static analysis).
 
+
+### Essential Commands & Features
+To further leverage the capabilities of pe-sieve in process memory analysis, the `--dump-memory` option is crucial. This feature allows for the dumping of memory sections of a process, which can be particularly useful in detecting and analyzing malware that resides in memory, such as those using the techniques associated with [T1496, "Resource Hijacking"](https://attack.mitre.org/techniques/T1496) and [T1215, "Credentials from Password Stores"](https://attack.mitre.org/techniques/T1215). For instance, to dump the memory of a process with the ID 1234, you can use the command `pe-sieve.exe --dump-memory -p 1234`. This command is especially useful when trying to analyze malware that uses anti-debugging techniques or code obfuscation, making traditional analysis methods less effective. By analyzing the dumped memory, security professionals can gain insights into the malware's behavior and potentially uncover hidden malicious activities. For more detailed information on using pe-sieve and its options, including the `--dump-memory` feature, refer to the official documentation at https://github.com/pe-sieve/Pe-Sieve and https://www.cyberbit.com/blog/posts/dumping-process-memory-for-malware-analysis/.
+
+### Common Pitfalls & Result Validation
+
+When analyzing process memory, analysts often fall into traps that lead to false positives or missed detections. A frequent mistake is **assuming all injected memory regions are malicious**—legitimate applications (e.g., debuggers, AV tools) may allocate executable memory (e.g., `PAGE_EXECUTE_READWRITE`). Always cross-reference memory regions with known benign processes and validate permissions against expected behavior. Another pitfall is **ignoring memory alignment tricks** (e.g., `T1055.013: Process Injection: Process Hollowing`), where attackers unmap legitimate code before injecting payloads. Use tools like Volatility’s `ldrmodules` or `malfind` to detect discrepancies between mapped files and in-memory sections.
+
+To validate findings, **correlate memory artifacts with behavioral indicators**. For example, if you suspect `T1601.001: Modify System Image: Patch System Image`, check for unsigned code in memory against known system binaries (e.g., `lsass.exe`). Additionally, **avoid relying solely on entropy**—while high entropy may indicate packed code (e.g., `T1027.009: Obfuscated Files or Information: Embedded Payloads`), some legitimate libraries (e.g., cryptographic modules) also exhibit this trait. Instead, combine entropy analysis with YARA rules or API call monitoring.
+
+**False conclusions often stem from incomplete context**. Always document the process tree, loaded modules, and network connections (e.g., via `T1041: Exfiltration Over C2 Channel`) to distinguish malicious activity from benign anomalies.
+
+**Sources**:
+- [CERT-EU: Memory Forensics Pitfalls](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_Memory_Forensics.pdf)
+- [FireEye: Detecting Process Injection Techniques](https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -154,3 +170,11 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [Behavioral / dynamic analysis](../15-behavioral-dynamic/README.md) -- same learning path (Windows RE); observe the runtime behavior that triggers injection before you scan memory.
 
 <!-- cyberlab-enriched: v2 -->
+- https://attack.mitre.org/techniques/T1496
+- https://attack.mitre.org/techniques/T1215
+- https://github.com/pe-sieve/Pe-Sieve
+- https://www.cyberbit.com/blog/posts/dumping-process-memory-for-malware-analysis/.
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_Memory_Forensics.pdf
+- https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html
+
+<!-- cyberlab-enriched: v3 -->
