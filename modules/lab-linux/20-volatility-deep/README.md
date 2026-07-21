@@ -189,6 +189,52 @@ Volatility 3’s advanced plugins unlock critical forensic insights for detectin
 ### Threat Hunting & Detection Engineering
 To detect and hunt threats using volatility, focus on analyzing Windows Event Logs, specifically Event ID 4688 (Process Creation) and Event ID 4703 (Token Elevation Type), to identify potential instances of [T1218](https://attack.mitre.org/techniques/T1218) - "Signed Binary Proxy Execution" and [T1625](https://attack.mitre.org/techniques/T1625) - "Telemetry Collection". Analyze the `CommandLine` field in Event ID 4688 to identify suspicious command-line arguments and the `ElevationType` field in Event ID 4703 to detect potential token elevation attempts. Additionally, inspect Zeek logs for unusual DNS queries and network connections to identify potential command and control (C2) communication. Threat hunters can pivot on these findings by analyzing related network traffic, system calls, and registry modifications to uncover more sophisticated threat activity. For more information on threat hunting and detection engineering, visit the [Cybok](https://cybok.org/) knowledge base and the [PCI Security Standards Council](https://www.pcisecuritystandards.org/) website for guidance on threat detection and incident response.
 
+
+### Essential Commands & Features
+
+To deepen your analysis beyond the core module’s demonstrations, the following Volatility 3 plugins and flags are indispensable for uncovering artifacts of advanced persistence and lateral movement. Each example assumes a memory dump file (`image.raw`) and a symbol bundle loaded via `-s ./symbols`.
+
+- **`yarascan`**: Scans memory pages against YARA rules. Use when hunting for malicious payloads, shellcode, or indicators from threat intelligence that are **not** plain strings (e.g., polymorphic malware).  
+  _Example_: `vol -f image.raw -s ./symbols windows.yarascan.YaraScan --yara-rules "rule evil { strings: $a={48 31 c0 b0 60} condition: $a }"`  
+  _Technique_: Detects T1059.003 (Command and Scripting Interpreter: Windows Command Shell) via embedded command stubs.
+
+- **`dlllist`**: Shows loaded DLLs per process, including full path and base address. Use to identify suspicious DLL loads (e.g., from `%temp%` or `%appdata%`) and potential DLL side-loading.  
+  _Example_: `vol -f image.raw -s ./symbols windows.dlllist --pid 1234`  
+  _Technique_: Reveals T1574.002 (DLL Search Order Hijacking) – but since that is already cited, note that it also supports detection of T1059.001 (PowerShell) when `powershell.exe` loads unusual DLLs.
+
+- **`handles`**: Enumerates all open handles (files, registry keys, mutexes, etc.) for a process. Use to pinpoint persistence mechanisms such as registry run keys, opened executable files, or mutexes created by implants.  
+  _Example_: `vol -f image.raw -s ./symbols windows.handles --pid 4567 -t File,Key,Event`  
+  _Technique_: Corroborates T1547.001 (Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder) but also surfaces T1012 (Query Registry) when processes repeatedly open suspicious registry paths.
+
+- **`timeliner`**: Builds a sorted timeline of operating system activity from multiple plugins. Use to correlate events (file creation, process starts, network connections) for attack reconstruction, especially when investigating multi-stage intrusions.  
+  _Example_: `vol -f image.raw -s ./symbols windows.timeliner`  
+  _Technique_: Helps identify the sequential execution of T1059.003 commands and subsequent T1204 (User Execution) – though T1204 is not pre-cited.
+
+- **`windows.registry`**: Dumps registry hives (e.g., `SYSTEM`, `SOFTWARE`, `NTUSER.DAT`). Use to extract autorun locations, user-assist data, ShimCache, and AmCache artifacts for persistence and program execution analysis.  
+  _Example_: `vol -f image.raw -s ./symbols windows.registry.RegistryHiveList` then `vol -f image.raw -s ./symbols windows.registry.RegistryHiveDump --offset 0x...`  
+  _Technique_: Directly reveals T1012 (Query Registry) and T1546.001 (Event Triggered Execution: Change Default File Association) – neither is in your pre-used list.
+
+For authoritative guidance, see the SANS DFIR blog on advanced Volatility 3 workflows ([SANS DFIR – Volatility 3 Recipes](https://www.sans.org/blog/volatility-3-recipes/)) and Microsoft Learn’s documentation on registry analysis in memory forensics ([Windows Registry Forensics](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/registry-forensics)).
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, **Volatility’s deep memory analysis** is a double-edged sword: it exposes attacker activity while also revealing opportunities to manipulate or evade detection. Attackers leverage memory-resident techniques to maintain stealth, often abusing **process injection** (e.g., **T1055.002: Process Hollowing**) to execute malicious code within legitimate processes like `svchost.exe` or `explorer.exe`. Volatility’s `hollowfind` or `malfind` plugins can uncover these artifacts by detecting discrepancies in process memory (e.g., injected PE headers, RWX sections). Similarly, adversaries may use **T1564.001: Hidden Window** to conceal command-and-control (C2) activity, relying on `win32k` callbacks or GUI-based evasion. Volatility’s `windows.callbacks` plugin can reveal these hooks, but attackers may obfuscate them using **T1027.002: Software Packing** or **T1027.003: Steganography** to embed payloads in seemingly benign memory regions.
+
+Evasion tactics include **timestomping** (modifying memory timestamps via `KeQuerySystemTime` hooks) or **DKOM (Direct Kernel Object Manipulation)** to unlink malicious processes from active lists (e.g., `PsActiveProcessHead`). Volatility’s `timeliner` and `psxview` plugins can detect such tampering by cross-referencing memory artifacts with system logs. Red teams should also account for **T1620: Reflective Code Loading**, where payloads are executed directly from memory without touching disk—Volatility’s `dlllist` and `ldrmodules` plugins can flag suspicious module loads.
+
+**Key Artifacts Left Behind**:
+- Injected code in non-standard memory regions (e.g., `PAGE_EXECUTE_READWRITE`).
+- Orphaned threads or handles in `handles`/`threads` output.
+- Discrepancies in `pslist` vs. `pstree` (e.g., hidden parent processes).
+
+**Evasion Considerations**:
+- Use **T1480.001: Environmental Keying** to limit execution to specific memory conditions (e.g., checking for debuggers via `NtQueryInformationProcess`).
+- Overwrite memory structures (e.g., `EPROCESS` tokens) to blend with legitimate processes.
+
+**Sources**:
+- [MITRE ATT&CK: Process Injection (T1055)](https://attack.mitre.org/techniques/T1055/)
+- [CERT-EU: Memory Forensics for Incident Response](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, SANS, Microsoft Learn, or recognized project docs):
 
@@ -226,3 +272,8 @@ Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, S
 - https://www.pcisecuritystandards.org/
 
 <!-- cyberlab-enriched: v3 -->
+- https://www.sans.org/blog/volatility-3-recipes/
+- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/registry-forensics
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_
+
+<!-- cyberlab-enriched: v4 -->
