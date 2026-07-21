@@ -122,7 +122,15 @@ Behavioral analysis gives a SOC the concrete IOCs and TTPs needed to write and v
 - **Injection detection (T1055 / T1055.001).** Process Explorer exposes injected DLLs and RWX regions; the corresponding endpoint signals are **Sysmon Event ID 8 (CreateRemoteThread)** and **Event ID 10 (ProcessAccess)** with suspicious `GrantedAccess` masks (e.g., `0x1F0FFF`/`0x1FFFFF` full access, or the `0x1438`/`0x143A` combinations seen with remote memory write). For DLL injection specifically (T1055.001), correlate a **Sysmon Event ID 7 (Image/Module Loaded)** where a module in `%TEMP%`/`%APPDATA%` loads into an unrelated host process and `Signed` is `false`. Pivot from any of these to the parent/child chain (Sysmon EID 1) to scope containment.
 - **Execution / dropper telemetry (T1204.002).** The user-initiated run of `benign_dropper.exe` maps to User Execution: Malicious File; the corresponding signal is **Sysmon Event ID 1 (ProcessCreate)** with `ParentImage` being a browser, mail client, or `explorer.exe`. Threat-hunting pivot: join EID 1 to the subsequent EID 11 (FileCreate) for the `%TEMP%` drop and EID 13 for the Run-key write to reconstruct the full dropper chain from one process GUID.
 
-Concrete IDs to detect on: **T1547.001**, **T1053.005**, **T1055**, **T1055.001**, **T1071.001**, **T1204.002**.
+**Added detection logic for additional techniques:**
+
+- **Modify Registry (T1112).** Beyond Run keys, malware often modifies registry values to disable security features (e.g., setting `HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\DisableAntiSpyware` to `1`). Detection logic: alert on Sysmon EID 13 where `TargetObject` contains `Policies\Microsoft\Windows Defender` or `DisableRealtimeMonitoring`, and the writing process is not the legitimate `MpCmdRun.exe` or a known update process. Threat-hunting pivot: search for any EID 13 with `Details` containing `dword:00000001` (disable) for such keys, and correlate with a subsequent Sysmon EID 1 showing execution of `powershell -Command "Set-MpPreference -DisableRealtimeMonitoring $true"`. Source: MITRE T1112, Sysmon documentation.
+
+- **Impair Defenses: Disable or Modify Tools (T1562.001).** Sample may attempt to stop or delete security tools (e.g., `net stop WinDefend`, `sc stop WdNisSvc`). Detection logic: alert on Sysmon EID 1 where `CommandLine` contains `net stop` or `sc stop` and the targeted service name matches a known security tool (e.g., `WinDefend`, `WdNisSvc`, `SecurityHealthService`, `MsMpSvc`). Also watch for Sysmon EID 13 or EID 1 that deletes event log providers or modifies service start types (`sc config WinDefend start= disabled`). Threat-hunting pivot: from a process that drops a file (EID 11), look for subsequent EID 1 with `net stop` or `sc config`. Source: MITRE T1562.001, Sysmon documentation.
+
+- **Masquerading (T1036.005).** Malware may name its dropped executable to mimic a legitimate system file (e.g., `svchost.exe`, `explorer.exe`, `rundll32.exe`) to evade suspicion. Detection logic: alert on Sysmon EID 1 where `Image` matches a common LOLBIN name but is launched from an unusual path (not `C:\Windows\System32`), or where the `OriginalFileName` (from the PE's version info) differs from the file name. Process Explorer's "Verified Signer" column and the "Company Name" column quickly reveal unsigned malicious binaries masquerading as Microsoft signed files. Threat-hunting pivot: cross-reference Sysmon EID 1 `Image` with the KnownDlls list (HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\KnownDLLs) – any process with a system binary name but loaded from %TEMP% or %APPDATA% is suspicious. Source: MITRE T1036.005, Sysmon documentation.
+
+Concrete IDs to detect on: **T1547.001**, **T1053.005**, **T1055**, **T1055.001**, **T1071.001**, **T1204.002**, **T1112**, **T1562.001**, **T1036.005**.
 
 ## Attacker perspective
 Attackers rely on many of these same behaviors, and defenders exploit the artifacts they leave.
@@ -134,6 +142,12 @@ Attackers rely on many of these same behaviors, and defenders exploit the artifa
 - **User Execution (T1204.002).** The initial dropper relies on a user double-clicking the file; the attacker's evasion is social (icon/name spoofing, double extensions), while the defensive artifact is the Sysmon EID 1 parent→child lineage.
 - **Anti-analysis (T1497 / T1518.001 / T1057).** Malware enumerates running processes and drivers looking for `procmon`, `procexp`, `Wireshark`, or FakeNet's redirected interface (Process Discovery, T1057) and may halt or change behavior — but the enumeration itself (process/handle queries visible in the Procmon trace, and `CreateToolhelp32Snapshot`/`Process32Next` API use) is a detectable artifact. FakeNet-specific evasion includes checking whether a hardcoded "fake" domain resolves (a sandbox that answers everything). MITRE documents Virtualization/Sandbox Evasion (T1497), Security Software Discovery (T1518.001), and Process Discovery (T1057).
 
+**Added attacker techniques and evasion details:**
+
+- **Modify Registry (T1112).** Attackers modify registry keys to persist, escalate privileges, or impair defenses. Common targets: `HKLM\...\Policies\Microsoft\Windows Defender\DisableAntiSpyware` to disable Defender, or `HKCU\...\CurrentVersion\Run` for persistence. Evasion: use `reg.exe` via LOLBINs like `cmd.exe /c reg add ...` to blend in with administrative scripts, and set values to `0` or `1` to appear benign. Artifact: a **Sysmon EID 13** event with `TargetObject` pointing to a Defender or security tool policy key, often preceded by a `reg` commandline in EID 1. Forensic value: the exact timestamp of the disabling action.
+- **Impair Defenses: Disable or Modify Tools (T1562.001).** Malware may stop services, disable real-time monitoring, or delete event logs to evade detection. Evasion: attackers use `sc stop` or `net stop` with a hidden window, or invoke `powershell -Command "Set-MpPreference -DisableRealtimeMonitoring $true"` from a script. Artifact: **Sysmon EID 1** with `CommandLine` containing `sc stop WinDefend`, **Sysmon EID 5** (process terminated) if the service process is killed, and **Windows Event ID 7036** (service state change) in the System log. Threat hunts: monitor for unusual service stop commands issued by non-system processes.
+- **Masquerading (T1036.005).** Attackers often name their dropper `svchost.exe` and place it in `%TEMP%` or `%APPDATA%` to evade notice. Evasion: use the `Wow64` subsystem or disable the reparse point on the legitimate `svchost.exe` to allow the fake one to run. Artifact: **Sysmon EID 1** with `Image` = `svchost.exe` but `CommandLine` lacking the typical `-k` flag and parameters, and the process spawned by `explorer.exe` or a browser. Process Explorer's "Verified Signer" column will show "Not Verified" for the fake. Forensic value: the discrepancy between the normal location and the actual path.
+
 ## Answer key
 - **Registry persistence:** Regshot Compare / Procmon `RegSetValue` shows `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\UpdateSvc` = path to the dropped file.
 - **Dropped file:** `%TEMP%\svc_update.dat` appears in Regshot "Files added" and Procmon `CreateFile` with `WriteFile`.
@@ -144,7 +158,7 @@ Verification commands:
 ```powershell
 # Confirm the sample hash before running.
 Get-FileHash .\exercise\benign_dropper.exe -Algorithm SHA256 | Format-List
-# Expected Hash: 9F2C4B1A7D63E58C0A4F1B9D2E6C8A37F5B0D1E4C9A72B8360D5E1F47A3C92B6
+# Expected Hash: c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b
 
 # After detonation, verify the persistence value directly.
 Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'UpdateSvc'
@@ -163,107 +177,61 @@ Sample sha256: `c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b
 - **T1204.002** — User Execution: Malicious File (user-run dropper; Sysmon EID 1 lineage). https://attack.mitre.org/techniques/T1204/002/
 - **T1057** — Process Discovery (anti-analysis process enumeration visible in Procmon). https://attack.mitre.org/techniques/T1057/
 - **T1497** — Virtualization/Sandbox Evasion, and **T1518.001** — Software Discovery: Security Software Discovery (anti-analysis checks visible in Procmon). https://attack.mitre.org/techniques/T1497/ · https://attack.mitre.org/techniques/T1518/001/
+- **T1112** — Modify Registry (Regshot/Procmon; Sysmon EID 13 on policy keys). https://attack.mitre.org/techniques/T1112/
+- **T1562.001** — Impair Defenses: Disable or Modify Tools (Sysmon EID 1 with `sc stop`; Windows Event 7036). https://attack.mitre.org/techniques/T1562/001/
+- **T1036.005** — Masquerading: Match Legitimate Name or Location (Process Explorer "Verified Signer"; Sysmon EID 1 path anomaly). https://attack.mitre.org/techniques/T1036/005/
 - **DFIR phase:** Examination / Analysis (dynamic behavioral triage), feeding Identification and Containment.
 
 
 ### Essential Commands & Features
 
-To maximize **Process Monitor (Procmon)** for behavioral dynamic analysis, master these undemonstrated but critical features:
+Procmon’s advanced features unlock deeper behavioral insights, particularly for detecting evasion and persistence techniques. Below are four critical but often overlooked capabilities, each with a concrete example and tactical use case.
 
 1. **Drop Filtered Events**
-   *When to use*: Reduce memory usage during long captures by discarding filtered events in real-time.
-   *Example*:
-   ```plaintext
-   Procmon → Filter → Drop Filtered Events (check box)
-   ```
-   *Use case*: Monitoring persistent malware (e.g., **T1543.003: Create or Modify System Process: Windows Service**) without bloating logs.
-
-2. **Load/Save Filters**
-   *When to use*: Reuse or share preconfigured filters (e.g., for **T1036.005: Masquerading: Match Legitimate Name or Location**).
-   *Example*:
-   ```plaintext
-   Procmon → Filter → Load Filter (select .pmf file)
-   ```
-
-3. **Stack Traces**
-   *When to use*: Trace the call stack of suspicious API calls (e.g., **T1055.012: Process Injection: Process Hollowing**).
-   *Example*:
-   ```plaintext
-   Right-click event → Stack (view module/thread context)
-   ```
-
-4. **Network Summary**
-   *When to use*: Correlate process activity with network connections (e.g., **T1095: Non-Application Layer Protocol**).
-   *Example*:
-   ```plaintext
-   Procmon → Tools → Network Summary (view process-to-port mappings)
-   ```
-
-**Sources**:
-- [Sysinternals Procmon Documentation (Microsoft Docs)](https://docs.microsoft.com/en-us/sysinternals/downloads/procmon)
-- [SANS DFIR: Advanced Procmon Techniques](https://www.sans.org/blog/advanced-process-monitor-filters/)
-
-### Threat Hunting & Detection Engineering
-To enhance threat hunting and detection engineering capabilities, focus on identifying patterns of behavior that align with specific MITRE ATT&CK techniques. For instance, **T1588: Obtain Capabilities** and **T1595: Active Scanning** can be detected by analyzing network logs for unusual scan activity or by monitoring system calls for suspicious capability acquisitions. In Windows environments, monitor Event ID 4688 for command-line arguments that may indicate capability acquisition attempts. Additionally, inspect Zeek logs for unusual scan patterns, such as multiple connections to different ports within a short timeframe. Threat hunters can pivot on these findings by investigating related processes, network connections, or user accounts. By integrating these detection logic elements into a comprehensive threat hunting strategy, security teams can improve their ability to detect and respond to advanced threats. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov/](https://www.cisa.gov/) or the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov/](https://csrc.nist.gov/).
-
-
-### Essential Commands & Features
-
-To deepen behavioral dynamic analysis with **Process Monitor (Procmon)**, leverage these undemonstrated but critical features for efficient threat hunting and forensic investigation:
-
-1. **Drop Filtered Events**
-   *When to use*: Reduce memory usage during long captures by discarding filtered events in real-time (e.g., excluding noise like `svchost.exe`).
+   *When to use*: Freeze Procmon’s memory buffer by discarding filtered events, preventing performance degradation during long captures (e.g., monitoring **T1543.003: Create or Modify System Process: Windows Service**).
    *Example*:
    ```plaintext
    Filter → Drop Filtered Events (Ctrl+X)
    ```
-   *Use case*: Detect **T1027.002 Obfuscated Files or Information: Software Packing** by focusing on anomalous process starts without storage overhead.
+   *Why*: Retains only high-fidelity events (e.g., `RegSetValue` for service creation) while avoiding buffer overflows.
 
-2. **Load/Save Filters**
-   *When to use*: Reuse or share complex filters (e.g., for **T1562.001 Impair Defenses: Disable or Modify Tools**).
-   *Example*:
-   ```plaintext
-   Filter → Load Filter (Ctrl+L) → Select "DisableDefender.pmf"
-   ```
-   *Pre-built filters*: Download from [Sysinternals forums](https://forum.sysinternals.com/procmon-filters_topic10353.html).
-
-3. **Stack Traces**
-   *When to use*: Trace the call stack of suspicious events (e.g., DLL injection via **T1055.002 Process Injection: Portable Executable Injection**).
+2. **Stack Traces**
+   *When to use*: Trace the call stack of suspicious API calls to identify malicious code paths (e.g., **T1055.012: Process Injection: Process Hollowing**).
    *Example*:
    ```plaintext
    Right-click event → Stack (Ctrl+K)
    ```
-   *Tip*: Enable symbol servers (Options → Configure Symbols) for accurate function names.
+   *Why*: Reveals parent processes (e.g., `explorer.exe` spawning `svchost.exe` with anomalous DLLs).
 
-4. **Bookmarks**
-   *When to use*: Flag critical events (e.g., registry modifications tied to **T1112 Modify Registry**) for later review.
+3. **Count Occurrences**
+   *When to use*: Quantify repetitive behaviors like registry key enumeration (e.g., **T1012: Query Registry**).
    *Example*:
    ```plaintext
-   Right-click event → Bookmark (Ctrl+B) → Add note: "Persistence via Run key"
+   Tools → Count Values → Select "Path" column → "Count"
    ```
-   *Export*: Save bookmarks via File → Save → "Include bookmarks only".
+   *Why*: Highlights brute-force registry queries (e.g., 100+ `RegQueryValue` calls to `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`).
+
+4. **Process Tree**
+   *When to use*: Visualize process ancestry to detect lateral movement or masquerading (e.g., **T1036.004: Masquerading: Masquerade Task or Service**).
+   *Example*:
+   ```plaintext
+   Tools → Process Tree (Ctrl+T)
+   ```
+   *Why*: Exposes unexpected parent-child relationships (e.g., `powershell.exe` spawning `cmd.exe` with a hidden window).
 
 **Authoritative Sources**:
-- [Procmon Advanced Features (Windows Sysinternals)](https://docs.microsoft.com/en-us/sysinternals/downloads/procmon#advanced-features)
-- [SANS DFIR Procmon Cheat Sheet](https://www.sans.org/blog/process-monitor-cheat-sheet/)
+- [Procmon Advanced Features (Sysinternals Docs)](https://docs.microsoft.com/en-us/sysinternals/downloads/procmon#advanced-features)
+- [MITRE ATT&CK: Process Injection (T1055.012)](https://attack.mitre.org/techniques/T1055/012/)
 
-### Adversary Emulation & Red-Team Perspective
+### Threat Hunting & Detection Engineering
 
-From a red-team perspective, **behavioral dynamic analysis evasion** is a critical tactic to bypass automated sandboxing and endpoint detection. Attackers abuse this by crafting malware that detects analysis environments (e.g., virtual machines, debuggers, or sandbox-specific artifacts) before executing malicious payloads. A common technique is **T1497.001: System Checks**, where malware queries system properties (e.g., CPU cores, memory, or registry keys like `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0`) to identify sandboxed or low-resource environments. If analysis conditions are detected, the malware may delay execution, exit silently, or trigger decoy behaviors (e.g., benign file operations) to mislead defenders.
+Hunt for **Process Injection (T1055.002 – Portable Executable Injection)** by pivoting from **Sysmon Event ID 8 (CreateRemoteThread)**. Focus on the `SourceImage` and `TargetImage` fields: a non-system process (e.g., `powershell.exe`, `rundll32.exe`) spawning a thread in another process (e.g., `lsass.exe`, `explorer.exe`) is a high-fidelity signal. Cross-reference with **Windows Security Event ID 4688** to confirm the parent-child relationship and command-line arguments. For network-based detection, use **Zeek’s `conn.log`** to identify anomalous inter-process communication (e.g., `powershell.exe` connecting to `lsass.exe` via named pipes, logged as `id.resp_p` values in the dynamic port range).
 
-Another evasion method is **T1622: Debugger Evasion**, where adversaries use anti-debugging tricks (e.g., checking for `IsDebuggerPresent()` or timing discrepancies) to thwart dynamic analysis. Artifacts left behind include:
-- **Process hollowing** (e.g., `svchost.exe` spawned with anomalous memory regions).
-- **Delayed execution** (e.g., scheduled tasks via `schtasks.exe` or registry `Run` keys).
-- **Suspicious API calls** (e.g., `NtQueryInformationProcess` for debugger checks).
-
-To evade detection, attackers may:
-- **Obfuscate strings** (e.g., XOR-encoded API calls).
-- **Use sleep loops** to outlast sandbox timeouts.
-- **Leverage legitimate processes** (e.g., `mshta.exe` or `rundll32.exe`) for execution.
+Detect **Indicator Removal (T1070.004 – File Deletion)** by monitoring **Windows Security Event ID 4663** (file deletion) with `AccessMask` `0x10000` (DELETE). Hunt for deletions in sensitive directories (e.g., `%TEMP%`, `%APPDATA%`) by non-standard processes (e.g., `cmd.exe` deleting `.bat` files). Correlate with **Sysmon Event ID 23 (FileDelete)** to capture the `TargetFilename` and `Hashes` fields. For network validation, use **Suricata’s `fileinfo`** to track deleted files referenced in HTTP/SMB traffic (e.g., `filename` field in `fileinfo` logs).
 
 **Sources:**
-- [FireEye: Anti-Sandbox Techniques](https://www.fireeye.com/blog/threat-research/2017/03/fin7_spear_phishing.html)
-- [CrowdStrike: Adversary Tradecraft](https://www.crowdstrike.com/blog/adversary-tradecraft-how-attackers-are-evading-detection/)
+- [MITRE ATT&CK: Process Injection (T1055.002)](https://attack.mitre.org/techniques/T1055/002/)
+- [Microsoft Docs: Sysmon Event ID 8](https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-8-createremotethread)
 
 ## Sources
 Tool behavior, flags, and expected output:
@@ -294,24 +262,24 @@ MITRE ATT&CK technique pages:
 - T1057: https://attack.mitre.org/techniques/T1057/
 - T1497: https://attack.mitre.org/techniques/T1497/
 - T1518.001: https://attack.mitre.org/techniques/T1518/001/
+- T1112: https://attack.mitre.org/techniques/T1112/
+- T1562.001: https://attack.mitre.org/techniques/T1562/001/
+- T1036.005: https://attack.mitre.org/techniques/T1036/005/
+
+Additional sources for detection logic and evasion:
+- CISA (Cybersecurity & Infrastructure Security Agency): https://www.cisa.gov/
+- NIST Computer Security Resource Center: https://csrc.nist.gov/
+- FireEye/ Mandiant: Anti-Sandbox Techniques (FIN7): https://www.fireeye.com/blog/threat-research/2017/03/fin7_spear_phishing.html
+- CrowdStrike: Adversary Tradecraft – How Attackers Are Evading Detection: https://www.crowdstrike.com/blog/adversary-tradecraft-how-attackers-are-evading-detection/
 
 ## Related modules
 - [Scenario: document detonation with network sim](../55-doc-detonation-case/README.md) -- shares fakenet-ng for network-callback capture during detonation.
 - [Static reverse engineering](../12-static-re/README.md) -- same learning path (Windows RE); static triage before dynamic runs.
 - [Dynamic debugging](../13-dynamic-debugging/README.md) -- same learning path (Windows RE); step through the behaviors observed here.
 - [.NET reverse engineering](../14-dotnet-re/README.md) -- same learning path (Windows RE); managed-code counterpart to this module.
-
-<!-- cyberlab-enriched: v2 -->
-- https://docs.microsoft.com/en-us/sysinternals/downloads/procmon
-- https://www.sans.org/blog/advanced-process-monitor-filters/
-- https://www.cisa.gov/](https://www.cisa.gov/
-- https://csrc.nist.gov/](https://csrc.nist.gov/
-
-<!-- cyberlab-enriched: v3 -->
-- https://forum.sysinternals.com/procmon-filters_topic10353.html
 - https://docs.microsoft.com/en-us/sysinternals/downloads/procmon#advanced-features
-- https://www.sans.org/blog/process-monitor-cheat-sheet/
-- https://www.fireeye.com/blog/threat-research/2017/03/fin7_spear_phishing.html
-- https://www.crowdstrike.com/blog/adversary-tradecraft-how-attackers-are-evading-detection/
+- https://attack.mitre.org/techniques/T1055/012/
+- https://attack.mitre.org/techniques/T1055/002/
+- https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-8-createremotethread
 
-<!-- cyberlab-enriched: v4 -->
+<!-- cyberlab-enriched: v5 -->
