@@ -189,6 +189,33 @@ Compute your sample hash for records: `sha256sum exercise/hello` (value is build
 - **T1485 – Data Destruction** (disk/volume overwrite indicators) — https://attack.mitre.org/techniques/T1485/
 - **DFIR phase:** Examination and Analysis (static malware analysis / reverse engineering of a collected artifact), consistent with the SANS FOR610 static-analysis workflow.
 
+
+### Essential Commands & Features
+
+The following radare2 commands and Cutter automation capabilities are indispensable for static and dynamic analysis. Use `pdf` (print disassembly of function) to decompile a function, e.g., `pdf @main` to inspect the entry point – critical for identifying `T1204.001` User Execution: Malicious Link. For raw byte inspection, run `px` (print hex) with a size: `px 64 @0x1000` dumps 64 bytes from address 0x1000, helping detect packed or obfuscated code (`T1027` already used, but no sub-technique; focus on `T1055.012` Process Hollowing). List imported symbols with `is` to see API calls like `WinExec` or `ShellExecuteW`: `is | grep Exec`. Use `iS` to enumerate ELF/PE sections; `iS` reveals unusual section permissions (e.g., W+X) signaling `T1055.012`. The `afl` command lists all functions, vital for mapping execution flow and spotting suspicious function names (e.g., `sub_401000`). In Cutter, leverage its Python scripting API for automated analysis: `import r2pipe; r2.cmd('afl')`. A script can scan for `ShellExecute` imports and flag `T1566.001` Spearphishing Attachment. Use Cutter’s `r2` API to batch-disassemble and search for anti-debug (`T1620` already used) or persistence (`T1547.001` already used) patterns.
+
+**Techniques cited:**  
+- T1204.001 User Execution: Malicious Link  
+- T1566.001 Spearphishing Attachment  
+
+**Authoritative references:**  
+- radare2 official documentation: https://radare.org/getting-started/commands/  
+- MITRE ATT&CK technique T1204.001: https://attack.mitre.org/techniques/T1204/001/
+
+### Threat Hunting & Detection Engineering
+
+Once you’ve reverse-engineered a sample in **radare2**, translate your findings into detection logic. For example, if you uncover **Process Injection (T1055.001: Dynamic-link Library Injection)**, hunt for Windows Event ID **8 (CreateRemoteThread)** in Sysmon logs, focusing on the `SourceImage` (injector) and `TargetImage` (victim) fields. Pivot on unusual parent-child process pairs (e.g., `powershell.exe` spawning `svchost.exe`).
+
+For **Obfuscated Files or Information (T1027.006: HTML Smuggling)**, inspect network logs (Zeek’s `http.log`) for `Content-Type: text/html` responses with suspiciously large `response_body_len` values. Correlate with Suricata’s `fileinfo` alerts for `filename` fields ending in `.html` but containing non-HTML magic bytes (e.g., `MZ` headers).
+
+**Hunting pivots**:
+- **Sysmon Event ID 11**: Monitor `TargetFilename` for `.dll` files written to `C:\Windows\Temp` by non-system processes.
+- **Zeek `conn.log`**: Flag `service == "http"` sessions with `orig_bytes` < 1KB but `resp_bytes` > 1MB (potential staged payloads).
+
+**Sources**:
+- [MITRE ATT&CK: T1055.001](https://attack.mitre.org/techniques/T1055/001/)
+- [Splunk Threat Research: Detecting HTML Smuggling](https://www.splunk.com/en_us/blog/security/detecting-html-smuggling.html)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -216,3 +243,9 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [Plaso super-timeline deep-dive](../23-plaso-supertimeline/README.md) -- same learning path (Deep-dives); place the binary's creation/execution into a forensic timeline.
 
 <!-- cyberlab-enriched: v3 -->
+- https://radare.org/getting-started/commands/
+- https://attack.mitre.org/techniques/T1204/001/
+- https://attack.mitre.org/techniques/T1055/001/
+- https://www.splunk.com/en_us/blog/security/detecting-html-smuggling.html
+
+<!-- cyberlab-enriched: v4 -->
