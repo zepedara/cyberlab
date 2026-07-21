@@ -206,6 +206,65 @@ To maximize **Process Monitor (Procmon)** for behavioral dynamic analysis, maste
 ### Threat Hunting & Detection Engineering
 To enhance threat hunting and detection engineering capabilities, focus on identifying patterns of behavior that align with specific MITRE ATT&CK techniques. For instance, **T1588: Obtain Capabilities** and **T1595: Active Scanning** can be detected by analyzing network logs for unusual scan activity or by monitoring system calls for suspicious capability acquisitions. In Windows environments, monitor Event ID 4688 for command-line arguments that may indicate capability acquisition attempts. Additionally, inspect Zeek logs for unusual scan patterns, such as multiple connections to different ports within a short timeframe. Threat hunters can pivot on these findings by investigating related processes, network connections, or user accounts. By integrating these detection logic elements into a comprehensive threat hunting strategy, security teams can improve their ability to detect and respond to advanced threats. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov/](https://www.cisa.gov/) or the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov/](https://csrc.nist.gov/).
 
+
+### Essential Commands & Features
+
+To deepen behavioral dynamic analysis with **Process Monitor (Procmon)**, leverage these undemonstrated but critical features for efficient threat hunting and forensic investigation:
+
+1. **Drop Filtered Events**
+   *When to use*: Reduce memory usage during long captures by discarding filtered events in real-time (e.g., excluding noise like `svchost.exe`).
+   *Example*:
+   ```plaintext
+   Filter → Drop Filtered Events (Ctrl+X)
+   ```
+   *Use case*: Detect **T1027.002 Obfuscated Files or Information: Software Packing** by focusing on anomalous process starts without storage overhead.
+
+2. **Load/Save Filters**
+   *When to use*: Reuse or share complex filters (e.g., for **T1562.001 Impair Defenses: Disable or Modify Tools**).
+   *Example*:
+   ```plaintext
+   Filter → Load Filter (Ctrl+L) → Select "DisableDefender.pmf"
+   ```
+   *Pre-built filters*: Download from [Sysinternals forums](https://forum.sysinternals.com/procmon-filters_topic10353.html).
+
+3. **Stack Traces**
+   *When to use*: Trace the call stack of suspicious events (e.g., DLL injection via **T1055.002 Process Injection: Portable Executable Injection**).
+   *Example*:
+   ```plaintext
+   Right-click event → Stack (Ctrl+K)
+   ```
+   *Tip*: Enable symbol servers (Options → Configure Symbols) for accurate function names.
+
+4. **Bookmarks**
+   *When to use*: Flag critical events (e.g., registry modifications tied to **T1112 Modify Registry**) for later review.
+   *Example*:
+   ```plaintext
+   Right-click event → Bookmark (Ctrl+B) → Add note: "Persistence via Run key"
+   ```
+   *Export*: Save bookmarks via File → Save → "Include bookmarks only".
+
+**Authoritative Sources**:
+- [Procmon Advanced Features (Windows Sysinternals)](https://docs.microsoft.com/en-us/sysinternals/downloads/procmon#advanced-features)
+- [SANS DFIR Procmon Cheat Sheet](https://www.sans.org/blog/process-monitor-cheat-sheet/)
+
+### Adversary Emulation & Red-Team Perspective
+
+From a red-team perspective, **behavioral dynamic analysis evasion** is a critical tactic to bypass automated sandboxing and endpoint detection. Attackers abuse this by crafting malware that detects analysis environments (e.g., virtual machines, debuggers, or sandbox-specific artifacts) before executing malicious payloads. A common technique is **T1497.001: System Checks**, where malware queries system properties (e.g., CPU cores, memory, or registry keys like `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0`) to identify sandboxed or low-resource environments. If analysis conditions are detected, the malware may delay execution, exit silently, or trigger decoy behaviors (e.g., benign file operations) to mislead defenders.
+
+Another evasion method is **T1622: Debugger Evasion**, where adversaries use anti-debugging tricks (e.g., checking for `IsDebuggerPresent()` or timing discrepancies) to thwart dynamic analysis. Artifacts left behind include:
+- **Process hollowing** (e.g., `svchost.exe` spawned with anomalous memory regions).
+- **Delayed execution** (e.g., scheduled tasks via `schtasks.exe` or registry `Run` keys).
+- **Suspicious API calls** (e.g., `NtQueryInformationProcess` for debugger checks).
+
+To evade detection, attackers may:
+- **Obfuscate strings** (e.g., XOR-encoded API calls).
+- **Use sleep loops** to outlast sandbox timeouts.
+- **Leverage legitimate processes** (e.g., `mshta.exe` or `rundll32.exe`) for execution.
+
+**Sources:**
+- [FireEye: Anti-Sandbox Techniques](https://www.fireeye.com/blog/threat-research/2017/03/fin7_spear_phishing.html)
+- [CrowdStrike: Adversary Tradecraft](https://www.crowdstrike.com/blog/adversary-tradecraft-how-attackers-are-evading-detection/)
+
 ## Sources
 Tool behavior, flags, and expected output:
 - Microsoft Learn — Process Monitor (real-time file/Registry/process/network monitoring; command-line switches incl. /AcceptEula, /Minimized, /Quiet, /BackingFile): https://learn.microsoft.com/en-us/sysinternals/downloads/procmon
@@ -249,3 +308,10 @@ MITRE ATT&CK technique pages:
 - https://csrc.nist.gov/](https://csrc.nist.gov/
 
 <!-- cyberlab-enriched: v3 -->
+- https://forum.sysinternals.com/procmon-filters_topic10353.html
+- https://docs.microsoft.com/en-us/sysinternals/downloads/procmon#advanced-features
+- https://www.sans.org/blog/process-monitor-cheat-sheet/
+- https://www.fireeye.com/blog/threat-research/2017/03/fin7_spear_phishing.html
+- https://www.crowdstrike.com/blog/adversary-tradecraft-how-attackers-are-evading-detection/
+
+<!-- cyberlab-enriched: v4 -->
