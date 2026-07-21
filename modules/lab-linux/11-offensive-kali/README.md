@@ -211,6 +211,62 @@ Sources:
 - CVE Details (CVE-2020-7247): https://www.cve.org/CVERecord?id=CVE-2020-7247  
 - NVD: https://nvd.nist.gov/vuln/detail/CVE-2020-7247
 
+
+### Essential Commands & Features
+
+Beyond basic port scans, nmap’s true power emerges through service/OS detection, aggressive profiling, and scripted probes. These flags are not demonstrated in earlier exercises but are critical for real-world recon.
+
+- **`-sV` (Service Version Detection)**: Identifies exact software versions running on open ports.  
+  `nmap -sV 192.168.1.10`  
+  Use when you need to find vulnerable application versions (e.g., Apache 2.4.49 for CVE-2021-41773).
+
+- **`-O` (OS Detection)**: Attempts to fingerprint the target operating system.  
+  `nmap -O 192.168.1.10`  
+  Leverage during initial discovery to tailor subsequent exploits (maps to MITRE T1082 – System Information Discovery).
+
+- **`-A` (Aggressive Scan)**: Combines `-sV`, `-O`, default NSE scripts, and traceroute.  
+  `nmap -A 192.168.1.10`  
+  Best for rapid, thorough assessment of a single target when stealth is secondary.
+
+- **`--script` (NSE)**: Executes Lua scripts for detection, exploitation, or enumeration.  
+  `nmap --script smb-enum-shares -p 445 192.168.1.10`  
+  Essential for enumerating SMB shares without separate tools (supports MITRE T1018 – Remote System Discovery).
+
+- **`-T4` (Timing Template)**: Sets aggressive timing (between 0-5); `-T4` balances speed and reliability.  
+  `nmap -T4 -sS target`  
+  Use on modern networks with sufficient bandwidth to cut scan time significantly.
+
+- **`-oA <basename>` (All Output Formats)**: Saves results in `.nmap`, `.gnmap`, and `.xml` simultaneously.  
+  `nmap -sV -oA scan_output 192.168.1.0/24`  
+  Critical for reporting, diffing scans, and feeding into automation tools like Metasploit’s db_import.
+
+**MITRE ATT&CK Techniques**: T1082 (System Information Discovery) via OS detection; T1018 (Remote System Discovery) via NSE script enumeration.
+
+**Authoritative References**:  
+- `nmap` manual: https://man7.org/linux/man-pages/man1/nmap.1.html  
+- NSE script documentation: https://nmap.org/nsedoc/
+
+### Threat Hunting & Detection Engineering
+
+In this hands-on segment, you’ll pivot from offensive tradecraft to proactive detection. Focus on **T1021.006 (Remote Services: Windows Remote Management)** and **T1562.001 (Impair Defenses: Disable or Modify Tools)**—two techniques frequently observed in post-exploitation phases.
+
+**Detection Logic:**
+- **Windows Event Logs (Security.evtx):**
+  - Hunt for Event ID **4688** (Process Creation) where `NewProcessName` contains `winrm.vbs` or `wsmprovhost.exe`, paired with `CommandLine` arguments like `-r:<target>` or `-u:<user>`. Correlate with Event ID **4624** (Logon) where `LogonType` is **10** (Remote Interactive) and `AuthenticationPackageName` is **Negotiate**.
+  - For **T1562.001**, monitor Event ID **1102** (Audit Log Cleared) or **5145** (Share Access) where `RelativeTargetName` is `\Windows\System32\winevt\Logs\Security.evtx` and `AccessMask` includes `0x2` (Write).
+
+- **Zeek/Suricata:**
+  - Zeek’s `conn.log`: Filter for `service == "winrm"` and `duration > 5m` (unusually long sessions). Pivot to `dce_rpc.log` for `operation` values like `IWbemServices::ExecMethod` (WMI lateral movement).
+  - Suricata: Detect `ET POLICY WinRM Access` (SID 2027861) or `ET SCAN Potential WinRM Brute Force` (SID 2027862). Hunt for `http.method == "POST"` to `/wsman` with `http.user_agent` containing `Microsoft WinRM Client`.
+
+**Threat-Hunting Pivots:**
+- Cross-reference `winrm.vbs` executions with **Sysmon Event ID 3** (Network Connection) where `DestinationPort` is **5985/5986** (HTTP/HTTPS WinRM).
+- For **T1562.001**, check `reg.exe` modifications to `HKLM\SOFTWARE\Policies\Microsoft\Windows\EventLog\` (Event ID **4657**).
+
+**Sources:**
+- [CISA Alert AA22-257A: Threat Hunting for WinRM Abuse](https://www.cisa.gov/uscert/ncas/alerts/aa22-257a)
+- [Elastic Security Labs: Detecting Disabling of Security Tools](https://www.
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, project repos, MITRE ATT&CK, Microsoft Learn, SANS, or Security Onion docs):
 
@@ -272,3 +328,9 @@ Claim → source mapping (all URLs are official tool docs, project repos, MITRE 
 - https://nvd.nist.gov/vuln/detail/CVE-2020-7247
 
 <!-- cyberlab-enriched: v3 -->
+- https://man7.org/linux/man-pages/man1/nmap.1.html
+- https://nmap.org/nsedoc/
+- https://www.cisa.gov/uscert/ncas/alerts/aa22-257a
+- https://www.
+
+<!-- cyberlab-enriched: v4 -->
