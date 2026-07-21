@@ -393,6 +393,47 @@ This module covers the following MITRE ATT&CK techniques, mapped to the **Examin
 
 **DFIR Phase**: **Examination/Analysis** (offline parsing of acquired hives), feeding **Identification** and **Scoping**.
 
+
+### Essential Commands & Features
+
+Two powerful capabilities missing from earlier labs are **regfmount** (Sysinternals) for editing offline hives and **RegRipper** flags (`-f`, `-d`) for targeted parsing beyond SYSTEM hive plugins.
+
+**regfmount** mounts a registry hive as a standard drive letter (`X:\`), enabling live browsing via `regedit.exe` or scripting.  
+*Concrete example:*  
+`regfmount C:\evidence\SOFTWARE X:\`  
+Access `X:\Microsoft\Windows\CurrentVersion\Run` to inspect persistence entries.
+
+**RegRipper**’s `-f` flag specifies a plugin name or file to run (e.g., `-f sam` for the SAM plugin), and `-d` designates an output directory.  
+*Concrete example:*  
+`rip.pl -r C:\evidence\SAM -f sam -d output\`  
+Parses the SAM hive for local account hashes (T1003.002).  
+`rip.pl -r C:\evidence\SOFTWARE -f software -d output\`  
+Examines installed software and autostart locations.
+
+These commands reveal techniques **T1574.001 (DLL Search Order Hijacking)** – attackers modify `appPaths` or `KnownDLLs` in the registry to hijack DLL loads – and **T1562.003 (Impair Defenses: Disable Windows Event Logging)** – HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\EventLog changes disable logs. Both require examining hives beyond SYSTEM.
+
+**Sources:**  
+- [Microsoft Sysinternals – regfmount](https://docs.microsoft.com/en-us/sysinternals/downloads/regfmount)  
+- [RegRipper GitHub Repository](https://github.com/keydet89/RegRipper)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, registry analysis is a goldmine for persistence, credential access, and defense evasion. Attackers frequently abuse the Windows Registry to maintain footholds (e.g., **T1547.001: Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder**) by adding entries under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` or `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`. These keys execute payloads at user logon, blending with legitimate startup processes. For stealth, adversaries may use **T1564.002: Hide Artifacts: Hidden Users** by creating hidden user accounts via `HKLM\SAM\Domains\Account\Users`, then masking them from the login screen by setting the `UserAccountControl` value to `0x00000210` (UF_NORMAL_ACCOUNT | UF_PASSWD_NOTREQD | UF_DONT_EXPIRE_PASSWD).
+
+Artifacts left behind include:
+- **Modified timestamps** on registry keys (e.g., `LastWriteTime` in `HKLM\SOFTWARE`).
+- **Suspicious binary paths** in autostart keys (e.g., `%APPDATA%\malware.exe`).
+- **Orphaned or duplicate SIDs** in `HKU\` hives, indicating hidden accounts.
+
+Evasion tactics include:
+- **Registry key masquerading**: Naming malicious keys after legitimate software (e.g., `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\OneDrive`).
+- **Timestomping**: Using tools like `SetRegTime` to alter `LastWriteTime` to match system defaults.
+- **Registry virtualization**: Writing to `HKCU\Software\Classes\VirtualStore` to bypass UAC restrictions.
+
+**Sources**:
+- [MITRE ATT&CK: T1547.001](https://attack.mitre.org/techniques/T1547/001/)
+- [CrowdStrike: Registry Forensics for Threat Hunters](https://www.crowdstrike.com/blog/registry-forensics-for-threat-hunters/)
+
 ## Sources
 **Claim → Source Mapping** (all URLs are real, authoritative pages):
 
@@ -442,3 +483,8 @@ This module covers the following MITRE ATT&CK techniques, mapped to the **Examin
 - [Timeline / super-timelining](../03-timeline-analysis/README.md) -- same learning path (Foundations); fold registry key last-write times into a super-timeline.
 
 <!-- cyberlab-enriched: v4 -->
+- https://docs.microsoft.com/en-us/sysinternals/downloads/regfmount
+- https://github.com/keydet89/RegRipper
+- https://www.crowdstrike.com/blog/registry-forensics-for-threat-hunters/
+
+<!-- cyberlab-enriched: v5 -->
