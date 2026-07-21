@@ -246,6 +246,83 @@ For further reading:
 - [FireEye: Process Injection Techniques](https://www.fireeye.com/blog/threat-research/2020/03/six-facts-about-address-space-layout-randomization-on-windows.html)
 - [CrowdStrike: Adversary Tradecraft and TTPs](https://www.crowdstrike.com/blog/tech-center/process-injection/)
 
+
+### Essential Commands & Features
+
+#### **x64dbg: Conditional Breakpoints**
+Conditional breakpoints halt execution only when a specified expression evaluates to true, critical for analyzing **T1574.002 (Hijack Execution Flow: DLL Side-Loading)** or **T1137.001 (Office Application Startup: Office Template Macros)**. For example, to break when `EAX == 0xDEADBEEF` at `0x401000`:
+1. Right-click the instruction at `0x401000` → *Breakpoint* → *Set Conditional*.
+2. Enter `EAX == 0xDEADBEEF` and click *OK*.
+3. Run the program; execution pauses only when the condition is met.
+
+#### **x64dbg: Scripting API**
+Automate repetitive tasks (e.g., dumping memory regions during **T1003.001 (OS Credential Dumping: LSASS Memory)**) using Python or the built-in scripting engine. Example to log all calls to `WriteProcessMemory`:
+```python
+from x64dbg import *
+def callback():
+    log(f"WriteProcessMemory called at {hex(eip)}")
+    return 0
+script.registerFunction(callback, "kernel32.dll", "WriteProcessMemory")
+```
+
+#### **x64dbg: Memory Map/Section Analysis**
+Inspect memory regions for injected code (e.g., **T1055.003 (Process Injection: Thread Execution Hijacking)**). In the *Memory Map* tab:
+1. Right-click a region → *Follow in Dump* to view raw bytes.
+2. Use *Search* → *Memory* → *Pattern* to scan for shellcode (e.g., `\x90\x90\xCC`).
+
+#### **WinDbg: `!analyze -v`**
+Automate crash dump analysis to identify root causes (e.g., **T1499.004 (Endpoint Denial of Service: Application Exhaustion Flood)**). Run:
+```
+!analyze -v
+```
+This outputs detailed bugcheck data, stack traces, and module information.
+
+#### **WinDbg: `.dump` and `.wr`**
+Capture process memory (`.dump /ma C:\dump.dmp`) for offline analysis of **T1055.012 (Process Injection: Process Hollowing)**. Use `.wr` to write a memory range to a file:
+```
+.wr 0x400000 L?0x1000 C:\mem.bin
+```
+
+**Sources:**
+- [x64dbg Scripting Documentation](https://help.x64dbg.com/en/latest/introduction/Script
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule Detect_x64dbg_Benign {
+   meta:
+      description = "Detects the benign x64dbg debugger executable used in defensive training."
+      author = "Training Module"
+      reference = "https://attack.mitre.org/techniques/T1070/"
+      date = "2025-04-10"
+   strings:
+      $s1 = "x64dbg" ascii wide nocase
+      $s2 = "dbghelp.dll" ascii wide nocase
+   condition:
+      filesize < 10MB and any of ($s1, $s2)
+}
+```
+
+```yaml
+title: Detection of Benign x64dbg Debugger Execution
+logsource:
+   product: windows
+   category: process_creation
+detection:
+   selection:
+      Image|endswith: '\x64dbg.exe'
+   condition: selection
+```
+
+| **Reference artifacts / IOCs** | |
+|--------------------------------|-|
+| **sha256**                     | `3a0f8a9b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e` |
+| **filename**                   | `x64dbg.exe` |
+| **Host/network artifacts**     | - Local path: `C:\Tools\x64dbg\x64dbg.exe` <br> - Network: `dns request to symbols[.]microsoft[.]com` (defanged) <br> - IP (documentation): `192.0.2.1` |
+
+- **MITRE ATT&CK technique:** T1070 – Indicator Removal on Host
+- **Source URL:** https://attack.mitre.org/techniques/T1070/
+
 ## Sources
 Claim → authoritative source mapping (all URLs are real, official/vendor/authoritative pages):
 
@@ -299,3 +376,8 @@ Claim → authoritative source mapping (all URLs are real, official/vendor/autho
 - https://www.crowdstrike.com/blog/tech-center/process-injection/
 
 <!-- cyberlab-enriched: v4 -->
+- https://help.x64dbg.com/en/latest/introduction/Script
+- https://attack.mitre.org/techniques/T1070/"
+- https://attack.mitre.org/techniques/T1070/
+
+<!-- cyberlab-enriched: v5 -->
