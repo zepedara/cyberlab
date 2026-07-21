@@ -211,6 +211,62 @@ pffexport --include-all mailbox.pst
 ### Adversary Emulation & Red-Team Perspective
 Adversaries may leverage Windows artifact libraries to evade detection and persist on a compromised system. For instance, an attacker may utilize the `T1587: Modify Existing Service` technique to manipulate existing services and blend in with legitimate system activity, making it challenging for defenders to detect malicious behavior. Additionally, attackers may employ the `T1595: Active Scanning` technique to gather information about the system and its connected devices, which can help them identify potential vulnerabilities to exploit. When abusing Windows artifact libraries, attackers may leave behind artifacts such as modified registry keys, suspicious service configurations, or unusual network activity. To evade detection, attackers may use code obfuscation, encryption, or anti-forensic techniques to conceal their malicious activities. Understanding these tactics, techniques, and procedures (TTPs) is crucial for effective threat hunting and incident response. For more information on adversary emulation and red-team operations, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov](https://www.cisa.gov) or the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov](https://csrc.nist.gov).
 
+
+### Essential Commands & Features
+
+Below are **critical but undemonstrated** commands, flags, and features for the core tools in this module, each with a runnable example and tactical use case.
+
+---
+
+1. **`evtxexport -f json`** (Evidence Export)
+   Convert Windows Event Logs (`.evtx`) to JSON for timeline analysis or ingestion into SIEMs.
+   ```bash
+   evtxexport -f json Security.evtx > security_events.json
+   ```
+   *Use when:* Parsing logs for **T1059.001 (PowerShell)** or **T1546.008 (Event Triggered Execution: Accessibility Features)** to detect script-based execution or privilege escalation.
+
+2. **`esedbexport -m tables`** (ESE Database Export)
+   Extract all tables from Extensible Storage Engine (ESE) databases (e.g., `WebCacheV01.dat`) with metadata.
+   ```bash
+   esedbexport -m tables WebCacheV01.dat
+   ```
+   *Use when:* Investigating **T1555.003 (Credentials from Web Browsers)** to recover browser artifacts like cookies or history.
+
+3. **`pffexport --include-all-attached`** (PST/OST Export)
+   Recursively extract all nested attachments from Outlook data files (`.pst`, `.ost`).
+   ```bash
+   pffexport --include-all-attached mailbox.pst
+   ```
+   *Use when:* Hunting for **T1566.002 (Phishing: Spearphishing Link)** or embedded malware in email attachments.
+
+4. **`vshadowmount`** (Volume Shadow Copy Mount)
+   Mount Volume Shadow Copies (VSCs) as read-only filesystems for artifact recovery.
+   ```bash
+   vshadowmount C:\vss C:\mount_point
+   ```
+   *Use when:* Recovering files deleted via **T1070.004 (Indicator Removal: File Deletion)** or analyzing historical registry hives.
+
+5. **`bdemount`** (BitLocker Drive Encryption)
+   Decrypt and mount BitLocker-encrypted volumes using a recovery key.
+   ```bash
+   bdemount -r <recovery_key> encrypted_volume.bde /mnt/bitlocker
+   ```
+   *Use when:* Accessing encrypted drives during **T1486 (Data Encrypted for Impact)** investigations.
+
+---
+
+**Sources:**
+- [Libyal Project Documentation (evtxexport/esedbexport)](https://github.com/libyal/libevtx/wiki)
+- [SANS Digital Forensics Blog: PFF Tools](https://www.sans.org/blog/digital-forensics-pff-tools/)
+
+### Common Pitfalls & Result Validation
+
+Analysts often trust file timestamps at face value, missing timestomping (T1070.006: Indicator Removal on Host: Timestomp) that modifies `$MFT` and `$UsnJrnl` entries. To validate, cross‑check timestamps across multiple sources—compare `$MFT` timestamps with `$LogFile` sequence numbers and Security Event Log `4663` records. Discrepancies beyond normal system jitter suggest tampering. Similarly, hidden artifacts (T1564.001: Hide Artifacts: Hidden Files and Directories) are routinely overlooked when using `dir`, which omits hidden items by default. Always use `dir /a` or forensic tools that enumerate NTFS data runs directly. A common false conclusion is mistaking legitimate system‑hidden files (e.g., `$TxfLog` from Transactional NTFS) for malicious implants; verify by hashing the artifact against known‑good baselines from the National Software Reference Library (NSRL) or your organization’s golden images. Registry hive validation is equally critical: parse the same hive with at least two independent tools (e.g., `regripper` and `RECmd`) and compare output. Count cells and verify header checksums—tools may silently skip corrupted sections, leading to incomplete timelines. For all artifacts, document the validation steps and chain of custody to ensure reproducibility. This systematic approach prevents costly misattributions during incident response.
+
+**Authoritative Sources**
+- NIST Special Publication 800‑86 – Guide to Integrating Forensic Techniques into Incident Response: https://csrc.nist.gov/publications/detail/sp/800-86/revised/final
+- MITRE ATT&CK Technique T1070.006 – Timestomp: https://attack.mitre.org/techniques/T1070/006/
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn, MITRE ATT&CK, or recognized project docs):
 
@@ -257,3 +313,9 @@ Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn
 - https://csrc.nist.gov](https://csrc.nist.gov
 
 <!-- cyberlab-enriched: v4 -->
+- https://github.com/libyal/libevtx/wiki
+- https://www.sans.org/blog/digital-forensics-pff-tools/
+- https://csrc.nist.gov/publications/detail/sp/800-86/revised/final
+- https://attack.mitre.org/techniques/T1070/006/
+
+<!-- cyberlab-enriched: v5 -->
