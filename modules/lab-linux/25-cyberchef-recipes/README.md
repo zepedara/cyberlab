@@ -154,6 +154,36 @@ CyberChef’s CLI (`cyberchef`) and Didier Stevens’ `base64dump.py` offer powe
 ### Threat Hunting & Detection Engineering
 To enhance threat hunting and detection engineering capabilities, CyberChef can be utilized to analyze logs from various sources, such as Windows Event IDs, Zeek, or Suricata. For instance, analyzing Windows Event ID 4688 (Process Creation) can help detect techniques like [T1625](https://attack.mitre.org/techniques/T1625/) - "T1625: Compile After Delivery" and [T1497](https://attack.mitre.org/techniques/T1497/) - "T1497: Virtualization/Sandbox Evasion". By focusing on specific fields like `CommandLine` or `ParentProcessId`, security teams can identify suspicious process creations that may indicate malicious activity. Additionally, threat hunters can pivot on IP addresses, domains, or file hashes to uncover related events and identify potential attack patterns. By leveraging these capabilities, security teams can improve their detection engineering and threat hunting workflows. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
 
+
+### Essential Commands & Features
+
+While the module's recipes cover many drag-and-drop operations, the CyberChef CLI and `base64dump.py` offer powerful flags often overlooked during automated or command-line triage. Use CyberChef’s `--input` and `--output` to specify files and `--modifiers` to define the exact recipe inline—critical for integrating into scripts that analyse hundreds of samples. For example:
+```
+cyberchef --input encoded.b64 --output decoded.txt --modifiers 'From Base64' 'Decode text'
+```
+When you need to isolate specific parts of a base64 blob, `base64dump.py --cut 3-7` extracts lines 3 through 7, `--find "CreateProcess"` searches for strings, and `--hexdump` shows a hex/ASCII side‑by‑side view—essential for spotting shellcode or embedded PE headers. Run:
+```
+base64dump.py sample.txt --cut 1-10 --find "MZ" --hexdump
+```
+This allows rapid identification of **T1055.012** (Process Injection: Process Hollowing) when attackers embed hollowed executables, or **T1036.005** (Masquerading: Match Legitimate Name or Location) when they disguise payloads as benign binaries. Mastering these flags reduces manual inspection time and enables consistent, repeatable analysis.
+
+**Authoritative sources**
+- [CyberChef CLI – Official Documentation](https://gchq.github.io/CyberChef/)
+- [MITRE ATT&CK technique T1036.005 – Masquerading: Match Legitimate Name or Location](https://attack.mitre.org/techniques/T1036/005/)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, CyberChef is a lightweight, portable utility that can be abused to obfuscate payloads, encode command-and-control (C2) traffic, or evade detection during post-exploitation. Attackers leverage CyberChef’s modular "recipes" to dynamically transform malicious artifacts—such as shellcode, scripts, or exfiltrated data—without relying on custom tooling, reducing forensic footprint. For example, **Base64 + Gzip compression** (T1001.003: *Protocol Impersonation*) can be used to encode C2 beacons, while **XOR + Hex encoding** (T1132.002: *Non-Standard Encoding*) obscures payloads in memory or network traffic. These transformations often leave minimal artifacts: temporary files in `%TEMP%`, process memory strings (e.g., `CyberChef.exe` or `From Base64`), or anomalous network requests (e.g., unusually long HTTP GET parameters).
+
+Evasion considerations include:
+- **Living-off-the-Land (LotL)**: Executing CyberChef via `mshta.exe` or `wscript.exe` to blend with legitimate admin activity (T1218.005: *Mshta*).
+- **Staging**: Using CyberChef to split payloads into chunks, reassembling them in-memory via PowerShell or VBA macros to bypass static detection.
+- **Artifact Cleanup**: Deleting CyberChef’s temporary files (e.g., `%TEMP%\CyberChef_*.tmp`) or leveraging in-memory execution to avoid disk writes.
+
+**Sources**:
+- [MITRE ATT&CK: T1001.003 - Protocol Impersonation](https://attack.mitre.org/techniques/T1001/003/)
+- [Red Canary: Living Off the Land Binaries and Scripts (LOLBAS)](https://lolbas-project.github.io/)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -186,3 +216,9 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://www.nist.gov/
 
 <!-- cyberlab-enriched: v3 -->
+- https://gchq.github.io/CyberChef/
+- https://attack.mitre.org/techniques/T1036/005/
+- https://attack.mitre.org/techniques/T1001/003/
+- https://lolbas-project.github.io/
+
+<!-- cyberlab-enriched: v4 -->
