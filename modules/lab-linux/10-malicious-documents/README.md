@@ -204,6 +204,45 @@ To extract deeper insights from malicious documents, leverage these undemonstrat
 ### Adversary Emulation & Red-Team Perspective
 From an adversary's perspective, malicious documents can be used to gain initial access to a system, as seen in techniques such as [T1190](https://attack.mitre.org/techniques/T1190/) "Spearphishing via Service" and [T1562](https://attack.mitre.org/techniques/T1562/) "Impair Defenses". Attackers may use social engineering tactics to trick victims into opening malicious documents, which can then execute code and establish a foothold on the system. The malicious document may leave behind artifacts such as temporary files or registry entries, which can be detected by defenders. To evade detection, attackers may use code obfuscation or anti-debugging techniques to make it difficult for analysts to reverse-engineer the malicious code. Understanding these tactics, techniques, and procedures (TTPs) is crucial for effective adversary emulation and red-teaming. For more information on adversary emulation and red-teaming, see the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [Center for Internet Security (CIS)](https://www.cisecurity.org/) resources.
 
+
+### Essential Commands & Features
+The flags and features below extend the analyst’s ability to decode, deobfuscate, extract embedded artifacts, and precisely inspect stream and object data—operations critical for detecting advanced macro-based attacks and hidden weaponisation.
+
+- **olevba –decode / –deobfuscate / –extract**  
+  `olevba --decode macro.doc` decodes common encodings (e.g., Base64, hex) inside VBA strings.  
+  `olevba --deobfuscate sample.doc` attempts to reverse string concatenation, character substitution, and function calls that hide malicious intent.  
+  `olevba --extract suspicious.doc` extracts embedded OLE objects or executable payloads.  
+  *Use these when static macro analysis yields obfuscated or encoded strings—critical for revealing payloads that trigger execution (MITRE T1059.005: Visual Basic for Applications).*
+
+- **oledump -s <index> -d**  
+  `oledump.py ransom.doc -s 12 -d` selects stream index 12 and dumps its raw bytes to stdout.  
+  *Use this to manually inspect suspicious streams (e.g., embedded Flash, XML, or exploited objects) without relying on automated extraction—essential when stream contents masquerade as benign data (MITRE T1203: Exploitation for Client Execution).*
+
+- **pdf-parser -o <obj> -d**  
+  `pdf-parser.py -o 7 -d exploit.pdf` selects object number 7 and dumps its stream or string content.  
+  *Use this to examine individual objects in a PDF, especially those with suspicious filters (e.g., FlateDecode, ASCIIHexDecode) or unusual cross‑reference entries—key for identifying hidden payloads injected into specific objects.*
+
+These commands align with deobfuscation and stream‑level inspection, directly countering techniques that rely on encoded VBA macros or embedded objects.
+
+**Authoritative Sources:**  
+[https://oletools.readthedocs.io/](https://oletools.readthedocs.io/)  
+[https://didierstevens.com/software/pdf-parser/](https://didierstevens.com/software/pdf-parser/)
+
+### Common Pitfalls & Result Validation
+
+When analyzing malicious documents, analysts often fall into traps that lead to false positives or missed detections. A frequent mistake is **over-relying on automated tools** (e.g., `olevba`, `pdfid`) without manual validation, which can miss obfuscated payloads or misclassify benign macros. For example, **T1036.005 (Masquerading: Match Legitimate Name or Location)** may trick tools by mimicking legitimate filenames or paths—always cross-check metadata and hashes against known-good samples.
+
+Another pitfall is **ignoring context**. A document triggering **T1564.001 (Hide Artifacts: Hidden Files and Directories)** might drop files in `%TEMP%` or `%APPDATA%`, but analysts may dismiss these as noise. Validate findings by:
+1. **Behavioral analysis**: Use sandboxing (e.g., Any.run, Joe Sandbox) to observe process execution and network calls.
+2. **Static cross-checks**: Compare extracted scripts against known malicious patterns (e.g., YARA rules for **T1059.007 (Command and Scripting Interpreter: JavaScript)**).
+3. **Environment replication**: Test in a controlled VM to confirm persistence mechanisms (e.g., registry keys for **T1547.001 (Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder)**).
+
+Avoid false conclusions by correlating multiple indicators (e.g., suspicious domains + unusual process trees) and documenting each step. Always assume adversaries adapt—revalidate assumptions with updated threat intelligence.
+
+**Sources**:
+- [CERT-EU: Malicious Document Analysis Guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Malicious_Document_Analysis.pdf)
+- [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-86.pdf) (See Section 4.3)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, Microsoft Learn, SANS, or recognized project docs):
 
@@ -253,3 +292,9 @@ Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, M
 - https://www.cisecurity.org/
 
 <!-- cyberlab-enriched: v4 -->
+- https://oletools.readthedocs.io/](https://oletools.readthedocs.io/
+- https://didierstevens.com/software/pdf-parser/](https://didierstevens.com/software/pdf-parser/
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Malicious_Document_Analysis.pdf
+- https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-86.pdf
+
+<!-- cyberlab-enriched: v5 -->
