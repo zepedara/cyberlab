@@ -142,6 +142,32 @@ Sample SHA256: compiler-dependent — record the digest emitted by `Get-FileHash
 - **T1486** — Data Encrypted for Impact (candidate when capa reports encryption capabilities). https://attack.mitre.org/techniques/T1486/
 - **DFIR phase:** Identification & Examination (initial static triage before dynamic analysis).
 
+
+### Threat Hunting & Detection Engineering
+
+Once static triage artifacts are extracted (e.g., embedded IPs, domains, or suspicious strings), pivot into **threat hunting** and **detection engineering** to validate and operationalize findings. Focus on **T1562.001 (Impair Defenses: Disable or Modify Tools)** and **T1036.005 (Masquerading: Match Legitimate Name or Location)**—two techniques frequently missed by static-only analysis.
+
+**Detection Logic (Concrete Fields & Pivots):**
+- **Windows Event Logs (Security.evtx):**
+  - Hunt for **Event ID 4688** (Process Creation) where `NewProcessName` matches a triage-extracted binary name but `ParentProcessName` is atypical (e.g., `svchost.exe` spawning `powershell.exe` from `C:\Temp\`).
+  - Filter for **Event ID 1102** (Audit Log Cleared) or **Event ID 104** (Log File Cleared) to detect **T1562.001**—correlate with static triage outputs (e.g., `wevtutil cl` strings in samples).
+
+- **Sysmon (Event ID 1):**
+  - Pivot on `CommandLine` fields containing triage-extracted IPs/domains (e.g., `cmd.exe /c curl http://[extracted_IP]`). Use **T1036.005** logic to flag processes with mismatched `OriginalFileName` vs. `Image` paths (e.g., `lsass.exe` running from `C:\Users\Public\`).
+
+- **Linux Audit Logs (`/var/log/audit/audit.log`):**
+  - Hunt for **execve syscalls** (`type=EXECVE`) where `a0` (command) matches triage-extracted strings (e.g., `chmod +x /tmp/[extracted_binary]`). Correlate with **T1562.001** by checking for `auditd` service stops (`systemctl stop auditd`).
+
+**Hunt Pivots:**
+- Cross-reference triage outputs with **VirusTotal** (e.g., `behavior: "modifies auditd config"`) or **Unprotect Project** (e.g., `T1562.001` bypasses).
+- For **T1036.005**, query EDR telemetry for `process.name` mismatches (e.g., `explorer.exe` with `pe.original_file_name: "ransomware.exe"`).
+
+**Sources:**
+- [CISA: Hunting for T1562.001 (Disable Defenses)](https://www.cisa
+
+### Adversary Emulation & Red-Team Perspective
+From an adversary's perspective, the static triage case can be exploited using techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - "User Execution" and [T1218](https://attack.mitre.org/techniques/T1218) - "Signed Binary Proxy Execution". An attacker may use social engineering tactics to trick a user into executing a malicious file, which can then lead to the exploitation of vulnerabilities in the system. The adversary may also use signed binary proxy execution to bypass security controls and execute malicious code. The artifacts left behind by these techniques can include suspicious executable files, modified system configuration files, and unusual network activity. To evade detection, the adversary may use code obfuscation, anti-debugging techniques, and fileless malware. Understanding these tactics, techniques, and procedures (TTPs) is crucial for effective incident response and threat hunting. For more information on adversary emulation and red-team operations, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/what-we-do/cybersecurity/) websites.
+
 ## Sources
 Claim → source mapping (all URLs are official tool repos, Microsoft Learn, MITRE ATT&CK, SANS, or RFCs):
 
@@ -174,3 +200,11 @@ Claim → source mapping (all URLs are official tool repos, Microsoft Learn, MIT
 - [Static reverse engineering](../12-static-re/README.md) -- shares capa for capability-dri
 
 <!-- cyberlab-enriched: v1 -->
+- http://[extracted_IP]`
+- https://www.cisa
+- https://attack.mitre.org/techniques/T1204
+- https://attack.mitre.org/techniques/T1218
+- https://www.cisa.gov/
+- https://www.nsa.gov/what-we-do/cybersecurity/
+
+<!-- cyberlab-enriched: v2 -->
