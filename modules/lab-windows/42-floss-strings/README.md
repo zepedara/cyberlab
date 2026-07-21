@@ -151,6 +151,26 @@ Sample sha256: reproduce with `Get-FileHash .\exercise\sample.exe -Algorithm SHA
 - T1057 — Process Discovery (if capa detects process‑enumeration capabilities): https://attack.mitre.org/techniques/T1057/
 - DFIR phase: **Examination / Analysis** (static malware triage prior to dynamic detonation).
 
+
+### Essential Commands & Features
+To further utilize the capabilities of 42-floss-strings, it's crucial to understand the `--filter` option, which allows for more precise control over the output. This feature is particularly useful when attempting to evade detection, a technique aligned with [T1211: Exploitation for Credential Access](https://attack.mitre.org/techniques/T1211) and [T1222: File and Directory Discovery](https://attack.mitre.org/techniques/T1222). For instance, to filter out strings that are less than 5 characters long, you can use the command `42-floss-strings --filter min-length=5 input_file`. This command is useful when you're looking for more substantial strings that could indicate malicious activity. Another example is using `42-floss-strings --filter max-length=10 input_file` to find shorter strings that might be used in obfuscated scripts. Understanding and leveraging these filters can significantly enhance the effectiveness of your analysis. For more detailed information on available filters and options, refer to the [official FLOSS documentation](https://www.cisa.gov/uscert/ncas/current-activity/article/2019/10/30/florian Roth%20Release%20Floss) or [Cybersecurity and Infrastructure Security Agency (CISA) resources](https://www.cisa.gov).
+
+### Common Pitfalls & Result Validation
+
+Analysts often misinterpret **42-floss-strings** output, leading to false positives or overlooked threats. A frequent mistake is assuming all extracted strings are malicious—legitimate binaries (e.g., signed software) may contain hardcoded paths, debug symbols, or API calls that resemble attacker artifacts. **False negatives** occur when analysts overlook obfuscated strings (e.g., XOR-encoded or split across memory regions), particularly in malware using **T1132.001 (Data Encoding: Standard Encoding)** or **T1001.003 (Data Obfuscation: Protocol Impersonation)**.
+
+To validate findings:
+1. **Cross-reference strings** with known benign software (e.g., Sysinternals tools) to filter noise.
+2. **Check entropy** of extracted strings—high entropy may indicate encoded payloads (e.g., base64, hex).
+3. **Correlate with other artifacts**: If strings suggest C2 domains (e.g., `api.example[.]com`), verify against network logs or **T1572 (Protocol Tunneling)** detections.
+4. **Reconstruct context**: Use disassemblers (e.g., Ghidra) to confirm if strings are referenced in suspicious code paths (e.g., dynamic API resolution).
+
+Avoid confirmation bias by testing hypotheses with controlled samples. For example, if a string resembles a **T1564.001 (Hide Artifacts: Hidden Files and Directories)** technique, verify file system activity via EDR telemetry.
+
+**Sources**:
+- [FireEye FLARE FLOSS Documentation](https://www.fireeye.com/blog/threat-research/2016/06/floss_automatically_extracting.html)
+- [NIST National Software Reference Library (NSRL)](https://www.nist.gov/itl/ssd/software-quality-group/national-software-reference-library-nsrl)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE, SANS, Microsoft Learn, or recognized project docs):
 
@@ -180,3 +200,11 @@ Claim → source mapping (all URLs are official tool docs, MITRE, SANS, Microsof
 - [PE static analysis deep-dive](../30-pe-static-deep/README.md) -- shares floss for deeper PE string/structure analysis.
 
 <!-- cyberlab-enriched: v2 -->
+- https://attack.mitre.org/techniques/T1211
+- https://attack.mitre.org/techniques/T1222
+- https://www.cisa.gov/uscert/ncas/current-activity/article/2019/10/30/florian
+- https://www.cisa.gov
+- https://www.fireeye.com/blog/threat-research/2016/06/floss_automatically_extracting.html
+- https://www.nist.gov/itl/ssd/software-quality-group/national-software-reference-library-nsrl
+
+<!-- cyberlab-enriched: v3 -->
