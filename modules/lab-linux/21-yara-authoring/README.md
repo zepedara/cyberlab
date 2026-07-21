@@ -173,6 +173,69 @@ Red teams emulate adversaries who weaponize YARA during initial access and post-
 - **Source:** Microsoft Task Scheduler documentation (Event 4698): [https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-startpage](https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-startpage)  
 - **Source:** Microsoft File Attribute Constants (for `FILE_ATTRIBUTE_HIDDEN`): [https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants](https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants)
 
+
+### Essential Commands & Features
+
+To create modular and reusable YARA rule sets, leverage the following **undemonstrated** but critical features:
+
+1. **`include` Directive**
+   Use `include` to import rules from external files, enabling modularity. This is ideal for large rule repositories or shared libraries (e.g., MITRE ATT&CK-based rules).
+   **Example:**
+   ```yara
+   include "pe.yar"  // Import PE-specific rules
+   rule DetectSuspiciousPE {
+       meta:
+           description = "Detects packed executables (T1027.001: Obfuscated Files or Information: Binary Padding)"
+       condition:
+           pe.is_packed
+   }
+   ```
+   **When to use:** When splitting rules into logical files (e.g., `crypto.yar`, `malware_families.yar`).
+
+2. **External Variables (`--define`)**
+   Pass runtime variables to rules using `external` and the `--define` flag. Useful for environment-specific checks (e.g., file paths, user-defined thresholds).
+   **Example:**
+   ```yara
+   rule DetectLargeFile {
+       meta:
+           description = "Detects files exceeding a size threshold (T1132.001: Data Encoding: Standard Encoding)"
+       condition:
+           filesize > ext_max_size
+   }
+   ```
+   **Run command:**
+   ```bash
+   yara --define ext_max_size=10MB rule.yar target_file
+   ```
+   **When to use:** For dynamic thresholds or environment-specific values (e.g., `ext_target_path="/tmp"`).
+
+3. **Global Rules**
+   Restrict conditions to run **once** across all files using `global`. Critical for performance when checking shared metadata (e.g., compiler signatures).
+   **Example:**
+   ```yara
+   global rule CheckCompiler {
+       meta:
+           description = "Flags files compiled with suspicious tools (T1547.001: Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder)"
+       condition:
+           uint16(0) == 0x5A4D and pe.imphash() == "d41d8cd98f00b204e9800998ecf8427e"
+   }
+   ```
+   **When to use:** For conditions that should not repeat per file (e.g., global exclusions).
+
+**Authoritative Sources:**
+- [YARA Official Documentation: External Variables](https://virustotal.github.io/yara/)
+- [Florian Roth’s YARA Best Practices (Nextron Systems)](https://www.nextron-systems.com/2021/03/11/yara-performance-guidelines/)
+
+### Threat Hunting & Detection Engineering
+
+YARA rules become exponentially more powerful when paired with telemetry from real log sources. For example, detect **Process Injection (T1055.012 – Process Hollowing)** by correlating a YARA hit on a hollowed executable (`$hollow = { 48 8D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B ?? ?? 48 89 ?? ?? ?? 48 85 ?? 74 ?? }`) with Windows Event ID 10 (Process Creation) where the parent process is `explorer.exe` and the child process (`NewProcessName`) is a signed binary (e.g., `svchost.exe`) launched from an unusual directory (e.g., `C:\Users\*\AppData\Local\Temp\`). Pivot to Sysmon Event ID 8 (CreateRemoteThread) to confirm thread injection into the same PID.
+
+For **Lateral Movement (T1021.002 – SMB/Windows Admin Shares)**, hunt for YARA matches on SMB-related artifacts (`$smb = { FF 53 4B 42 }` in network captures) alongside Zeek’s `smb_files.log` where `action` is `SMB::FILE_OPEN` and `path` contains `\\*\ADMIN$` or `\\*\C$`. Cross-reference with Windows Event ID 5145 (Detailed File Share) to identify anomalous access patterns (e.g., `AccessMask` of `0x100180` for `FILE_WRITE_DATA` + `FILE_APPEND_DATA`).
+
+**Sources:**
+- [MITRE ATT&CK: Process Hollowing (T1055.012)](https://attack.mitre.org/techniques/T1055/012/)
+- [CISA Alert AA23-347A: Hunting SMB Activity](https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, or recognized project docs):
 
@@ -215,3 +278,9 @@ Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, o
 - https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants](https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants
 
 <!-- cyberlab-enriched: v3 -->
+- https://virustotal.github.io/yara/
+- https://www.nextron-systems.com/2021/03/11/yara-performance-guidelines/
+- https://attack.mitre.org/techniques/T1055/012/
+- https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a
+
+<!-- cyberlab-enriched: v4 -->
