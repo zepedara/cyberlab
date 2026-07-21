@@ -185,6 +185,56 @@ Sample SHA256: compiler-dependent — record the digest emitted by `Get-FileHash
 - **T1564.001** — Hide Artifacts: Hidden Files and Directories (strings like attrib +h). https://attack.mitre.org/techniques/T1564/001/
 - **DFIR phase:** Identification & Examination (initial static triage before dynamic analysis).
 
+
+### Essential Commands & Features
+
+When triaging suspicious binaries, leveraging **DIE (Detect It Easy)** and **FLOSS** with precise flags can uncover hidden behaviors tied to adversary techniques like **T1027.005 (Indicator Removal from Tools)** or **T1105 (Ingress Tool Transfer)**. Below are the most impactful commands and features not yet demonstrated:
+
+#### **DIE: Critical Console Flags**
+- **`-json`**: Export analysis in machine-readable JSON for automated pipelines. Use when integrating DIE with SIEMs or custom scripts.
+  ```bash
+  diec -json suspicious.exe > analysis.json
+  ```
+- **`-d`**: Enable deep inspection (e.g., entropy scans, packer detection). Critical for spotting **T1027.005** obfuscation.
+  ```bash
+  diec -d suspicious.exe
+  ```
+- **`-a`**: Force analysis of all sections, including non-standard regions. Helps detect **T1105** payloads hidden in overlay data.
+  ```bash
+  diec -a suspicious.exe
+  ```
+- **Entropy Visualization**: DIE’s built-in entropy graph (GUI) highlights high-entropy regions, often indicative of encrypted/obfuscated payloads (e.g., **T1027.002**).
+
+#### **FLOSS: Advanced String Extraction**
+- **`--no-decoded-strings`**: Skip decoded stack strings to focus on raw embedded strings. Useful for identifying hardcoded C2 IPs (e.g., **T1071.001**).
+  ```bash
+  floss --no-decoded-strings suspicious.exe
+  ```
+- **`--min-length <N>`**: Filter strings by length to reduce noise. Set `--min-length 8` to exclude trivial strings while preserving meaningful artifacts.
+  ```bash
+  floss --min-length 12 suspicious.exe
+  ```
+
+**Sources**:
+- [DIE Official Documentation (GitHub Wiki)](https://github.com/horsicq/Detect-It-Easy/wiki/Command-line-interface)
+- [FireEye FLOSS User Guide (PDF)](https://www.fireeye.com/content/dam/fireeye-www/services/freeware/ug-floss.pdf)
+
+### Threat Hunting & Detection Engineering
+
+Once the static triage artifacts are collected, pivot to **threat hunting** and **detection engineering** to uncover adversary tradecraft. Focus on **Windows Event Logs** (Security, Sysmon) and **network telemetry** (Zeek, Suricata) to detect two high-confidence MITRE ATT&CK techniques:
+
+1. **T1047: Windows Management Instrumentation (WMI)**
+   - *Detection Logic*: Hunt for WMI process creation (`Event ID 4688` or `Sysmon Event ID 1`) where `ParentImage` is `wmiprvse.exe` and `CommandLine` contains `wmic`, `Get-WmiObject`, or `Invoke-WmiMethod`. Pivot to `Microsoft-Windows-WMI-Activity/Operational` (`Event ID 5861`) for WMI subscription persistence.
+   - *Network Pivot*: Zeek’s `dce_rpc` logs (`operation` field = `IWbemServices_ExecMethod`) or Suricata’s `DCE/RPC` protocol alerts (e.g., `ET POLICY WMI Activity`).
+
+2. **T1574.002: Hijack Execution Flow: DLL Side-Loading**
+   - *Detection Logic*: Correlate `Sysmon Event ID 7` (Image Load) with `Event ID 1` (Process Creation) where a legitimate binary (e.g., `msiexec.exe`) loads a DLL from a non-standard path (e.g., `C:\Temp\`). Cross-reference with `Event ID 4663` (File System audit) for suspicious write operations to `System32` or `Program Files`.
+   - *Hunting Query*: Use Velociraptor’s `Windows.EventLogs.Evtx` artifact to filter for `TargetObject` containing `*.dll` and `SubjectLogonId` from untrusted sessions.
+
+**Authoritative Sources**:
+- [CrowdStrike: Detecting WMI Abuse (T1047)](https://www.crowdstrike.com/blog/wmi-persistence/)
+- [Elastic Security Labs: Detecting DLL Side-Loading (T1574.002)](https://www.elastic.co/security-labs/detecting-dll-side-loading-with-elastic-security)
+
 ## Sources
 - Detect-It-Easy: official repo and console flags – https://github.com/horsicq/Detect-It-Easy, https://github.com/horsicq/DIE-engine
 - capa: official repo, rules, and ATT&CK mapping – https://github.com/mandiant/capa, https://github.com/mandiant/capa-rules
@@ -227,3 +277,9 @@ Sample SHA256: compiler-dependent — record the digest emitted by `Get-FileHash
 - [FLOSS obfuscated-string extraction](../42-floss-strings/README.md) -- shares capa
 
 <!-- cyberlab-enriched: v3 -->
+- https://github.com/horsicq/Detect-It-Easy/wiki/Command-line-interface
+- https://www.fireeye.com/content/dam/fireeye-www/services/freeware/ug-floss.pdf
+- https://www.crowdstrike.com/blog/wmi-persistence/
+- https://www.elastic.co/security-labs/detecting-dll-side-loading-with-elastic-security
+
+<!-- cyberlab-enriched: v4 -->
