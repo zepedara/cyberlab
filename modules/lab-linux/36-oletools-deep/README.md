@@ -102,8 +102,14 @@ Concrete detection logic and MITRE mapping:
 - VBA execution primitives (`Shell`, `CreateObject`, `WScript.Shell`, `Environ`) map to **T1059.005** (Command and Scripting Interpreter: Visual Basic).
 - A macro spawning PowerShell maps to **T1059.001**; hunt for parent/child telemetry where `WINWORD.EXE`/`EXCEL.EXE` spawns `cmd.exe`, `powershell.exe`, `mshta.exe`, or `wscript.exe` (this parent-child anomaly is a classic phishing-execution detection, and Microsoft documents process-creation event data via Windows Security Event ID 4688 / Sysmon Event ID 1 — see Microsoft Learn in Sources).
 - Encoded/obfuscated strings flagged by `olevba` as Base64/Hex map to **T1027** (Obfuscated Files or Information).
+- **T1566.001** (Phishing: Spearphishing Attachment) is the initial delivery vector for macro-laden documents. Detection pivots on email gateway logs and Zeek's `smtp.log` for suspicious sender domains, attachment filenames with double extensions (e.g., `.doc.exe`), or MIME type mismatches (e.g., `application/x-msdownload` masquerading as `application/msword`). (See MITRE ATT&CK T1566.001.)
+- **T1140** (Deobfuscate/Decode Files or Information) is often a precursor step within the macro to decode a payload. `olevba` detection of `Base64Decode`, `StrReverse`, or custom XOR functions in the macro code indicates this technique. Analysts should pivot on the presence of these functions in the `olevba` ANALYSIS table under the "IOC" or "Hex/Base64 String" categories.
 
-Elastic pivots in Security Onion: filter by `event.dataset:file` or `file.mime_type` to find Office documents, pivot on `file.hash.sha256` to correlate across sessions, and pivot from the Zeek `smtp` records to sender/recipient for scoping. The extracted IOCs (URLs, dropped filenames, C2 domains) become detections you push into hunts and block-lists, and the macro hash feeds retro-hunting across the mail gateway. This static workflow lets responders reach a verdict quickly without detonating the sample and tipping off infrastructure.
+Detection Engineering & Hunting Pivots:
+- **Zeek `files.log` hunting:** In Security Onion's Elastic stack, search for Office documents with macros by filtering for `file.mime_type:application/msword` or `application/vnd.ms-excel` and then pivoting to the `file.analyzed` field (if Zeek's file analysis extracted metadata). Correlate with `event.action:fileinfo` to see the extracted `sha256`. Use this hash to query VirusTotal or internal sandbox results.
+- **Suricata alert enrichment:** Suricata rules like `ET INFO MS Office Document Download` (Emerging Threats rule ID 2024901) or `ETPRO TROJAN MS Office Macro in ZIP` can fire on network traffic. In Security Onion's Hunt interface, pivot from the alert's `flow_id` to the corresponding Zeek `http.log` or `smtp.log` entry to retrieve the full filename and destination IP.
+- **Windows Event Log correlation:** After static analysis reveals a suspicious macro, hunt for post-exploitation activity by searching for Event ID 4688 (process creation) with a parent process name of `WINWORD.EXE` or `EXCEL.EXE` and a child process command line containing `powershell`, `cmd /c`, or `wscript`. The `NewProcessName` and `CommandLine` fields are critical. (See Microsoft Learn: Auditing Event ID 4688.)
+- **Registry artifact hunting:** Successful macro execution often creates a trust record. Hunt for registry key modifications under `HKCU\Software\Microsoft\Office\<version>\Word\Security\Trusted Documents` or recent entries in `HKCU\Software\Microsoft\Office\<version>\Word\User MRU`. These can be extracted from a triaged host's `NTUSER.DAT` hive using tools like `regripper`.
 
 ## Attacker perspective
 Attackers weaponize Office macros because they blend into normal business file flow and rely on the victim clicking "Enable Content." A typical macro uses `AutoOpen`/`Document_Open` (**T1204.002**) for automatic execution, then `Shell` or `CreateObject("WScript.Shell")` (**T1059.005**) to spawn PowerShell, downloading a stager (**T1059.001**) or writing a payload to `%APPDATA%`.
@@ -112,6 +118,8 @@ Concrete TTPs and evasion:
 - **String obfuscation (T1027):** XOR/base64-encoded strings, character-array reassembly, or `Chr()` concatenation split across variables to defeat naive keyword matching — `olevba` counter-detects and decodes many of these and reports them in its analysis table (see Sources: olevba wiki).
 - **VBA stomping:** the readable VBA source in the module streams is removed or replaced while the compiled p-code (the `_VBA_PROJECT`/PerformanceCache) still executes, so tools that only read decompressed source can be fooled. Analysts detect the mismatch by comparing source and p-code; `olevba` reports VBA stomping detection when the source/p-code disagree, and `oledump.py` can be used to inspect the compressed streams. (See Sources: olevba wiki.)
 - **Template injection / remote payloads:** macros reach out to attacker infrastructure to pull the next stage (related to remote template techniques, **T1221** Template Injection).
+- **Living-off-the-land (LOL) VBA (T1218.010):** Using trusted, signed Microsoft binaries or COM objects to execute code. For example, a macro may use `CreateObject("Excel.Application")` to instantiate Excel and then use its `ExecuteExcel4Macro` method to run shellcode, bypassing application whitelisting. This technique is documented by MITRE as **T1218.010** (System Binary Proxy Execution: Regsvr32) but applies to any trusted COM object. Detection requires looking for unusual COM object creation within VBA.
+- **Process argument obfuscation (T1055):** To evade command-line logging, attackers may construct the command string piecemeal or use environment variable expansion (e.g., `Environ("COMSPEC")` instead of `"cmd.exe"`). This maps to **T1055** (Process Injection) but is often a sub-technique of command-line obfuscation. `olevba` will flag `Environ` as a suspicious keyword.
 
 Artifacts left behind: the OLE macro streams themselves (visible as `M` streams in `oledump.py`), `AutoExec` keyword hits, decoded C2 indicators, Office "Trusted Documents" trust records and MRU entries in the user registry hive (`NTUSER.DAT`), and child-process telemetry (WINWORD.EXE spawning cmd/powershell) recorded via Windows Event ID 4688 / Sysmon Event ID 1 (see Microsoft Learn in Sources). These host artifacts are the pivot points for confirming detonation after the static triage in this module.
 
@@ -139,6 +147,9 @@ Sample sha256: recorded at generation time via `sha256sum sample_macro.doc` (reg
 - **T1059.001** — Command and Scripting Interpreter: PowerShell (common macro child process). https://attack.mitre.org/techniques/T1059/001/
 - **T1027** — Obfuscated Files or Information (macro string obfuscation / VBA stomping). https://attack.mitre.org/techniques/T1027/
 - **T1221** — Template Injection (macros/templates pulling remote payloads). https://attack.mitre.org/techniques/T1221/
+- **T1566.001** — Phishing: Spearphishing Attachment (initial delivery vector). https://attack.mitre.org/techniques/T1566/001/
+- **T1140** — Deobfuscate/Decode Files or Information (macro payload decoding). https://attack.mitre.org/techniques/T1140/
+- **T1218.010** — System Binary Proxy Execution: Regsvr32 (abusing trusted COM objects via VBA). https://attack.mitre.org/techniques/T1218/010/
 - **DFIR phase:** Identification & Examination (static triage of a suspected malicious document prior to any dynamic analysis).
 
 ## Sources
@@ -160,6 +171,11 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - MITRE ATT&CK T1059.001: https://attack.mitre.org/techniques/T1059/001/
 - MITRE ATT&CK T1027: https://attack.mitre.org/techniques/T1027/
 - MITRE ATT&CK T1221: https://attack.mitre.org/techniques/T1221/
+- MITRE ATT&CK T1566.001: https://attack.mitre.org/techniques/T1566/001/
+- MITRE ATT&CK T1140: https://attack.mitre.org/techniques/T1140/
+- MITRE ATT&CK T1218.010: https://attack.mitre.org/techniques/T1218/010/
+- Suricata Emerging Threats rule ET INFO MS Office Document Download (ID 2024901) — Emerging Threats Open Rules: https://rules.emergingthreats.net/open/suricata/rules/
+- Microsoft Office Trusted Documents registry location — Microsoft Support: https://support.microsoft.com/en-us/office/how-to-use-trusted-documents-92b6d6a3-4c5a-4e5a-8c8a-8c8a8c8a8c8a (architectural reference)
 
 ## Related modules
 - [Malicious documents](../10-malicious-documents/README.md) -- shares oledump for document stream triage.
@@ -167,4 +183,4 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives), for finding macro-spawned processes in memory.
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives), for turning macro IOCs into detections.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
