@@ -238,6 +238,31 @@ For further reading:
 - [FireEye: .NET Reverse Engineering for Red Teams](https://www.fireeye.com/blog/threat-research/2020/03/net-reverse-engineering-for-red-teams.html)
 - [Mandiant: Abusing .NET for Post-Exploitation](https://www.mandiant.com/resources/blog/abusing-net-post-exploitation)
 
+
+### Essential Commands & Features
+To further enhance your reverse engineering skills, it's crucial to master essential commands and features in tools like dnSpyEx and de4dot. For instance, in dnSpyEx, you can set breakpoints in the debugger using the `Set Breakpoint` option, allowing you to pause execution at specific points. You can also use IL stepping to step through the Intermediate Language code line by line, providing deeper insights into the program's behavior. Additionally, edit-and-continue features enable you to modify the code and continue debugging without restarting the process. These features are particularly useful when analyzing malware that employs techniques like `T1588: Obtain Capabilities` or `T1590: Gather Technical Data`, where understanding the program's flow and data manipulation is key.
+
+When using de4dot, flags like `--dont-rename` and `--strtyp-*` can be used for selective deobfuscation and analysis. For example, `de4dot --dont-rename file.exe` will deobfuscate the file without renaming types and members, helping preserve the original code structure. These techniques are essential for reverse engineers to uncover hidden or obfuscated functionalities in malicious software.
+
+For more detailed information on these tools and techniques, refer to the official documentation and resources from reputable sources, such as:
+https://www.reverse-engineering.info/
+https://resources.infosecinstitute.com/category/reverse-engineering/
+
+### Common Pitfalls & Result Validation
+
+When analyzing .NET assemblies with reverse engineering tools (e.g., dnSpy, ILSpy, or DotPeek), analysts often misinterpret obfuscated or dynamically generated code, leading to false positives or missed detections. A frequent mistake is assuming all `System.Reflection` invocations (e.g., `Assembly.Load`) are malicious—legitimate applications use reflection for plugin systems or dependency injection. To validate findings, cross-reference suspicious calls with **MITRE ATT&CK T1621 (Reflective Code Loading)** by checking for:
+- Unusual memory allocations (`VirtualAlloc`) preceding reflection.
+- Absence of digital signatures or anomalous file paths (e.g., `%TEMP%`).
+
+Another pitfall is overlooking **T1106 (Native API)** misuse, where .NET malware calls Win32 APIs (e.g., `kernel32!CreateRemoteThread`) via P/Invoke. Analysts may dismiss these as benign if the API is common, but validation requires:
+- Tracing the call chain to confirm malicious intent (e.g., process hollowing via `NtUnmapViewOfSection`).
+- Comparing against known-good baselines (e.g., Microsoft’s [.NET Framework Design Guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/)).
+
+To avoid false conclusions, always:
+1. **Contextualize findings**: Correlate static analysis with runtime behavior (e.g., ProcMon logs).
+2. **Leverage decompiler features**: Use dnSpy’s debugger to step through obfuscated code dynamically.
+3. **Consult authoritative references**: For .NET-specific threats, see the [CERT-EU .NET Reverse Engineering Guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002.pdf) or [MalAPI.io](https://malapi.io) for API misuse patterns.
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -277,3 +302,10 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.mandiant.com/resources/blog/abusing-net-post-exploitation
 
 <!-- cyberlab-enriched: v4 -->
+- https://www.reverse-engineering.info/
+- https://resources.infosecinstitute.com/category/reverse-engineering/
+- https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002.pdf
+- https://malapi.io
+
+<!-- cyberlab-enriched: v5 -->
