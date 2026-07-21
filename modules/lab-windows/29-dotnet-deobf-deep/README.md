@@ -116,6 +116,13 @@ Map recovered behavior to ATT&CK to drive fleet-wide hunts:
 - **T1055 — Process Injection** (<https://attack.mitre.org/techniques/T1055/>): common in .NET loaders staging a second payload; hunt for cross-process access (Sysmon EID 8/10).
 - **T1059.001 — Command and Scripting Interpreter: PowerShell** (<https://attack.mitre.org/techniques/T1059/001/>) frequently pairs with .NET droppers that spawn PowerShell.
 
+**Detection Engineering Deep Dive:**
+- **Zeek `files.log` pivot:** Look for `mime_type` containing `application/x-dosexec` and `analyzers` field containing `PE` and `CLR` (indicating a .NET assembly). The `sha256` can be used to pivot to VirusTotal or internal sandbox reports. This is documented in the Zeek file analysis framework: <https://docs.zeek.org/en/master/frameworks/file-analysis.html>.
+- **Sysmon Event ID 1 detection:** A .NET assembly execution often spawns from `rundll32.exe`, `regsvr32.exe`, or `mshta.exe` (T1218). Look for `ParentImage` ending in one of those and `Image` ending in a suspicious name (e.g., `invoice.exe`). The `Hashes` field (SHA1, MD5, SHA256) can be matched against threat intel feeds. Sysmon Event ID 1 schema: <https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-1-process-create>.
+- **Suricata rule logic:** Alert on HTTP POST requests with a `User-Agent` string containing `.NET CLR` or `Mono` to uncommon external IPs. Example Suricata rule keyword: `http.user_agent; content:".NET CLR";` within a rule targeting outbound C2 traffic. Suricata HTTP keyword documentation: <https://docs.suricata.io/en/latest/rules/http-keywords.html>.
+- **MITRE ATT&CK T1564.001 — Hidden Files and Directories:** Obfuscated .NET binaries may be dropped in hidden directories (e.g., `AppData\Local\Temp\` with hidden attribute). Hunt for Sysmon Event ID 11 (FileCreate) where `TargetFilename` matches `*.exe` and the directory is hidden. MITRE technique: <https://attack.mitre.org/techniques/T1564/001/>.
+- **MITRE ATT&CK T1574.001 — DLL Search Order Hijacking:** .NET malware often abuses DLL side-loading. Hunt for Sysmon Event ID 7 (Image loaded) where `ImageLoaded` is a non-Microsoft DLL loaded from a user-writable directory like `C:\Users\Public\`. MITRE technique: <https://attack.mitre.org/techniques/T1574/001/>.
+
 ## Attacker perspective
 Adversaries obfuscate .NET payloads to slow analysis and evade signatures. Concrete TTPs and their artifacts:
 
@@ -126,6 +133,12 @@ Adversaries obfuscate .NET payloads to slow analysis and evade signatures. Concr
 - **Runtime string decoding at execution** maps to **T1140** (<https://attack.mitre.org/techniques/T1140/>).
 
 Offensive counterparts to the cleaners here include ConfuserEx and .NET Reactor. Evasion focus is on breaking static signatures and tiring out analysts — but because .NET IL is inherently reversible (ECMA-335 metadata is required for the CLR to execute the code), none of these protections prevent recovery; they only add time. Detectable residue includes the obfuscator's own runtime helper types/metadata patterns (which de4dot fingerprints), unusual assembly attributes, and the sheer anomaly of a heavily-renamed managed binary on an endpoint. dnSpyEx live debugging can dump decrypted values on the fly, defeating string encryption entirely (<https://github.com/dnSpyEx/dnSpy#features>).
+
+**Advanced Attacker TTPs:**
+- **T1055.001 — Dynamic-link Library Injection:** .NET malware can inject a managed DLL into a remote process using Windows API calls like `CreateRemoteThread` and `LoadLibrary`. This leaves artifacts in Sysmon Event ID 8 (CreateRemoteThread) with a `StartAddress` pointing to `LoadLibrary` and a `SourceImage` that is a .NET executable. MITRE sub-technique: <https://attack.mitre.org/techniques/T1055/001/>.
+- **T1562.001 — Disable or Modify Tools:** Obfuscators often include anti-debugging and anti-VM checks. These manifest as calls to `IsDebuggerPresent`, `CheckRemoteDebuggerPresent`, or WMI queries for virtual hardware. In dnSpyEx, look for methods with names like `AntiDebug` or `VMDetect`. MITRE sub-technique: <https://attack.mitre.org/techniques/T1562/001/>.
+- **T1105 — Ingress Tool Transfer:** After deobfuscation, the payload may download additional modules. The deobfuscated code will reveal URLs and `WebClient` or `HttpClient` usage. This maps to MITRE technique T1105: <https://attack.mitre.org/techniques/T1105/>.
+- **T1543.003 — Windows Service:** Some .NET malware installs itself as a service. The deobfuscated code may contain `ServiceBase` or `sc.exe` command-line arguments. Hunt for Sysmon Event ID 1 with `CommandLine` containing `sc create` or `binPath=` pointing to a suspicious .NET executable. MITRE sub-technique: <https://attack.mitre.org/techniques/T1543/003/>.
 
 ## Answer key
 - **de4dot detection:** the generated `sample.exe` is **not obfuscated** — de4dot reports an unknown/none obfuscator and still emits `sample-cleaned.exe`. This is expected for the benign build; the workflow (detect → clean → decompile) is identical for real obfuscated samples.
@@ -149,6 +162,12 @@ Select-String -Path .\exercise\decompiled\*.cs -Pattern "TGFi"
 - **T1027.002 — Software Packing** (packed/compressed .NET payloads): <https://attack.mitre.org/techniques/T1027/002/>.
 - **T1140 — Deobfuscate/Decode Files or Information** (de4dot cleaning, Base64 decoding): <https://attack.mitre.org/techniques/T1140/>.
 - **T1059.001 — Command and Scripting Interpreter: PowerShell** (analysis workflow context; common .NET dropper follow-on): <https://attack.mitre.org/techniques/T1059/001/>.
+- **T1564.001 — Hidden Files and Directories** (obfuscated binaries dropped in hidden locations): <https://attack.mitre.org/techniques/T1564/001/>.
+- **T1574.001 — DLL Search Order Hijacking** (abused by .NET malware for side-loading): <https://attack.mitre.org/techniques/T1574/001/>.
+- **T1055.001 — Dynamic-link Library Injection** (managed DLL injection via .NET): <https://attack.mitre.org/techniques/T1055/001/>.
+- **T1562.001 — Disable or Modify Tools** (anti-debug/anti-VM checks in obfuscators): <https://attack.mitre.org/techniques/T1562/001/>.
+- **T1105 — Ingress Tool Transfer** (downloading additional modules post-deobfuscation): <https://attack.mitre.org/techniques/T1105/>.
+- **T1543.003 — Windows Service** (installing as a service via .NET code): <https://attack.mitre.org/techniques/T1543/003/>.
 - **DFIR phase:** examination / analysis (static and dynamic malware analysis of a recovered artifact), feeding identification and reporting.
 
 ## Sources
@@ -165,16 +184,25 @@ Select-String -Path .\exercise\decompiled\*.cs -Pattern "TGFi"
 - Microsoft Learn — `Convert.FromBase64String`: https://learn.microsoft.com/en-us/dotnet/api/system.convert.frombase64string
 - Microsoft Learn — `Encoding.UTF8`: https://learn.microsoft.com/en-us/dotnet/api/system.text.encoding.utf8
 - Microsoft Learn — `Get-FileHash`: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash
-- Microsoft Sysinternals — Sysmon (Event IDs 1/3/8/10, schema): https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+- Microsoft Sysinternals — Sysmon (Event IDs 1/3/8/10/11, schema): https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
 - Zeek docs — `files.log` / file analysis: https://docs.zeek.org/en/master/logs/files.html
+- Zeek docs — file analysis framework (PE/CLR detection): https://docs.zeek.org/en/master/frameworks/file-analysis.html
 - Zeek docs — Intelligence Framework: https://docs.zeek.org/en/master/frameworks/intel.html
 - Suricata docs — rules & alerts: https://docs.suricata.io/en/latest/rules/index.html
+- Suricata docs — HTTP keywords (User-Agent): https://docs.suricata.io/en/latest/rules/http-keywords.html
 - Security Onion docs — analyst tools: https://docs.securityonion.net/en/2.4/analyst-tools.html
 - MITRE ATT&CK T1027 Obfuscated Files or Information: https://attack.mitre.org/techniques/T1027/
 - MITRE ATT&CK T1027.002 Software Packing: https://attack.mitre.org/techniques/T1027/002/
 - MITRE ATT&CK T1140 Deobfuscate/Decode Files or Information: https://attack.mitre.org/techniques/T1140/
 - MITRE ATT&CK T1055 Process Injection: https://attack.mitre.org/techniques/T1055/
+- MITRE ATT&CK T1055.001 Dynamic-link Library Injection: https://attack.mitre.org/techniques/T1055/001/
 - MITRE ATT&CK T1059.001 PowerShell: https://attack.mitre.org/techniques/T1059/001/
+- MITRE ATT&CK T1105 Ingress Tool Transfer: https://attack.mitre.org/techniques/T1105/
+- MITRE ATT&CK T1218 System Binary Proxy Execution: https://attack.mitre.org/techniques/T1218/
+- MITRE ATT&CK T1543.003 Windows Service: https://attack.mitre.org/techniques/T1543/003/
+- MITRE ATT&CK T1562.001 Disable or Modify Tools: https://attack.mitre.org/techniques/T1562/001/
+- MITRE ATT&CK T1564.001 Hidden Files and Directories: https://attack.mitre.org/techniques/T1564/001/
+- MITRE ATT&CK T1574.001 DLL Search Order Hijacking: https://attack.mitre.org/techniques/T1574/001/
 - SANS FOR610 Reverse-Engineering Malware: https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
 
 ## Related modules
@@ -183,4 +211,4 @@ Select-String -Path .\exercise\decompiled\*.cs -Pattern "TGFi"
 - [Scenario: .NET malware analysis](../53-dotnet-malware-case/README.md) -- shares de4dot in an end-to-end case investigation.
 - [Ghidra decompiler & scripting deep-dive](../27-ghidra-scripting/README.md) -- same learning path (Deep-dives) for complementary native-code RE.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
