@@ -152,6 +152,65 @@ Sample sha256 (must match): `818ed600ef221d270821b1a874576c4668251740ce274506247
 - **T1071.001** Application Layer Protocol: Web — Burp Suite HTTP tampering, Meterpreter HTTP(S) C2 (DFIR phase: *examination*). https://attack.mitre.org/techniques/T1071/001/
 - **T1059** Command and Scripting Interpreter — Metasploit payload execution (DFIR phase: *analysis*). https://attack.mitre.org/techniques/T1059/
 
+
+### Essential Commands & Features
+
+Below are **high-impact commands and features** for `nmap` and `Metasploit` that extend the module’s core tooling with **service fingerprinting, OS detection, scripted attacks, and timing control**—critical for realistic offensive engagements.
+
+#### **Nmap: Advanced Scanning**
+- **Service Version Detection (`-sV`)**
+  Identifies running services and versions, enabling precise exploit targeting.
+  ```bash
+  nmap -sV -p 80,443 192.168.1.1
+  ```
+  *Use when*: You need to map services to CVEs (e.g., outdated Apache versions).
+
+- **OS Detection (`-O`)**
+  Guesses the target OS via TCP/IP stack fingerprinting.
+  ```bash
+  nmap -O 192.168.1.1
+  ```
+  *Use when*: Tailoring payloads (e.g., Windows vs. Linux exploits).
+
+- **Aggressive Scan (`-A`)**
+  Combines `-sV`, `-O`, traceroute, and default NSE scripts for comprehensive recon.
+  ```bash
+  nmap -A -T4 192.168.1.1
+  ```
+  *Use when*: Time is limited, and you need rapid, deep enumeration.
+
+- **NSE Scripts (`--script`)**
+  Runs Nmap Scripting Engine (NSE) scripts for vulnerability checks (e.g., `vuln`, `exploit` categories).
+  ```bash
+  nmap --script vuln -p 445 192.168.1.1
+  ```
+  *Use when*: Testing for specific CVEs (e.g., EternalBlue via `smb-vuln-ms17-010`).
+  **MITRE ATT&CK**: [T1592.004 Gather Victim Host Information: Client Configurations](https://attack.mitre.org/techniques/T1592/004/)
+
+- **Timing Control (`-T4`)**
+  Accelerates scans (aggressive timing) without sacrificing accuracy.
+  ```bash
+  nmap -T4 -p- 192.168.1.1
+  ```
+  *Use when*: Scanning large networks or evading rate-based detection.
+
+#### **Metasploit: Post-Exploitation**
+- **Session Interaction (`sessions -i`)**
+  Lists and interacts with active Meterpreter sessions.
+  ```bash
+  msf6 > sessions -i 1
+  ```
+  *Use when*: Pivoting or executing post-exploit modules (e.g., `hashdump`).
+  **MITRE ATT&CK**:
+
+### Common Pitfalls & Result Validation
+
+Analysts often mistake open ports for exploitable services without verifying the underlying application or patch level. For example, an Nmap version scan might report an outdated OpenSSH, but the actual daemon may be restricted or patched. This can lead to wasted effort attempting T1087 (Account Discovery) via brute-force when the service is actually providing a decoy banner. Similarly, when extracting credentials from memory dumps, analysts may assume captured NTLM hashes are immediately useful, failing to check if the accounts are disabled or the hashes match current password storage (T1555 – Credentials from Password Stores). Always validate findings with a secondary method: use `netcat` or `openssl s_client` to manually inspect banners, or cross-reference service signatures with Shodan or threat intelligence feeds. For credential validation, attempt authentication against a test account using the exact hash format to confirm it is not a stale or deprecated hash. False conclusions also arise when analysts misinterpret tool output—e.g., Metasploit's `smtp_version` auxiliary may report a server as vulnerable to CVE-2020-7247, but a manual probe shows it is patched. Validate every exploitation step by attempting the exploit in a controlled environment and verifying the outcome against the service's actual behavior.
+
+Sources:  
+- CVE Details (CVE-2020-7247): https://www.cve.org/CVERecord?id=CVE-2020-7247  
+- NVD: https://nvd.nist.gov/vuln/detail/CVE-2020-7247
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, project repos, MITRE ATT&CK, Microsoft Learn, SANS, or Security Onion docs):
 
@@ -208,3 +267,8 @@ Claim → source mapping (all URLs are official tool docs, project repos, MITRE 
 - [Disk & filesystem forensics](../01-disk-forensics/README.md) -- same Foundations learning path, covering the disk artifacts that credential-dumping leaves behind.
 
 <!-- cyberlab-enriched: v2 -->
+- https://attack.mitre.org/techniques/T1592/004/
+- https://www.cve.org/CVERecord?id=CVE-2020-7247
+- https://nvd.nist.gov/vuln/detail/CVE-2020-7247
+
+<!-- cyberlab-enriched: v3 -->
