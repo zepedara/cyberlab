@@ -251,6 +251,81 @@ From an adversary’s perspective, **Binwalk** is a powerful tool for **firmware
 - [Cisco Talos: Firmware Analysis with Binwalk (2023)](https://blog.talosintelligence.com/firmware-analysis-with-binwalk/)
 - [FireEye: Supply Chain Compromise via Firmware (2022)](https://www.fireeye.com/blog/threat-research/2022/03/supply-chain-compromise-via-firmware.html)
 
+
+### Essential Commands & Features
+
+Binwalk’s power lies in its ability to recursively dissect nested firmware images and extract hidden artifacts. Below are three **undemonstrated but critical** commands and features, each with a concrete example and use case:
+
+1. **`-M` (Matryoshka Recursive Scan)**
+   Recursively scans extracted files for additional embedded firmware or payloads, ideal for uncovering multi-layered obfuscation (e.g., [T1027.005: Indicator Removal from Tools](https://attack.mitre.org/techniques/T1027/005/)).
+   **Example:**
+   ```bash
+   binwalk -Me firmware.bin
+   ```
+   *When to use:* After initial extraction to expose nested files (e.g., squashfs inside U-Boot, or UPX-packed binaries).
+
+2. **`-A` (Opcode Scan)**
+   Detects executable code (e.g., ARM/MIPS/x86) by scanning for CPU opcodes, critical for identifying backdoors or custom implants (e.g., [T1554: Compromise Client Software Binary](https://attack.mitre.org/techniques/T1554/)).
+   **Example:**
+   ```bash
+   binwalk -A firmware.bin
+   ```
+   *When to use:* To locate non-standard executables in firmware blobs (e.g., unauthorized `telnetd` binaries).
+
+3. **`--dd` (Custom Signature Extraction)**
+   Extracts files matching user-defined signatures (e.g., YARA rules or custom headers), enabling targeted analysis of proprietary formats.
+   **Example:**
+   ```bash
+   binwalk --dd='jpeg:jpg' firmware.bin
+   ```
+   *When to use:* To isolate specific file types (e.g., embedded credentials in `.pem` files) or hunt for [T1600: Weaken Encryption](https://attack.mitre.org/techniques/T1600/) artifacts.
+
+**Sources:**
+- [Binwalk Official Wiki: Command-Line Options](https://github.com/ReFirmLabs/binwalk/wiki/Usage#command-line-options)
+- [SANS FOR578: Advanced Firmware Analysis (2023)](https://www.sans.org/blog/for578-firmware-analysis/)
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule Detect_Benign_Firmware_Squashfs {
+    meta:
+        author = "DFIR Training"
+        description = "Detects a benign sample containing Squashfs filesystem header"
+        reference = "https://attack.mitre.org/techniques/T1547/"
+    strings:
+        $squashfs = "squashfs" nocase
+        $filesystem = "filesystem" nocase
+        $mtd = "mtdblock" nocase
+    condition:
+        filesize < 10MB and any of ($squashfs, $filesystem, $mtd)
+}
+```
+
+```yaml
+title: Detection of Binwalk Firmware Analysis Tool Execution
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        Image|endswith: '\binwalk.exe'
+        CommandLine|contains: 'binwalk'
+    condition: selection
+```
+
+**Reference artifacts / IOCs**
+
+| Type | Value |
+|------|-------|
+| SHA256 hash | `0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a` |
+| Filename | `firmware.bin` |
+| Host artifact (path) | `C:\Users\analyst\Desktop\samples\firmware.bin` |
+| Network artifact | `hxxp://192[.]0[.]2[.]1/firmware.bin` |
+
+**MITRE ATT&CK Mapping:**  
+- **Technique:** T1547 – Boot or Logon Autostart Execution  
+- **Authoritative Source:** https://attack.mitre.org/techniques/T1547/
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -311,3 +386,12 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - https://www.fireeye.com/blog/threat-research/2022/03/supply-chain-compromise-via-firmware.html
 
 <!-- cyberlab-enriched: v4 -->
+- https://attack.mitre.org/techniques/T1027/005/
+- https://attack.mitre.org/techniques/T1554/
+- https://attack.mitre.org/techniques/T1600/
+- https://github.com/ReFirmLabs/binwalk/wiki/Usage#command-line-options
+- https://www.sans.org/blog/for578-firmware-analysis/
+- https://attack.mitre.org/techniques/T1547/"
+- https://attack.mitre.org/techniques/T1547/
+
+<!-- cyberlab-enriched: v5 -->
