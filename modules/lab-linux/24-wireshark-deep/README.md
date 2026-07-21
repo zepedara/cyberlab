@@ -147,6 +147,43 @@ Expected: the `User-Agent:` header line from the HTTP request. Equivalent tshark
 - T1048.003 — Exfiltration Over Alternative Protocol: Exfiltration Over Unencrypted Non-C2 Protocol. https://attack.mitre.org/techniques/T1048/003/
 - DFIR phase: **Examination / Analysis** (deep inspection of previously collected network evidence), feeding **Identification** of IOCs.
 
+
+### Essential Commands & Features
+
+Mastering `tshark`’s command-line capabilities accelerates analysis and enables automation. Below are the most impactful commands and features not yet covered, with concrete examples and tactical use cases.
+
+- **`-Y` (Read Filter)**: Apply display filters directly to reduce noise. Use when hunting for **T1021.002 (Remote Services: SMB/Windows Admin Shares)** or **T1560.001 (Archive Collected Data: Archive via Utility)**.
+  ```bash
+  tshark -r capture.pcap -Y "smb2.cmd == 1 && smb2.filename contains 'password'"
+  ```
+
+- **`-w` (Write PCAP)**: Save filtered traffic for later analysis or sharing. Critical for preserving evidence of **T1020 (Automated Exfiltration)**.
+  ```bash
+  tshark -i eth0 -f "tcp port 445" -w smb_traffic.pcap
+  ```
+
+- **`-r` (Read File)**: Process existing PCAPs without live capture. Essential for post-incident analysis.
+  ```bash
+  tshark -r suspicious.pcap -q -z io,phs
+  ```
+
+- **`-z` (Statistics)**: Generate summaries (e.g., protocol hierarchy, endpoints). Quickly identify anomalies like **T1571 (Non-Standard Port)**.
+  ```bash
+  tshark -r traffic.pcap -z endpoints,ip
+  ```
+
+- **Follow Streams**: Reconstruct TCP/UDP sessions in ASCII or hex. Vital for analyzing **T1001.003 (Data Obfuscation: Protocol Impersonation)**.
+  ```bash
+  tshark -r exfil.pcap -q -z follow,tcp,ascii,1
+  ```
+
+**Sources**:
+- [Wireshark Man Page (tshark)](https://www.wireshark.org/docs/man-pages/tshark.html)
+- [CISA Tshark Cheat Sheet](https://www.cisa.gov/sites/default/files/publications/tshark_cheat_sheet.pdf)
+
+### Threat Hunting & Detection Engineering
+To effectively hunt and detect threats, security analysts must leverage various log sources and tools. For instance, analyzing Windows Event ID 4688 (Process Creation) can help identify suspicious process executions, which may indicate the use of [T1204](https://attack.mitre.org/techniques/T1204) - User Execution or [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution. By examining the `CommandLine` field in these event logs, analysts can detect potential malicious activity, such as unusual script executions or unexpected system calls. Additionally, threat hunters can pivot on suspicious network activity, like unusual DNS queries or HTTP requests, to uncover hidden threats. By integrating these detection techniques with tools like Wireshark, security teams can enhance their threat hunting capabilities and improve overall detection engineering. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -171,3 +208,10 @@ Claim → source mapping (all URLs are official/authoritative):
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives) for signature-based detection.
 
 <!-- cyberlab-enriched: v2 -->
+- https://www.cisa.gov/sites/default/files/publications/tshark_cheat_sheet.pdf
+- https://attack.mitre.org/techniques/T1204
+- https://attack.mitre.org/techniques/T1218
+- https://www.cisa.gov/
+- https://www.nist.gov/
+
+<!-- cyberlab-enriched: v3 -->
