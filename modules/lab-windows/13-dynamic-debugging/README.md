@@ -225,6 +225,62 @@ Dynamic debugging tools (e.g., x64dbg, WinDbg) are frequently abused by adversar
 - [MITRE ATT&CK: Debugger Evasion (T1620)](https://attack.mitre.org/techniques/T1620/)
 - [CISA Alert: Detecting Process Injection Techniques](https://www.cisa.gov/uscert/ncas/alerts/aa22-152a)
 
+
+### Essential Commands & Features
+
+While basic breakpoints are foundational, mastering **x64dbg’s advanced debugging features** unlocks deeper analysis of evasive malware. Below are the most critical commands and features not yet covered, with concrete examples and tactical use cases:
+
+1. **Hardware Breakpoints** (for stealthy execution monitoring)
+   - *When to use*: Detect memory access/modification (e.g., unpacking loops or anti-debugging checks) without altering code pages (unlike software breakpoints).
+   - *Example*: Set a hardware breakpoint on `Read` access at `0x00401000`:
+     ```
+     hwbreak 0x00401000, r
+     ```
+   - *MITRE ATT&CK*: [T1070.004: Indicator Removal: File Deletion](https://attack.mitre.org/techniques/T1070/004/) (e.g., wiping forensic artifacts).
+
+2. **Conditional Breakpoints** (for targeted analysis)
+   - *When to use*: Pause execution only when specific conditions are met (e.g., a register holds a decryption key or a loop counter reaches a threshold).
+   - *Example*: Break at `0x00401020` if `EAX == 0xDEADBEEF`:
+     ```
+     SetBreakpointCondition 0x00401020, "EAX == 0xDEADBEEF"
+     ```
+   - *MITRE ATT&CK*: [T1105: Ingress Tool Transfer](https://attack.mitre.org/techniques/T1105/) (e.g., filtering network callbacks).
+
+3. **Scripting (expr, log, cmd)** (for automation)
+   - *When to use*: Automate repetitive tasks (e.g., logging register states during unpacking or dumping memory regions).
+   - *Example*: Log `EAX` and `EBX` at every breakpoint, then continue execution:
+     ```
+     log "EAX: {eax}, EBX: {ebx}"
+     cmd "run"
+     ```
+   - *Use case*: Track register changes during [T1027.002: Obfuscated Files or Information: Software Packing](https://attack.mitre.org/techniques/T1027/002/).
+
+4. **Memory Map/Section Analysis** (for unpacking and hook detection)
+   - *When to use*: Identify injected code, unpacked regions, or suspicious memory permissions (e.g., `RWX` sections).
+   - *Example*: List all executable sections:
+     ```
+     memmap
+     ```
+   - *Key flags*: Filter for `RWX` or
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, dynamic debugging is a powerful tool for reverse engineering, exploit development, and evading defenses. Attackers leverage debuggers like **x64dbg** or **WinDbg** to analyze runtime behavior, bypass anti-tampering checks (e.g., packers, obfuscation), and identify vulnerabilities in target applications. A common tactic is **T1059.003: Command and Scripting Interpreter: Windows Command Shell**, where adversaries use debuggers to inject malicious shellcode or modify process memory at runtime, enabling code execution without writing to disk. For example, an attacker may attach to a legitimate process (e.g., `svchost.exe`) and patch its memory to load a malicious DLL, evading static detection.
+
+Another critical technique is **T1574.008: Hijack Execution Flow: Path Interception by PATH Environment Variable**, where debuggers are used to manipulate environment variables or DLL search paths during execution. By dynamically altering these paths, adversaries force the target process to load attacker-controlled libraries, achieving persistence or privilege escalation. Debugging also leaves artifacts, such as:
+- **Debugger-specific registry keys** (e.g., `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug`).
+- **Process memory modifications** (e.g., breakpoints, patched instructions).
+- **Unusual parent-child process relationships** (e.g., `x64dbg.exe` spawning `cmd.exe`).
+
+To evade detection, attackers may:
+- Use **debugger cloaking** (e.g., renaming `x64dbg.exe` to `svchost.exe`).
+- Employ **T1621: Multi-Factor Authentication Request Generation** to bypass authentication during debugging sessions.
+- Limit debugging to short-lived sessions to avoid behavioral analytics triggers.
+
+**Sources:**
+- [FireEye: Debugger Evasion Techniques](https://www.fireeye.com/blog/threat-research/2020/08/debugger-evasion-techniques.html)
+- [NCC Group: Red Team Tactics for Dynamic Analysis](https://research.nccgroup.com/2021/03/11/red-team-tactics-for-dynamic-analysis/)
+
 ## Sources
 - x64dbg official site — https://x64dbg.com/ ; docs — https://help.x64dbg.com/
 - x64dbg `bp` command reference — https://help.x64dbg.com/en/latest/commands/breakpoints/bp.html
@@ -278,3 +334,10 @@ Dynamic debugging tools (e.g., x64dbg, WinDbg) are frequently abused by adversar
 - https://www.cisa.gov/uscert/ncas/alerts/aa22-152a
 
 <!-- cyberlab-enriched: v4 -->
+- https://attack.mitre.org/techniques/T1070/004/
+- https://attack.mitre.org/techniques/T1105/
+- https://attack.mitre.org/techniques/T1027/002/
+- https://www.fireeye.com/blog/threat-research/2020/08/debugger-evasion-techniques.html
+- https://research.nccgroup.com/2021/03/11/red-team-tactics-for-dynamic-analysis/
+
+<!-- cyberlab-enriched: v5 -->
