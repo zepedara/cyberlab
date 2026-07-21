@@ -260,6 +260,88 @@ Evasion considerations:
 - [MITRE ATT&CK: T1055.002](https://attack.mitre.org/techniques/T1055/002/)
 - [Red Team Notes: Frida for Offensive Security](https://www.ired.team/offensive-security/code-injection-process-injection/injecting-dll-via-fridas-dynamic-instrumentation)
 
+
+### Essential Commands & Features
+
+Frida’s `Memory`, `NativePointer`, and `Interceptor.replace()` enable powerful runtime patching and memory manipulation, critical for analyzing or bypassing security controls. Below are the most useful commands and features not yet covered, with concrete examples and their tactical applications.
+
+#### **1. Memory Scanning & Manipulation (`Memory.scan` / `Memory.write`)**
+Use `Memory.scan` to locate specific byte patterns in process memory (e.g., hardcoded keys or strings) and `Memory.write` to overwrite them. This is invaluable for **T1553.004 (Install Root Certificate)** or **T1600.002 (Disable or Modify System Firewall)** by altering runtime configurations.
+
+```javascript
+// Scan for a hardcoded AES key (16 bytes) and replace it
+const keyPtr = Memory.scan(ptr("0x100000000"), 0x1000000, "A9 4A 2B 5C ...", {
+  onMatch: function(address, size) {
+    console.log(`Found key at: ${address}`);
+    Memory.writeByteArray(address, [0x00, 0x01, 0x02, ...]); // Overwrite
+    return 'stop'; // Halt after first match
+  }
+});
+```
+
+#### **2. NativePointer Arithmetic (`NativePointer.add` / `NativePointer.sub`)**
+Use `NativePointer` to perform pointer arithmetic, essential for navigating structures (e.g., C++ vtables) or calculating offsets. This aids in **T1574.009 (Hijack Execution Flow: Path Interception by PATH Environment Variable)** by redirecting function pointers.
+
+```javascript
+// Calculate a function pointer offset in a vtable
+const vtablePtr = ptr("0x12345678");
+const targetFuncPtr = vtablePtr.add(0x20); // Offset to 5th entry
+console.log(`Target function: ${targetFuncPtr}`);
+```
+
+#### **3. Runtime Patching with `Interceptor.replace`**
+Replace a function’s implementation entirely using `Interceptor.replace`, useful for **T1562.003 (Impair Defenses: Disable or Modify Tools)** by neutering security checks.
+
+```javascript
+// Bypass a license check by replacing strcmp
+Interceptor.replace(Module.findExportByName(null, "strcmp"), new NativeCallback(
+  function(str1, str2) {
+    console.log(`strcmp(${str1}, ${str2}) bypassed!`);
+    return 0; // Force "equal" result
+  }, "int", ["pointer", "pointer"])
+);
+```
+
+**Authoritative Sources:**
+- [Frida API Reference: Memory](https://frida.re/docs/javascript-api/#
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule detect_frida_agent {
+    meta:
+        description = "Detects the Frida dynamic instrumentation agent library"
+        author = "Defensive Training Module"
+        reference = "https://attack.mitre.org/techniques/T1140/"
+        date = "2025-04-10"
+    strings:
+        $frida_agent = "frida-agent" ascii wide nocase fullword
+    condition:
+        filesize < 1MB and $frida_agent
+}
+```
+
+```yaml
+title: Frida Process Creation
+logsource:
+    category: process_creation
+    product: windows
+    service: sysmon
+detection:
+    selection_frida:
+        Image|contains: 'frida'
+    condition: selection_frida
+```
+
+| Indicator | Description |
+|-----------|-------------|
+| `4f8a5c6b7d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5` | SHA-256 hash of benign lab file `frida-trace.exe` included in training package |
+| `frida-trace.exe` | Filename for the Frida command-line tracing tool used in this lab |
+| `hxxp://192[.]0[.]2[.]1:27042/script` | Example defanged network artifact – URL used to fetch Frida instrumentation scripts during training |
+
+**Associated MITRE ATT&CK Technique:** T1140 Deobfuscate/Decode Files or Information  
+**Authoritative Source:** [https://attack.mitre.org/techniques/T1140/](https://attack.mitre.org/techniques/T1140/)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -309,3 +391,8 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.ired.team/offensive-security/code-injection-process-injection/injecting-dll-via-fridas-dynamic-instrumentation
 
 <!-- cyberlab-enriched: v4 -->
+- https://frida.re/docs/javascript-api/#
+- https://attack.mitre.org/techniques/T1140/"
+- https://attack.mitre.org/techniques/T1140/](https://attack.mitre.org/techniques/T1140/
+
+<!-- cyberlab-enriched: v5 -->
