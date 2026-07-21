@@ -184,6 +184,46 @@ tshark -r capture.pcap -q -z conv,tcp
 ### Threat Hunting & Detection Engineering
 To enhance threat hunting and detection engineering capabilities, focus on analyzing network capture (pcap) files for signs of adversary tactics, techniques, and procedures (TTPs). Monitor for techniques like [T1204](https://attack.mitre.org/techniques/T1204/) - "User Execution" and [T1210](https://attack.mitre.org/techniques/T1210/) - "Exploitation of Remote Services", which involve manipulating users into executing malicious code or exploiting vulnerabilities in remote services. Analyze Zeek logs for unusual DNS queries, HTTP requests, or SSH connections. Inspect Windows Event IDs related to process creation (4688) and network connections (5156-5158) for suspicious activity. Threat hunters can pivot on unusual network protocols, source/destination IP addresses, or user agents to uncover potential security incidents. By integrating these detection logic and threat-hunting pivots, security teams can improve their ability to identify and respond to advanced threats. For more information on threat hunting and detection engineering, visit [https://www.cyber.gov.au/publications/complex-cyber-campaigns-detection-and-disruption](https://www.cyber.gov.au/publications/complex-cyber-campaigns-detection-and-disruption) and [https://www.nist.gov/publications/detecting-and-responding-advanced-threats](https://www.nist.gov/publications/detecting-and-responding-advanced-threats).
 
+
+### Essential Commands & Features
+
+Master these **`tshark`** commands to analyze PCAPs efficiently in real-world investigations:
+
+1. **`-Y` (Display Filter)**
+   Apply Wireshark-style display filters to isolate traffic (e.g., HTTP requests to a C2 server).
+   ```bash
+   tshark -r capture.pcap -Y "http.request and ip.dst==192.168.1.100"
+   ```
+   *Use case*: Detect **T1071.003 (Application Layer Protocol: Mail Protocols)** or **T1566.002 (Phishing: Spearphishing Link)** by filtering suspicious domains.
+
+2. **`-T fields -e` (Structured Output)**
+   Extract specific fields (e.g., DNS queries, HTTP hosts) for scripting or logs.
+   ```bash
+   tshark -r capture.pcap -T fields -e dns.qry.name -Y "dns.flags.response==0"
+   ```
+   *Use case*: Hunt for **T1046 (Network Service Scanning)** or **T1016 (System Network Configuration Discovery)** by parsing reconnaissance activity.
+
+3. **`-w` (Write PCAP)**
+   Save filtered traffic to a new file for further analysis.
+   ```bash
+   tshark -r capture.pcap -Y "tcp.port==4444" -w c2_traffic.pcap
+   ```
+   *Use case*: Preserve evidence of **T1571 (Non-Standard Port)** or **T1572 (Protocol Tunneling)**.
+
+4. **`-z follow,tcp,<stream>` (Follow TCP Streams)**
+   Reconstruct full TCP conversations (e.g., exfiltrated data).
+   ```bash
+   tshark -r capture.pcap -z follow,tcp,ascii,1
+   ```
+   *Use case*: Analyze **T1041 (Exfiltration Over C2 Channel)** or **T1020 (Automated Exfiltration)**.
+
+**Sources**:
+- [Wireshark’s `tshark` Man Page](https://www.wireshark.org/docs/man-pages/tshark.html)
+- [CISA’s PCAP Analysis Guide](https://www.cisa.gov/resources-tools/services/packet-capture-playbook)
+
+### Adversary Emulation & Red-Team Perspective
+From an adversary's perspective, network packet capture (pcap) files can be abused to exfiltrate sensitive data or establish command and control (C2) channels. Attackers may utilize techniques such as T1587, "Modify System Image", to alter system images and evade detection, and T1595, "Active Scanning", to gather information about the target network. By analyzing pcap files, attackers can identify vulnerabilities and weaknesses in the network, allowing them to plan and execute targeted attacks. The artifacts left behind by these activities may include suspicious network traffic patterns, unusual protocol usage, and modified system files. To evade detection, attackers may employ techniques such as encrypting C2 communications or using legitimate network protocols for data exfiltration. For more information on adversary tactics and techniques, visit the Cyber and Infrastructure Security Agency (CISA) website at https://www.cisa.gov/ and the National Institute of Standards and Technology (NIST) Computer Security Resource Center at https://csrc.nist.gov/.
+
 ## Sources
 Tooling and commands:
 - SANS SIFT Workstation: https://www.sans.org/tools/sift-workstation/
@@ -241,3 +281,8 @@ Sample-data provenance (documentation-only names/addresses):
 - https://www.nist.gov/publications/detecting-and-responding-advanced-threats](https://www.nist.gov/publications/detecting-and-responding-advanced-threats
 
 <!-- cyberlab-enriched: v3 -->
+- https://www.cisa.gov/resources-tools/services/packet-capture-playbook
+- https://www.cisa.gov/
+- https://csrc.nist.gov/.
+
+<!-- cyberlab-enriched: v4 -->
