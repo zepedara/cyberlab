@@ -180,6 +180,49 @@ Analysts frequently misinterpret obfuscated shellcode by relying solely on stati
 - [Mandiant: Shellcode Analysis Tools and Techniques](https://www.mandiant.com/resources/blog/shellcode-analysis-tools)
 - [Secureworks: Shellcode Analysis](https://www.secureworks.com/research/shellcode-analysis)
 
+
+### Essential Commands & Features
+
+While basic `scdbg` usage covers core shellcode analysis, several advanced commands unlock deeper inspection capabilities. Below are the most critical undemonstrated features, with concrete examples and tactical use cases:
+
+- **`-f <file>`**: Load shellcode directly from a binary file (e.g., extracted from a malicious document).
+  *Example*: `scdbg -f shellcode.bin -s -1`
+  *Use Case*: Analyze raw shellcode without manual extraction (e.g., from **T1059.003 Command and Scripting Interpreter: Windows Command Shell** payloads).
+
+- **`-foff <offset>`**: Skip a specified byte offset before execution (critical for obfuscated samples).
+  *Example*: `scdbg -f packed.bin -foff 0x200 -s -1`
+  *Use Case*: Bypass stubs or encryption layers (e.g., **T1127 Trusted Developer Utilities Proxy Execution** artifacts).
+
+- **`-d`**: Dump memory regions post-execution to inspect injected code or unpacked payloads.
+  *Example*: `scdbg -f loader.bin -d -s -1 > dump.bin`
+  *Use Case*: Extract second-stage malware from memory (e.g., **T1574.002 Hijack Execution Flow: DLL Side-Loading**).
+
+- **`-r`**: Generate a detailed execution report (registers, API calls, strings).
+  *Example*: `scdbg -f beacon.bin -r -s -1 > report.txt`
+  *Use Case*: Document C2 callbacks or anti-analysis checks (e.g., **T1036.005 Masquerading: Match Legitimate Name or Location**).
+
+- **`-i`**: Enter interactive mode to step through execution or modify registers.
+  *Example*: `scdbg -f sample.bin -i -s -1`
+  *Use Case*: Debug anti-debugging loops or conditional branches (e.g., **T1497.001 Virtualization/Sandbox Evasion: System Checks**).
+
+- **`-fopen`**: Hook file-open operations to monitor dropped artifacts.
+  *Example*: `scdbg -f dropper.bin -fopen -s -1`
+  *Use Case*: Track persistence mechanisms (e.g., **T1547.001 Boot or Logon Autostart Execution: Registry Run Keys**).
+
+**Sources**:
+- [SCDBG Official Documentation (Sandsprite)](http://sandsprite.com/blogs/index.php?uid=7&pid=152)
+- [Mandiant Shellcode Analysis Techniques](https://www.mandiant.com/resources/blog/shellcode-analysis)
+
+### Threat Hunting & Detection Engineering
+
+Once shellcode is unpacked or injected, defenders must hunt for its execution footprint. Focus on **Windows Event ID 4688** (Process Creation) with the `CommandLine` field containing unusual patterns such as `rundll32.exe` or `regsvr32.exe` invoking non-standard DLLs (e.g., `*.tmp`, `*.dat`), which may indicate **Reflective Code Loading (T1620)**. Pair this with **Sysmon Event ID 8** (CreateRemoteThread) targeting processes like `explorer.exe` or `svchost.exe`—a hallmark of **Process Injection (T1055.001)**. For network-based detection, leverage Zeek’s `conn.log` to hunt for anomalous outbound connections from unexpected processes (e.g., `powershell.exe` or `wscript.exe` contacting rare domains or IPs). Suricata’s `http.log` can flag HTTP requests with unusual `User-Agent` strings or POST bodies containing encoded shellcode (e.g., base64, hex).
+
+Pivot on **MITRE ATT&CK T1059.005 (Command and Scripting Interpreter: Visual Basic)** by hunting for `wscript.exe` or `cscript.exe` spawning child processes (e.g., `cmd.exe`, `powershell.exe`) with obfuscated arguments. For **T1569.002 (System Services: Service Execution)**, monitor **Windows Event ID 7045** (Service Installation) for services with binary paths pointing to `%TEMP%` or `%APPDATA%`.
+
+**Sources:**
+- [CISA: Detecting Post-Exploitation Activity in Microsoft Cloud Environments](https://www.cisa.gov/resources-tools/services/detecting-post-exploitation-activity-microsoft-cloud-environments)
+- [FireEye: Detecting Process Injection Techniques](https://www.fireeye.com/blog/threat-research/2021/12/detecting-process-injection-techniques.html)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -217,3 +260,8 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://www.secureworks.com/research/shellcode-analysis
 
 <!-- cyberlab-enriched: v3 -->
+- https://www.mandiant.com/resources/blog/shellcode-analysis
+- https://www.cisa.gov/resources-tools/services/detecting-post-exploitation-activity-microsoft-cloud-environments
+- https://www.fireeye.com/blog/threat-research/2021/12/detecting-process-injection-techniques.html
+
+<!-- cyberlab-enriched: v4 -->
