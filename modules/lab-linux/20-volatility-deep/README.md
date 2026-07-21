@@ -146,6 +146,49 @@ Expected: `bulk_extractor` lists the fake C2 URL/IP embedded in the sample; `net
 - **T1112 — Modify Registry** (detected via `windows.registry`) — https://attack.mitre.org/techniques/T1112/
 - **DFIR phases:** Identification (locate the anomalous process/connection) → Examination/Analysis (dump regions, extract IOCs, establish root cause), aligned with SANS FOR508 IR methodology — https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/
 
+
+### Essential Commands & Features
+
+Volatility 3’s advanced plugins unlock critical forensic insights for detecting stealthy adversary behaviors. Below are **five high-impact commands** not yet covered, with concrete examples and tactical use cases:
+
+1. **`yarascan`**
+   *When to use*: Hunt for malware signatures (e.g., embedded shellcode, C2 strings) in process memory or kernel space. Critical for detecting **T1059.001 (Command and Scripting Interpreter: PowerShell)** or **T1562.001 (Impair Defenses: Disable or Modify Tools)**.
+   ```bash
+   vol -f memory.dmp windows.yarascan.YaraScan --yara-rules /rules/malware.yar
+   ```
+
+2. **`dlllist`**
+   *When to use*: Enumerate loaded DLLs per process to spot **T1574.002 (Hijack Execution Flow: DLL Side-Loading)** or injected modules.
+   ```bash
+   vol -f memory.dmp windows.dlllist.DllList --pid 1234
+   ```
+
+3. **`handles`**
+   *When to use*: Inspect open handles (files, registry keys, mutexes) for **T1033 (System Owner/User Discovery)** or **T1005 (Data from Local System)**.
+   ```bash
+   vol -f memory.dmp windows.handles.Handles --pid 1234 --object-type File
+   ```
+
+4. **`timeliner`**
+   *When to use*: Reconstruct a timeline of process execution, file access, and registry modifications to correlate **T1070.004 (Indicator Removal: File Deletion)**.
+   ```bash
+   vol -f memory.dmp timeliner.Timeliner --output=json --output-file=timeline.json
+   ```
+
+5. **`windows.registry`**
+   *When to use*: Extract registry hives (e.g., `HKLM\SOFTWARE`) to detect **T1110.003 (Brute Force: Password Spraying)** artifacts or persistence (**T1547.001 (Boot or Logon Autostart Execution: Registry Run Keys)**).
+   ```bash
+   vol -f memory.dmp windows.registry.hivelist.HiveList
+   vol -f memory.dmp windows.registry.printkey.PrintKey --key "Microsoft\Windows\CurrentVersion\Run"
+   ```
+
+**Sources**:
+- [Volatility 3 Plugin Documentation (GitLab)](https://volatility3.readthedocs.io/en/latest/volatility3.plugins.html)
+- [DFIR Review: Volatility 3 Registry Analysis](https://www.dfir.review/2022
+
+### Threat Hunting & Detection Engineering
+To detect and hunt threats using volatility, focus on analyzing Windows Event Logs, specifically Event ID 4688 (Process Creation) and Event ID 4703 (Token Elevation Type), to identify potential instances of [T1218](https://attack.mitre.org/techniques/T1218) - "Signed Binary Proxy Execution" and [T1625](https://attack.mitre.org/techniques/T1625) - "Telemetry Collection". Analyze the `CommandLine` field in Event ID 4688 to identify suspicious command-line arguments and the `ElevationType` field in Event ID 4703 to detect potential token elevation attempts. Additionally, inspect Zeek logs for unusual DNS queries and network connections to identify potential command and control (C2) communication. Threat hunters can pivot on these findings by analyzing related network traffic, system calls, and registry modifications to uncover more sophisticated threat activity. For more information on threat hunting and detection engineering, visit the [Cybok](https://cybok.org/) knowledge base and the [PCI Security Standards Council](https://www.pcisecuritystandards.org/) website for guidance on threat detection and incident response.
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, SANS, Microsoft Learn, or recognized project docs):
 
@@ -175,3 +218,11 @@ Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, S
 - [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares bulk_extractor within a full host triage workflow.
 
 <!-- cyberlab-enriched: v2 -->
+- https://volatility3.readthedocs.io/en/latest/volatility3.plugins.html
+- https://www.dfir.review/2022
+- https://attack.mitre.org/techniques/T1218
+- https://attack.mitre.org/techniques/T1625
+- https://cybok.org/
+- https://www.pcisecuritystandards.org/
+
+<!-- cyberlab-enriched: v3 -->
