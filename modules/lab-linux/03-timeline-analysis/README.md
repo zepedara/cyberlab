@@ -120,6 +120,42 @@ Expected findings: the `filestat` parser produces the most events for a raw file
 - **T1059.003** — Command and Scripting Interpreter: PowerShell (execution of PowerShell scripts or commands). https://attack.mitre.org/techniques/T1059/003/
 - **DFIR phase:** Examination / Analysis (timeline reconstruction and event correlation).
 
+
+### Essential Commands & Features
+
+When conducting timeline analysis with **Plaso**, mastering parser selection and filtering is critical for efficiency. Below are two **undemonstrated but highly useful** commands and features:
+
+#### 1. **List and Select Parsers with `--parsers`**
+Plaso supports **100+ parsers**, but enabling all can slow processing. Use `--parsers` to list available parsers or specify only those relevant to your investigation (e.g., `winreg`, `prefetch`, `sqlite/chrome_history`). This is particularly useful when targeting **T1005 (Data from Local System)** or **T1560 (Archive Collected Data)**.
+
+**Example (List all parsers):**
+```bash
+log2timeline.py --parsers list
+```
+**Example (Process only Windows Registry and Chrome history):**
+```bash
+log2timeline.py --parsers winreg,sqlite/chrome_history timeline.plaso /evidence/
+```
+
+#### 2. **Filter `psort.py` Output by Sourcetype/Parser**
+After generating a timeline, use `psort.py` with `--sourcetype` or `--parser` to isolate events from specific sources (e.g., `WEBHIST` for browser activity or `REG` for registry changes). This is invaluable for investigating **T1213 (Data from Information Repositories)**.
+
+**Example (Extract only Chrome history events):**
+```bash
+psort.py -o l2tcsv --sourcetype WEBHIST timeline.plaso -w chrome_events.csv
+```
+**Example (Filter for Windows Registry events):**
+```bash
+psort.py -o l2tcsv --parser winreg timeline.plaso -w registry_events.csv
+```
+
+**Authoritative Sources:**
+- [Plaso Parser Documentation (GitLab)](https://plaso.readthedocs.io/en/latest/sources/user/Using-log2timeline.html#specifying-parsers)
+- [DFIR Review: Plaso Filtering Techniques (OSDFCon)](https://www.osdfcon.org/presentations/2021/Elizabeth-Schweinsberg_Plaso-Filtering.pdf)
+
+### Threat Hunting & Detection Engineering
+To enhance timeline analysis, threat hunting, and detection engineering, focus on identifying potential indicators of compromise (IOCs) and tactics, techniques, and procedures (TTPs) aligned with MITRE ATT&CK techniques such as [T1482: Domain Trust Discovery](https://attack.mitre.org/techniques/T1482) and [T1622: Debugger Evasion](https://attack.mitre.org/techniques/T1622). Analyze Windows Event IDs related to domain trust modifications (e.g., ID 4662 for object access events) and debugger-related events. Utilize log sources like Windows Event Logs, PowerShell logs, and network capture data from tools like Zeek or Suricata to detect suspicious patterns. For example, inspecting Zeek's `http.log` for unusual user-agent strings or Suricata's `dns.log` for potential DNS tunneling attempts can serve as threat-hunting pivots. By integrating these detection logic elements and continuously monitoring for TTPs, defenders can improve their ability to detect and respond to threats. For further guidance on enhancing detection capabilities, refer to resources like the [CybOK](https://www.cybok.org/) knowledge base or the [NIST Special Publication 800-150](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-150.pdf) for an understanding of cybersecurity and infrastructure resilience.
+
 ## Sources
 Claim → source mapping (all URLs are authoritative tool/vendor/standards pages):
 
@@ -149,3 +185,11 @@ Claim → source mapping (all URLs are authoritative tool/vendor/standards pages
 - [Memory forensics](../02-memory-forensics/README.md) -- same Foundations learning path; complements on-disk timelines with volatile-memory artifacts.
 
 <!-- cyberlab-enriched: v2 -->
+- https://plaso.readthedocs.io/en/latest/sources/user/Using-log2timeline.html#specifying-parsers
+- https://www.osdfcon.org/presentations/2021/Elizabeth-Schweinsberg_Plaso-Filtering.pdf
+- https://attack.mitre.org/techniques/T1482
+- https://attack.mitre.org/techniques/T1622
+- https://www.cybok.org/
+- https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-150.pdf
+
+<!-- cyberlab-enriched: v3 -->
