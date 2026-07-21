@@ -75,6 +75,12 @@ In a SOC, ClamAV is a first-pass triage engine: analysts scan quarantined email 
 
 Detection logic to encode: alert when a carved file matches a YARA family rule OR when ClamAV returns a `FOUND` verdict on a host-uploaded artifact; escalate when the same hash appears across multiple hosts (staging/distribution). These detections map to the MITRE ATT&CK "File" data source and support hunting for Ingress Tool Transfer (T1105, https://attack.mitre.org/techniques/T1105/), Obfuscated Files or Information (T1027, https://attack.mitre.org/techniques/T1027/), and Software Packing (T1027.002, https://attack.mitre.org/techniques/T1027/002/) — letting responders prioritize which artifacts warrant memory or disk forensics. A ClamAV or YARA hit on an emailed attachment also supports Phishing (T1566, https://attack.mitre.org/techniques/T1566/) investigations, and User Execution: Malicious File (T1204.002, https://attack.mitre.org/techniques/T1204/002/) when the file was opened on an endpoint.
 
+**Deepened Detection Engineering:**
+- **Suricata Alert Correlation:** A file detection can be correlated with network-based indicators. For example, a Suricata alert with signature ID `2019581` (ET INFO EICAR-AV-Test-File) will fire when the EICAR string is observed in HTTP traffic (Emerging Threats rule documentation). In Security Onion, you can pivot from this alert to the Zeek `files.log` entry for the same `uid` to retrieve the extracted file's SHA256 and host context.
+- **Zeek File Analysis Logging:** The Zeek `files.log` contains fields like `extracted` (path where the file was carved), `md5`, `sha1`, `sha256`, `mime_type`, and `conn_uids`. Detection logic can be built in Elasticsearch to alert when a file's `sha256` matches a YARA rule result stored in a threat intelligence index, or when its `mime_type` (e.g., `application/x-dosexec`) mismatches its file extension (Masquerading, T1036, https://attack.mitre.org/techniques/T1036/).
+- **Windows Event Log Correlation:** On an endpoint, a file written to disk and subsequently executed generates Event ID 4688 (Process Creation) with a `NewProcessName` field. A detection rule can correlate a process creation event where the `ProcessCommandLine` contains a path to a file that was previously flagged by a ClamAV scan (recorded in a centralized log), mapping to T1204.002.
+- **Hunting Pivot:** Use the `sha256` from a ClamAV detection to hunt across all Zeek `files.log` entries for the same hash. If found, examine the associated `conn.log` for the source (`id.orig_h`) and destination (`id.resp_h`) IPs, and the `http.log` or `smb_files.log` for the URI or SMB share path used for transfer, revealing the initial access vector (T1566.001 for Spearphishing Attachment, https://attack.mitre.org/techniques/T1566/001/).
+
 ## Attacker perspective
 Attackers know signature-based AV like ClamAV is watching, so they routinely obfuscate, pack, encrypt, or polymorph their payloads specifically to evade static signatures — mapping to Obfuscated Files or Information (T1027, https://attack.mitre.org/techniques/T1027/) and its Software Packing sub-technique (T1027.002, https://attack.mitre.org/techniques/T1027/002/, which explicitly names packers such as UPX). They may test their tooling against public multi-engine scanners to confirm it does not trigger before deploying it. Concrete TTPs and the artifacts they leave:
 - Packing with UPX or a custom packer produces high-entropy PE sections, small/anomalous import tables, and recognizable packer stubs — all of which a YARA rule keyed to the stub bytes can still catch (T1027.002).
@@ -82,6 +88,12 @@ Attackers know signature-based AV like ClamAV is watching, so they routinely obf
 - Encoding/encrypting payloads and decoding at runtime (T1027, T1140 Deobfuscate/Decode Files or Information, https://attack.mitre.org/techniques/T1140/) hides strings from a scanner at rest but the decoded content and the decoder logic remain observable in memory or in the on-disk loader.
 
 Even when the vendor signature misses, a custom YARA rule keyed to family-specific strings or byte patterns can surface the intrusion. Every dropped file, temp artifact, and staged binary is a chance for a defender's YARA sweep to find it.
+
+**Deepened Attacker Tradecraft:**
+- **Living-off-the-Land & System Binary Proxy Execution:** Attackers may bypass file-based scanning entirely by using trusted, signed system binaries to execute malicious code (T1218, https://attack.mitre.org/techniques/T1218/). For example, using `msbuild.exe` to compile and execute C# payloads or `regsvr32.exe` to load malicious scripts leaves minimal malicious files on disk, challenging static scanners. Artifacts shift to unusual command-line arguments in process logs (Windows Event ID 4688) and anomalous child processes.
+- **Process Injection & Reflective Loading:** To avoid dropping a malicious DLL file, attackers may inject shellcode into a legitimate process (T1055, https://attack.mitre.org/techniques/T1055/) or reflectively load a PE directly from memory (T1620, https://attack.mitre.org/techniques/T1620/). This technique, often paired with Packing (T1027.002), leaves artifacts in process memory (high entropy regions, unexpected memory allocations) and API call sequences (e.g., `VirtualAlloc`, `WriteProcessMemory`, `CreateRemoteThread`) rather than a static file for ClamAV to scan.
+- **Indicator Removal:** After staging a tool, attackers may delete the initial dropper file (T1070.004, https://attack.mitre.org/techniques/T1070/004/). This creates a forensic artifact gap but leaves traces in file system journal entries ($MFT on NTFS, journal logs on ext4) and prefetch files on Windows. A YARA scan of unallocated disk space or memory may still recover fragments.
+- **Masquerading:** Renaming malicious executables to mimic benign system files (e.g., `svchost.exe` in a user directory) is a common evasion (T1036, https://attack.mitre.org/techniques/T1036/). While ClamAV may miss it if the binary is novel, a YARA rule targeting the malware's core code section or a behavioral rule in the SOC looking for processes launched from unusual paths (`C:\Users\Public\` vs `C:\Windows\System32\`) can detect it.
 
 ## Answer key
 Sample sha256 (regenerate and confirm with the generator above):
@@ -120,6 +132,11 @@ Produces `lab34_marker exercise/sample.txt` and, with `-s`, the matched offset a
 - T1140 — Deobfuscate/Decode Files or Information (runtime decoding hides at-rest strings). https://attack.mitre.org/techniques/T1140/
 - T1105 — Ingress Tool Transfer (dropped/downloaded files that get scanned). https://attack.mitre.org/techniques/T1105/
 - T1204.002 — User Execution: Malicious File (opened attachment/payload on endpoint). https://attack.mitre.org/techniques/T1204/002/
+- T1036 — Masquerading (renaming or disguising malicious files to evade detection). https://attack.mitre.org/techniques/T1036/
+- T1218 — System Binary Proxy Execution (using trusted system binaries to run code, avoiding malicious file drops). https://attack.mitre.org/techniques/T1218/
+- T1620 — Reflective Code Loading (loading and executing payloads directly from memory, bypassing file-based scans). https://attack.mitre.org/techniques/T1620/
+- T1070.004 — Indicator Removal: File Deletion (removing staged files to obscure artifacts). https://attack.mitre.org/techniques/T1070/004/
+- T1566.001 — Phishing: Spearphishing Attachment (malicious file delivered via email). https://attack.mitre.org/techniques/T1566/001/
 - DFIR phase: **Identification / Examination** — triaging and classifying suspect files during incident response before deeper reverse engineering.
 
 ## Sources
@@ -144,7 +161,14 @@ Claim-to-source mapping (all URLs are official/authoritative):
 - MITRE ATT&CK T1105 (Ingress Tool Transfer): https://attack.mitre.org/techniques/T1105/
 - MITRE ATT&CK T1204.002 (User Execution: Malicious File): https://attack.mitre.org/techniques/T1204/002/
 - MITRE ATT&CK T1566 (Phishing): https://attack.mitre.org/techniques/T1566/
+- MITRE ATT&CK T1566.001 (Spearphishing Attachment): https://attack.mitre.org/techniques/T1566/001/
+- MITRE ATT&CK T1036 (Masquerading): https://attack.mitre.org/techniques/T1036/
+- MITRE ATT&CK T1218 (System Binary Proxy Execution): https://attack.mitre.org/techniques/T1218/
+- MITRE ATT&CK T1620 (Reflective Code Loading): https://attack.mitre.org/techniques/T1620/
+- MITRE ATT&CK T1070.004 (Indicator Removal: File Deletion): https://attack.mitre.org/techniques/T1070/004/
+- MITRE ATT&CK T1055 (Process Injection): https://attack.mitre.org/techniques/T1055/
 - SANS FOR610 Reverse-Engineering Malware (triage context): https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+- Emerging Threats (ET) Suricata Rule for EICAR: Rule ID 2019581 (ET INFO EICAR-AV-Test-File) — Public rule reference via Proofpoint Emerging Threats Open ruleset.
 
 ## Related modules
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- deepen the custom-rule authoring introduced here for proactive hunting.
@@ -152,4 +176,4 @@ Claim-to-source mapping (all URLs are official/authoritative):
 - [Scenario: ransomware memory investigation](../47-ransomware-memory-case/README.md) -- applies YARA scanning to memory when payloads are decoded at runtime.
 - [Scenario: C2 network traffic hunt](../50-c2-network-hunt/README.md) -- pairs file-carved YARA verdicts with the network pivots referenced in the SOC section.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
