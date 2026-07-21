@@ -224,6 +224,39 @@ Master these **`tshark`** commands to analyze PCAPs efficiently in real-world in
 ### Adversary Emulation & Red-Team Perspective
 From an adversary's perspective, network packet capture (pcap) files can be abused to exfiltrate sensitive data or establish command and control (C2) channels. Attackers may utilize techniques such as T1587, "Modify System Image", to alter system images and evade detection, and T1595, "Active Scanning", to gather information about the target network. By analyzing pcap files, attackers can identify vulnerabilities and weaknesses in the network, allowing them to plan and execute targeted attacks. The artifacts left behind by these activities may include suspicious network traffic patterns, unusual protocol usage, and modified system files. To evade detection, attackers may employ techniques such as encrypting C2 communications or using legitimate network protocols for data exfiltration. For more information on adversary tactics and techniques, visit the Cyber and Infrastructure Security Agency (CISA) website at https://www.cisa.gov/ and the National Institute of Standards and Technology (NIST) Computer Security Resource Center at https://csrc.nist.gov/.
 
+
+### Essential Commands & Features
+
+Extend your tshark proficiency with three powerful, undemonstrated capabilities that enable precise forensic slicing and automated analysis.
+
+**`-Y` Display Filters** – Apply a Wireshark-like display filter during tshark processing to quickly isolate specific traffic.  
+`tshark -Y "http.request" -r capture.pcap`  
+Use when you need to focus on a particular protocol or condition without exporting to Wireshark. For example, filter packets targeting suspicious ports to reveal T1043 (Commonly Used Port) activity.
+
+**`-T fields -e` Field Extraction** – Extract specific header fields into tabular output for scripting or log analysis.  
+`tshark -T fields -e frame.time -e ip.src -e ip.dst -e http.host -r capture.pcap`  
+Ideal for creating custom reports, feeding detection rules, or correlating with logs. Combine with `-Y` to extract fields only from filtered packets.
+
+**`-z follow,tcp,ascii` Stream Reassembly** – Reconstruct TCP stream payloads in ASCII, crucial for examining unencrypted protocols like HTTP, FTP, or pop3.  
+`tshark -z follow,tcp,ascii,0 -r capture.pcap`  
+Use to reveal credentials, commands, or exfiltrated data (T1078 – Valid Accounts) by replaying the full conversation. The stream index (0) selects the first TCP stream.
+
+These commands directly support detection of T1043 (Commonly Used Port) and T1078 (Valid Accounts) by enabling rapid filtering, field extraction, and payload inspection.
+
+**Sources**  
+- SANS: “Network Packet Analysis and Tshark” – https://www.sans.org/reading-room/whitepapers/network/network-packet-analysis-tshark-33990  
+- MITRE ATT&CK: T1043 – https://attack.mitre.org/techniques/T1043/
+
+### Common Pitfalls & Result Validation
+
+When analyzing PCAP files, analysts often fall into traps that lead to false conclusions or missed detections. **Overlooking protocol nuances** is a frequent mistake—assuming HTTP/2 traffic is identical to HTTP/1.1 can obscure malicious payloads (e.g., [T1071.002: Dynamic Resolution](https://attack.mitre.org/techniques/T1071/002/)), where DNS-over-HTTPS (DoH) tunnels evade traditional inspection. Another pitfall is **ignoring fragmented traffic**; reassembly failures in tools like Wireshark may hide [T1568.001: Fast Flux DNS](https://attack.mitre.org/techniques/T1568/001/), where attackers rotate IPs rapidly. Always validate findings by cross-referencing with Zeek logs (`conn.log`, `dns.log`) or Suricata alerts to confirm anomalies.
+
+**False positives** often arise from misinterpreting benign traffic (e.g., CDN or cloud service IPs). To avoid this, filter for **beaconing patterns** (e.g., consistent 5-minute intervals) and correlate with threat intelligence feeds. Use `tshark` or `capinfos` to verify PCAP integrity—truncated files or time skew can distort timelines. For encrypted traffic, check for weak cipher suites or suspicious SNI fields (e.g., misspelled domains) to detect [T1573.001: Symmetric Cryptography](https://attack.mitre.org/techniques/T1573/001/).
+
+**Sources:**
+- [CERT-EU: PCAP Analysis Best Practices](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_PCAP_Analysis.pdf)
+- [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://csrc.nist.gov/publications/detail/sp/800-86/final)
+
 ## Sources
 Tooling and commands:
 - SANS SIFT Workstation: https://www.sans.org/tools/sift-workstation/
@@ -286,3 +319,12 @@ Sample-data provenance (documentation-only names/addresses):
 - https://csrc.nist.gov/.
 
 <!-- cyberlab-enriched: v4 -->
+- https://www.sans.org/reading-room/whitepapers/network/network-packet-analysis-tshark-33990
+- https://attack.mitre.org/techniques/T1043/
+- https://attack.mitre.org/techniques/T1071/002/
+- https://attack.mitre.org/techniques/T1568/001/
+- https://attack.mitre.org/techniques/T1573/001/
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_PCAP_Analysis.pdf
+- https://csrc.nist.gov/publications/detail/sp/800-86/final
+
+<!-- cyberlab-enriched: v5 -->
