@@ -165,6 +165,47 @@ Sample sha256: `c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b
 - **T1497** — Virtualization/Sandbox Evasion, and **T1518.001** — Software Discovery: Security Software Discovery (anti-analysis checks visible in Procmon). https://attack.mitre.org/techniques/T1497/ · https://attack.mitre.org/techniques/T1518/001/
 - **DFIR phase:** Examination / Analysis (dynamic behavioral triage), feeding Identification and Containment.
 
+
+### Essential Commands & Features
+
+To maximize **Process Monitor (Procmon)** for behavioral dynamic analysis, master these undemonstrated but critical features:
+
+1. **Drop Filtered Events**
+   *When to use*: Reduce memory usage during long captures by discarding filtered events in real-time.
+   *Example*:
+   ```plaintext
+   Procmon → Filter → Drop Filtered Events (check box)
+   ```
+   *Use case*: Monitoring persistent malware (e.g., **T1543.003: Create or Modify System Process: Windows Service**) without bloating logs.
+
+2. **Load/Save Filters**
+   *When to use*: Reuse or share preconfigured filters (e.g., for **T1036.005: Masquerading: Match Legitimate Name or Location**).
+   *Example*:
+   ```plaintext
+   Procmon → Filter → Load Filter (select .pmf file)
+   ```
+
+3. **Stack Traces**
+   *When to use*: Trace the call stack of suspicious API calls (e.g., **T1055.012: Process Injection: Process Hollowing**).
+   *Example*:
+   ```plaintext
+   Right-click event → Stack (view module/thread context)
+   ```
+
+4. **Network Summary**
+   *When to use*: Correlate process activity with network connections (e.g., **T1095: Non-Application Layer Protocol**).
+   *Example*:
+   ```plaintext
+   Procmon → Tools → Network Summary (view process-to-port mappings)
+   ```
+
+**Sources**:
+- [Sysinternals Procmon Documentation (Microsoft Docs)](https://docs.microsoft.com/en-us/sysinternals/downloads/procmon)
+- [SANS DFIR: Advanced Procmon Techniques](https://www.sans.org/blog/advanced-process-monitor-filters/)
+
+### Threat Hunting & Detection Engineering
+To enhance threat hunting and detection engineering capabilities, focus on identifying patterns of behavior that align with specific MITRE ATT&CK techniques. For instance, **T1588: Obtain Capabilities** and **T1595: Active Scanning** can be detected by analyzing network logs for unusual scan activity or by monitoring system calls for suspicious capability acquisitions. In Windows environments, monitor Event ID 4688 for command-line arguments that may indicate capability acquisition attempts. Additionally, inspect Zeek logs for unusual scan patterns, such as multiple connections to different ports within a short timeframe. Threat hunters can pivot on these findings by investigating related processes, network connections, or user accounts. By integrating these detection logic elements into a comprehensive threat hunting strategy, security teams can improve their ability to detect and respond to advanced threats. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov/](https://www.cisa.gov/) or the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov/](https://csrc.nist.gov/).
+
 ## Sources
 Tool behavior, flags, and expected output:
 - Microsoft Learn — Process Monitor (real-time file/Registry/process/network monitoring; command-line switches incl. /AcceptEula, /Minimized, /Quiet, /BackingFile): https://learn.microsoft.com/en-us/sysinternals/downloads/procmon
@@ -202,3 +243,9 @@ MITRE ATT&CK technique pages:
 - [.NET reverse engineering](../14-dotnet-re/README.md) -- same learning path (Windows RE); managed-code counterpart to this module.
 
 <!-- cyberlab-enriched: v2 -->
+- https://docs.microsoft.com/en-us/sysinternals/downloads/procmon
+- https://www.sans.org/blog/advanced-process-monitor-filters/
+- https://www.cisa.gov/](https://www.cisa.gov/
+- https://csrc.nist.gov/](https://csrc.nist.gov/
+
+<!-- cyberlab-enriched: v3 -->
