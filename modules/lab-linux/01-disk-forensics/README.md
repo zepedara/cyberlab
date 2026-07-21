@@ -63,7 +63,7 @@ fls -m / -r -o 2048 exercise/sample.dd > /tmp/bodyfile.txt
 mactime -b /tmp/bodyfile.txt -d > /tmp/timeline.csv
 head -n 5 /tmp/timeline.csv
 ```
-Expected observable output: a CSV (`-d`) timeline sorted by date with MACB (Modified/Accessed/Changed/Born) activity per file. Nuance: the `-m /` argument prepends a mount-point string to each path so the timeline reads like a real filesystem; the MACB columns collapse identical timestamps, so a file dropped and executed in one burst shows all four flags on one line, while a gap or single "M" flag can indicate timestomping (T1070.006) or later tampering. `mactime` interprets body-file times as the timezone set by `-z` (default local) — always record the timezone used.
+Expected observable output: a CSV (`-d`) timeline sorted by date with MACB (Modified/Accessed/Changed/Born) activity per file. Nuance: the `-m /` argument prepends a mount-point string to each path so the timeline reads like a real filesystem; the MACB columns collapse identical timestamps, so a file dropped and executed in one burst shows all four flags on one line, while a gap or single "M" flag can indicate timestomping (T1070.006) or later tampering. `mactime` interprets body-file times as the timezone set by `-z` (default local) — always record the timezone used. The body-file format itself (pipe-delimited: MD5|name|inode|mode|UID|GID|size|atime|mtime|ctime|crtime) is documented at https://wiki.sleuthkit.org/index.php?title=Body_file; understanding that layout matters because `mactime` derives the four MACB columns from those last four epoch fields, and a zeroed or absent crtime is normal on filesystems (like FAT) that do not track all four.
 
 6. `photorec` — carve recoverable files from the raw image (batch/non-interactive mode). PhotoRec ignores the filesystem and matches known file-signature headers/footers, so it recovers data even after the directory entry and metadata are gone. See https://www.cgsecurity.org/wiki/PhotoRec and https://www.cgsecurity.org/wiki/PhotoRec_Step_By_Step.
 ```bash
@@ -95,51 +95,22 @@ Declared sample sha256:
 A defender uses these tools during the examination phase of an incident when a suspect endpoint's disk (or a forensic image of it) needs to be triaged. `fls`/`mactime` timelines reveal when malicious files were dropped or when persistence was created, directly supporting detection of techniques like T1547 (Boot or Logon Autostart Execution) and T1070.004 (File Deletion). `icat` recovers files an attacker deleted to cover their tracks, and `photorec` carves out payloads no longer referenced by the filesystem. In a Security Onion workflow, network alerts (Suricata/Zeek) flag a compromised host by IP; the analyst then pulls the disk image and cross-references the filesystem timeline against the alert timestamp to confirm the intrusion, scope lateral movement, and export IOCs (hashes, filenames) back into Security Onion for hunting across other hosts.
 
 Concrete detection logic and pivots:
-- **Timeline-to-alert correlation.** In Security Onion, pivot from a Suricata IDS alert (Alerts interface) to the flow record in Zeek `conn.log` and its `ts` field, then window your `mactime` output to that timestamp ±5 minutes to find files whose Born ("B") time coincides with C2 or download activity (payload staging, T1105 Ingress Tool Transfer). Security Onion documents the Alerts/Hunt/Dashboards pivots and its Zeek/Suricata data sources: https://docs.securityonion.net/en/2.4/alerts.html and https://docs.securityonion.net/en/2.4/zeek.html.
-- **Download → disk artifact linkage.** Zeek `files.log` records extracted file hashes (MD5/SHA1) and `http.log`/`dns.log` record the retrieval; match those hashes against the sha256 you compute on carved/`icat`-recovered files to prove a network-observed download landed on disk (supports T1105 and T1005 Data from Local System). Zeek logging reference: https://docs.zeek.org/en/master/logs/index.html.
-- **Deletion / anti-forensics detection.** An `fls -r` listing full of `*`-marked entries clustered in a short window, combined with a `mactime` gap, is a strong signal of T1070.004 (File Deletion) or T1070.006 (Timestomp). Flag files where the metadata timestamps are internally inconsistent (e.g. a Created time later than Modified) as possible timestomping.
-- **Persistence hunting.** Surface autostart artifacts (registry run keys / services on Windows images, `cron`/`systemd`/`~/.bashrc` on Linux images) in the `mactime` output to detect T1547 and T1053 (Scheduled Task/Job), then hash and push those filenames/hashes into Security Onion's Hunt interface (https://docs.securityonion.net/en/2.4/hunt.html) to sweep the rest of the fleet.
-
-Additional MITRE ATT&CK technique:
-- **T1056.001** – Input Capture: Keyboard and Clipboard (detected via timeline of `mactime` activity, or via `fls` listing of clipboard-related files). https://attack.mitre.org/techniques/T1056/001/
-- **T1105** – Ingress Tool Transfer (detected via `mactime` timeline correlation with Zeek `files.log` and `http.log`/`dns.log`). https://attack.mitre.org/techniques/T1105/
-
-Detection engineering:
-- **Sigma rule sketch (file carve detection):**
-```yaml
-title: File Carve Detection via PhotoRec
-logsource:
-  category: file
-  product: photorec
-detection:
-  selection:
-    - EventID: 4688
-    - Image: *photorec.exe
-    - CommandLine: *-cmd*
-  condition: selection
-falsepositives:
-  - none
-level: medium
-```
-This Sigma rule detects the use of `photorec` in non-interactive mode (via the `/cmd` flag), which is a common tactic during digital forensics and incident response (DFIR) investigations. It could be used by attackers to recover hidden or deleted files, or by defenders to identify evidence recovery during an investigation.
-
-Threat-hunting pivots:
-- **File carving and persistence:** Use the `mactime` timeline to identify when a file was created or modified around the same time as a `crontab` entry or `systemd` service was added. This could indicate T1547 (Boot or Logon Autostart Execution) or T1053 (Scheduled Task/Job).
+- **Timeline-to-alert correlation.** In Security Onion, pivot from a Suricata IDS alert (Alerts interface) to the flow record in Zeek `conn.log` and its `ts` field, then window your `mactime` output to that timestamp ±5 minutes to find files whose Born ("B") time coincides with C2 or download activity (payload staging, T1105 Ingress Tool Transfer). Concretely, take the Suricata alert's `timestamp` and its `src_ip`/`dest_ip` fields, pivot to the matching Zeek `conn.log` `uid`, then bound your timeline search around `conn.log`'s `ts` — files whose crtime (crtime in the body file → "B" flag) sits inside that flow window are prime staging candidates. Security Onion documents the Alerts/Hunt/Dashboards pivots and its Zeek/Suricata data sources: https://docs.securityonion.net/en/2.4/alerts.html and https://docs.securityonion.net/en/2.4/zeek.html.
+- **Download → disk artifact linkage.** Zeek `files.log` records extracted file hashes (its `md5`, `sha1`, and `sha256` fields when the hash analyzer is enabled) and the `mime_type`/`filename` fields, while `http.log` (`host`, `uri`) and `dns.log` (`query`) record the retrieval path; match the `files.log` hash against the sha256 you compute on carved/`icat`-recovered files to prove a network-observed download landed on disk (supports T1105 and T1005 Data from Local System). The `files.log` `tx_hosts`/`rx_hosts` fields tie the transferred file back to the same endpoint whose image you are examining. Zeek logging reference: https://docs.zeek.org/en/master/logs/index.html.
+- **Deletion / anti-forensics detection.** An `fls -r` listing full of `*`-marked entries clustered in a short window, combined with a `mactime` gap, is a strong signal of T1070.004 (File Deletion) or T1070.006 (Timestomp). Flag files where the metadata timestamps are internally inconsistent (e.g. a Created time later than Modified) as possible timestomping. On Windows images, corroborate deletion by parsing the `$UsnJrnl:$J` change journal (records `FILE_DELETE`/`CLOSE` reasons for names no longer resident) and the `$LogFile` — these persist metadata about files even after the MFT record is unallocated. SANS reference for these journal artifacts: https://www.sans.org/posters/windows-forensic-analysis/.
+- **Command-history / shell tampering hunt (Linux images).** For Linux evidence, surface `~/.bash_history`, `/var/log/auth.log`, and `/var/log/wtmp`/`btmp` in the `mactime` output; a truncated or missing history file with a modified mtime, or an `auth.log` gap, supports T1070.003 (Indicator Removal: Clear Command History) and warrants carving deleted history fragments with `photorec`. MITRE reference: https://attack.mitre.org/techniques/T1070/003/.
+- **Persistence hunting.** Surface autostart artifacts (registry run keys / services on Windows images, `cron`/`systemd`/`~/.bashrc` on Linux images) in the `mactime` output to detect T1547 and T1053 (Scheduled Task/Job — sub-technique T1053.003 cron on Linux, T1053.005 Scheduled Task on Windows). On Windows, correlate created/modified service artifacts with Windows **Event ID 7045** (a new service was installed in the System log) and scheduled-task creation with **Event ID 4698** in the Security log; on Linux, correlate crontab file crtime with `/var/log/syslog` cron entries. Then hash and push those filenames/hashes into Security Onion's Hunt interface (https://docs.securityonion.net/en/2.4/hunt.html) to sweep the rest of the fleet. MITRE references: https://attack.mitre.org/techniques/T1053/003/ and https://attack.mitre.org/techniques/T1053/005/.
 
 ## Attacker perspective
 Attackers know that deleting a file with `rm` or emptying the recycle bin only unlinks the directory entry — the underlying blocks (and often the file data) remain until overwritten, which is exactly what `icat` and `photorec` recover. Adversaries performing T1070.004 (Indicator Removal: File Deletion) and T1485 (Data Destruction) may wipe tools, staged archives, or logs, but leave carveable remnants, orphaned MFT/inode entries, and telltale timeline gaps that `fls -r` exposes with the `*` deleted marker. Even secure-delete or partition-wiping attempts leave artifacts: `mmls` and `testdisk` reveal tampered or removed partition tables, and slack space frequently retains fragments of the very files an attacker believed were destroyed, giving investigators recoverable evidence.
 
 Concrete TTPs, artifacts left behind, and evasion:
-- **T1070.004 – File Deletion.** `rm`/recycle-bin/`del` only clears the directory pointer; on NTFS the MFT record is marked unallocated but persists until reused, and on FAT the first byte of the 8.3 name is set to `0xE5` while the cluster chain data survives — both are recoverable with `icat` and visible as `*` entries in `fls`. MITRE reference: https://attack.mitre.org/techniques/T1070/004/.
-- **T1070.006 – Timestomp.** Attackers use tools (e.g. `SetMACE`, PowerShell, `touch -d`) to backdate timestamps and blend into system files. Defenders counter this on NTFS by comparing the `$STANDARD_INFORMATION` timestamps (what most tools alter) against the harder-to-forge `$FILE_NAME` timestamps in the MFT. MITRE reference: https://attack.mitre.org/techniques/T1070/006/.
+- **T1070.004 – File Deletion.** `rm`/recycle-bin/`del` only clears the directory pointer; on NTFS the MFT record is marked unallocated but persists until reused, and on FAT the first byte of the 8.3 name is set to `0xE5` while the cluster chain data survives — both are recoverable with `icat` and visible as `*` entries in `fls`. On Windows the Recycle Bin itself leaves `$I` (metadata) and `$R` (data) files under `C:\$Recycle.Bin\<SID>\`, which record the original path and deletion time even after the user "empties" the bin. MITRE reference: https://attack.mitre.org/techniques/T1070/004/.
+- **T1070.006 – Timestomp.** Attackers use tools (e.g. `SetMACE`, PowerShell, `touch -d`) to backdate timestamps and blend into system files. Defenders counter this on NTFS by comparing the `$STANDARD_INFORMATION` timestamps (what most tools alter) against the harder-to-forge `$FILE_NAME` timestamps in the MFT; a `$SI` created time that predates the `$FN` created time is a classic timestomp tell. MITRE reference: https://attack.mitre.org/techniques/T1070/006/.
+- **T1070.003 – Clear Command History.** On Linux, adversaries `unset HISTFILE`, `history -c`, or truncate `~/.bash_history` to hide interactive commands; on Windows they clear PowerShell's `ConsoleHost_history.txt` (under `%APPDATA%\Microsoft\Windows\PowerShell\PSReadLine\`). Both leave recoverable slack/unallocated fragments and an anomalous mtime, and PowerShell operational logging (Event ID 4104 script-block logging) may still capture the executed commands even after the on-disk history is wiped. MITRE reference: https://attack.mitre.org/techniques/T1070/003/.
 - **T1485 – Data Destruction.** Wiping partition tables or superblocks makes an image look empty to a naive mount, but `mmls` still shows the raw layout and `testdisk` can rebuild a deleted/overwritten partition table from backup structures (https://www.cgsecurity.org/wiki/TestDisk), while PhotoRec carves file bodies independent of any partition metadata. MITRE reference: https://attack.mitre.org/techniques/T1485/.
+- **T1564.005 – Hide Artifacts: Hidden File System / slack abuse.** Adversaries may stash data in areas the filesystem does not surface — cluster slack, unpartitioned gaps between `mmls` slots, or volume slack — betting a casual mount will miss it. Carving (`photorec`) and raw-offset reads defeat this because they operate on bytes, not on the allocation map. MITRE reference: https://attack.mitre.org/techniques/T1564/005/.
 - **Evasion and its limits.** True anti-forensics requires overwriting the data blocks (e.g. `shred`, `dd if=/dev/zero`, full-disk crypto-erase), not just deletion — but partial wipes leave file **slack** (the unused tail of the last cluster) holding fragments of prior content, and journaled filesystems (ext3/4 journal, NTFS `$LogFile`/`$UsnJrnl`) retain metadata about files that no longer exist. These residual structures are exactly what carving and metadata analysis exploit. General Sleuth Kit/DFIR reference: https://www.sleuthkit.org/sleuthkit/docs.php and the SANS DFIR resources at https://www.sans.org/posters/windows-forensic-analysis/.
-
-Additional MITRE ATT&CK technique:
-- **T1055** – Process Injection (detected via `fls` listing of suspicious process-related files or `mactime` timeline of process creation). https://attack.mitre.org/techniques/T1055/
-
-Evasion techniques:
-- **File slack and journaling:** Attackers may attempt to overwrite file slack space (the unused portion of a cluster) to avoid detection by `icat` or `photorec`. However, journaled filesystems like NTFS or ext4 retain metadata about deleted files in the `$LogFile` or journal, which can be analyzed using `mactime` or Sleuth Kit tools.
 
 ## Answer key
 Sample sha256: `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
@@ -176,12 +147,14 @@ Expected: the file count is greater than zero, confirming PhotoRec recovered car
 ## MITRE ATT&CK & DFIR phase
 - **T1070.004** – Indicator Removal: File Deletion (recovered via `icat`/`photorec`). https://attack.mitre.org/techniques/T1070/004/
 - **T1070.006** – Indicator Removal: Timestomp (detected via MACB inconsistencies in the `mactime` timeline / MFT `$SI` vs `$FN` comparison). https://attack.mitre.org/techniques/T1070/006/
+- **T1070.003** – Indicator Removal: Clear Command History (deleted/truncated shell history recoverable from slack). https://attack.mitre.org/techniques/T1070/003/
 - **T1485** – Data Destruction (partition/disk tampering detected via `mmls`/`testdisk`). https://attack.mitre.org/techniques/T1485/
 - **T1005** – Data from Local System (files identified/exported from the image). https://attack.mitre.org/techniques/T1005/
+- **T1105** – Ingress Tool Transfer (downloaded payloads correlated between Zeek `files.log` and on-disk artifacts). https://attack.mitre.org/techniques/T1105/
 - **T1547** – Boot or Logon Autostart Execution (persistence artifacts surfaced in `mactime` timeline). https://attack.mitre.org/techniques/T1547/
-- **T1056.001** – Input Capture: Keyboard and Clipboard (detected via timeline of `mactime` activity, or via `fls` listing of clipboard-related files). https://attack.mitre.org/techniques/T1056/001/
-- **T1105** – Ingress Tool Transfer (detected via `mactime` timeline correlation with Zeek `files.log` and `http.log`/`dns.log`). https://attack.mitre.org/techniques/T1105/
-- **T1055** – Process Injection (detected via `fls` listing of suspicious process-related files or `mactime` timeline of process creation). https://attack.mitre.org/techniques/T1055/
+- **T1053.003** – Scheduled Task/Job: Cron (Linux cron persistence surfaced in timeline). https://attack.mitre.org/techniques/T1053/003/
+- **T1053.005** – Scheduled Task/Job: Scheduled Task (Windows task persistence, Event ID 4698). https://attack.mitre.org/techniques/T1053/005/
+- **T1564.005** – Hide Artifacts: Hidden File System (slack/unpartitioned-gap abuse defeated by carving). https://attack.mitre.org/techniques/T1564/005/
 - **DFIR phase:** Identification and Examination (evidence acquisition triage, filesystem analysis, timeline reconstruction, and deleted-file recovery).
 
 ## Sources
@@ -193,30 +166,36 @@ Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK,
 - `fls` behavior (`-r` recursive, `*` deleted marker, `-m` body-file output, `-V` version): https://www.sleuthkit.org/sleuthkit/man/fls.html
 - `icat` behavior (stream file content by metadata address): https://www.sleuthkit.org/sleuthkit/man/icat.html
 - `mactime` behavior (body-file input `-b`, CSV `-d`, MACB sorting, timezone `-z`): https://www.sleuthkit.org/sleuthkit/man/mactime.html
+- Sleuth Kit body-file format (pipe-delimited fields, atime/mtime/ctime/crtime): https://wiki.sleuthkit.org/index.php?title=Body_file
 - Autopsy graphical platform (modern 4.x): https://www.autopsy.com/ ; legacy 2.x web UI on port 9999 in Kali package: https://www.kali.org/tools/autopsy/
 - PhotoRec — signature-based carving, run-time options `/log /d /cmd`, `recup_dir.N` output, filename renaming: https://www.cgsecurity.org/wiki/PhotoRec and https://www.cgsecurity.org/wiki/PhotoRec_Step_By_Step
 - TestDisk — recover/rebuild lost or damaged partition tables: https://www.cgsecurity.org/wiki/TestDisk
 - PhotoRec/TestDisk shipped in a single `testdisk` package: https://www.kali.org/tools/testdisk/
 - Kali Linux Tools — Sleuth Kit: https://www.kali.org/tools/sleuthkit/
 - SANS DFIR — SIFT Workstation (lab platform): https://www.sans.org/tools/sift-workstation/
-- SANS DFIR — Windows Forensic Analysis poster ($SI vs $FN, timeline/anti-forensics context): https://www.sans.org/posters/windows-forensic-analysis/
-- Security Onion — Alerts interface / pivots: https://docs.securityonion.net/en/2.4/alerts.html
+- SANS DFIR — Windows Forensic Analysis poster ($SI vs $FN, `$UsnJrnl`/`$LogFile`, Recycle Bin `$I`/`$R`, timeline/anti-forensics context): https://www.sans.org/posters/windows-forensic-analysis/
+- Security Onion — Alerts interface / pivots (Suricata `timestamp`, `src_ip`/`dest_ip`): https://docs.securityonion.net/en/2.4/alerts.html
 - Security Onion — Hunt interface: https://docs.securityonion.net/en/2.4/hunt.html
 - Security Onion — Zeek data source: https://docs.securityonion.net/en/2.4/zeek.html
-- Zeek logging reference (`conn.log`, `files.log`, `http.log`, `dns.log`): https://docs.zeek.org/en/master/logs/index.html
+- Zeek logging reference (`conn.log` `ts`/`uid`, `files.log` `md5`/`sha1`/`sha256`/`mime_type`/`tx_hosts`, `http.log`, `dns.log`): https://docs.zeek.org/en/master/logs/index.html
 - MITRE ATT&CK — T1070.004 Indicator Removal: File Deletion: https://attack.mitre.org/techniques/T1070/004/
 - MITRE ATT&CK — T1070.006 Indicator Removal: Timestomp: https://attack.mitre.org/techniques/T1070/006/
+- MITRE ATT&CK — T1070.003 Indicator Removal: Clear Command History: https://attack.mitre.org/techniques/T1070/003/
 - MITRE ATT&CK — T1485 Data Destruction: https://attack.mitre.org/techniques/T1485/
 - MITRE ATT&CK — T1005 Data from Local System: https://attack.mitre.org/techniques/T1005/
-- MITRE ATT&CK — T1547 Boot or Logon Autostart Execution: https://attack.mitre.org/techniques/T1547/
-- MITRE ATT&CK — T1056.001 Input Capture: Keyboard and Clipboard: https://attack.mitre.org/techniques/T1056/001/
 - MITRE ATT&CK — T1105 Ingress Tool Transfer: https://attack.mitre.org/techniques/T1105/
-- MITRE ATT&CK — T1055 Process Injection: https://attack.mitre.org/techniques/T1055/
+- MITRE ATT&CK — T1547 Boot or Logon Autostart Execution: https://attack.mitre.org/techniques/T1547/
+- MITRE ATT&CK — T1053.003 Scheduled Task/Job: Cron: https://attack.mitre.org/techniques/T1053/003/
+- MITRE ATT&CK — T1053.005 Scheduled Task/Job: Scheduled Task: https://attack.mitre.org/techniques/T1053/005/
+- MITRE ATT&CK — T1564.005 Hide Artifacts: Hidden File System: https://attack.mitre.org/techniques/T1564/005/
+- Microsoft Learn — Windows Security event 4698 (a scheduled task was created): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4698
+- Microsoft Learn — Windows System event 7045 (a new service was installed): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/appendix-l-events-to-monitor
+- Microsoft Learn — PowerShell script block logging (Event ID 4104): https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_logging_windows
 
 ## Related modules
-- [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- shares autopsy
-- [Scenario: intrusion timeline reconstruction](../49-intrusion-timeline-case/README.md) -- shares sleuth kit
-- [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares sleuth kit
-- [Memory forensics](../02-memory-forensics/README.md) -- same learning path (Foundations)
+- [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- deeper drill on the same Sleuth Kit tools (`fls`/`icat`/`mactime`) used here.
+- [Scenario: intrusion timeline reconstruction](../49-intrusion-timeline-case/README.md) -- applies Sleuth Kit timelines to a full intrusion case.
+- [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- extends Sleuth Kit disk analysis into a complete Linux host triage workflow.
+- [Memory forensics](../02-memory-forensics/README.md) -- same Foundations learning path, pairing disk artifacts with volatile memory evidence.
 
 <!-- cyberlab-enriched: v2 -->
