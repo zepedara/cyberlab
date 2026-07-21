@@ -152,6 +152,27 @@ Expected: both greps return the seeded indicators (the `email` and `url`/net sca
 - **T1490** Inhibit System Recovery — shadow-copy deletion commonly seen with ransomware. https://attack.mitre.org/techniques/T1490/
 - **DFIR phases:** identification (triage the alert), examination/analysis (Volatility 3 + YARA + bulk_extractor on the image), and reporting (IOC list from carved indicators). The memory-forensics analysis workflow aligns with SANS FOR508 guidance (https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/).
 
+
+### Threat Hunting & Detection Engineering
+
+Once you’ve extracted the ransomware’s process hive from memory, pivot to **live detection engineering** to hunt for similar tradecraft across the enterprise.
+
+**Detection Logic**
+Monitor **Windows Event ID 4688** (Process Creation) for child processes of `explorer.exe` or `svchost.exe` that spawn `cmd.exe /c` or `powershell.exe` with encoded commands (`-enc` or `-e`). Ransomware often uses **T1059.001 (Command and Scripting Interpreter: PowerShell)** to execute base64-encoded payloads. Correlate these events with **Sysmon Event ID 1** (Process Creation) to capture the `CommandLine` field, which may reveal obfuscated arguments (e.g., `powershell -nop -w hidden -ep bypass`).
+
+For network-based detection, use **Zeek’s `conn.log`** to hunt for **T1573.001 (Encrypted Channel: Symmetric Cryptography)**. Look for unusual outbound connections to port `443` with small, repeated payloads (e.g., `orig_bytes < 1000` and `resp_bytes < 500`), which may indicate C2 beaconing or key exchange. Pair this with **Suricata’s `tls.log`** to flag self-signed certificates or anomalous SNI fields (e.g., `tls.sni` matching DGA patterns).
+
+**Threat-Hunting Pivots**
+- **Registry**: Hunt for **T1112 (Modify Registry)** by querying `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` for suspicious values (e.g., `reg query` output with `*.exe` paths in `%TEMP%`).
+- **File System**: Search for **T1564.001 (Hide Artifacts: Hidden Files and Directories)** by identifying files with the `hidden` attribute (`attrib +h`) in `%APPDATA%` or `%PROGRAMDATA%`.
+
+**Sources**
+- [CISA Alert AA23-325A: #StopRansomware Guide (Detection Section)](https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-325a)
+- [Elastic Security Labs: Detecting Ransomware with Sysmon](https://www.elastic.co/security-labs/detecting-ransomware-with-sysmon)
+
+### Adversary Emulation & Red-Team Perspective
+To effectively emulate the adversary in the 47-ransomware-memory-case, consider the tactics, techniques, and procedures (TTPs) associated with ransomware attacks. An attacker may utilize **T1588: Obtain Capabilities** to gather information about the target system's security controls and **T1595: Active Scanning** to identify potential vulnerabilities. By leveraging these techniques, the attacker can create a tailored exploit to gain initial access and subsequently move laterally within the network. The ransomware may leave behind artifacts such as encrypted files, ransom notes, and modified system configurations. To evade detection, the attacker may employ code obfuscation, anti-debugging techniques, and utilize legitimate system tools to blend in with normal system activity. Understanding these TTPs is crucial for developing effective detection and response strategies. For more information on adversary emulation and red-team operations, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov](https://www.cisa.gov) and the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov](https://csrc.nist.gov).
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -195,3 +216,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares bulk_extractor within a full host-triage pipeline.
 
 <!-- cyberlab-enriched: v1 -->
+- https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-325a
+- https://www.elastic.co/security-labs/detecting-ransomware-with-sysmon
+- https://www.cisa.gov](https://www.cisa.gov
+- https://csrc.nist.gov](https://csrc.nist.gov
+
+<!-- cyberlab-enriched: v2 -->
