@@ -185,6 +185,48 @@ To effectively emulate an adversary in the context of the 49-intrusion-timeline-
 - [Microsoft Security Logging for Kerberos and NTLM](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/advanced-security-auditing)
 - [SANS Windows Forensic Analysis Poster (Timestamps & Artifacts)](https://www.sans.org/posters/windows-forensic-analysis/)
 
+
+### Essential Commands & Features
+
+Beyond the basics, these three Plaso components unlock deeper investigative capabilities when building an intrusion timeline.
+
+**`pinfo` – Inspect Storage File Metadata**  
+Before querying a timeline, verify the processing provenance. `pinfo` reports the Plaso version, parser count, and number of events, ensuring the storage file isn’t truncated or from an unknown build.  
+
+Example:  
+`pinfo /cases/breach.plaso`  
+
+Use this when you inherit a timeline from another analyst or re-run a collection – it catches mismatched toolchains early.  
+
+**`psort` – Time-Range & Parser Filtering**  
+Focus analysis on windows that matter. `psort` can slice by absolute time or relative offsets, and include/exclude specific parsers to reduce noise.  
+
+Example (events between 2025-01-10 14:00 and 15:00, only from Windows Registry parsers):  
+`psort -o dynamic -w output.csv -q "date > '2025-01-10 14:00:00' AND date < '2025-01-10 15:00:00' AND parser CONTAINS 'winreg'" /cases/breach.plaso`  
+
+This isolates lateral movement (T1078 – Valid Accounts) or initial access (T1566.001 – Spearphishing Attachment) indicators that often cluster in narrow intervals.  
+
+**`image_export` – File Carving from Disk Images**  
+When a timeline event references a suspicious file path, carve the raw data from the source image without mounting it.  
+
+Example:  
+`image_export -f "/Users/jdoe/AppData/Local/Temp/evil.exe" -w /output_dir disk.dd`  
+
+Use this to retrieve attacker‑dropped payloads (T1203 – Exploitation for Client Execution) for hash extraction or static analysis.  
+
+For advanced `psort` filtering: [Forensic Focus – Using Plaso for Timeline Analysis](https://www.forensicfocus.com/articles/using-plaso-for-timeline-analysis/)  
+For `image_export` carving workflows: [HECF Blog – Timeline Analysis with Plaso](https://www.hecfblog.com/2017/03/daily-blog-892-timeline-analysis-with.html)
+
+### Common Pitfalls & Result Validation
+
+When reconstructing an intrusion timeline, analysts often fall into **time-zone mismatches** or **timestamp misinterpretation**, particularly with tools like `log2timeline` or `Timesketch`. A common error is assuming all timestamps are in UTC, when logs may use local system time or epoch formats (e.g., Windows Event Logs vs. Linux syslog). Always validate time sources by cross-referencing with known events (e.g., system boot times) and document the timezone offset. Another pitfall is **overlooking deleted artifacts**; tools like `fls` (The Sleuth Kit) may miss files if the MFT is fragmented or wiped. Validate findings by correlating file system metadata with registry hives (e.g., `NTUSER.DAT`) or prefetch files to confirm execution.
+
+False conclusions often arise from **ignoring context**. For example, detecting **T1027 (Obfuscated Files or Information)** via encoded PowerShell scripts may lead to false positives if benign scripts (e.g., admin tools) use similar techniques. Validate by checking script provenance (e.g., signed vs. unsigned) and correlating with **T1569.002 (System Services: Service Execution)** to confirm malicious service creation. Similarly, **T1036 (Masquerading)**—where adversaries rename binaries—can mislead analysts if file hashes alone are trusted. Cross-check with process execution trees (e.g., `pslist` or EDR telemetry) to verify parent-child relationships.
+
+**Sources:**
+- [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-86.pdf)
+- [DFIR Review: Timestamp Analysis Pitfalls](https://www.dfir.review/)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -250,3 +292,9 @@ Claim → source mapping (all URLs are real, authoritative pages):
 <!-- cyberlab-enriched: v2 -->
 
 <!-- cyberlab-enriched: v3 -->
+- https://www.forensicfocus.com/articles/using-plaso-for-timeline-analysis/
+- https://www.hecfblog.com/2017/03/daily-blog-892-timeline-analysis-with.html
+- https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-86.pdf
+- https://www.dfir.review/
+
+<!-- cyberlab-enriched: v4 -->
