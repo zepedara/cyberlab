@@ -127,7 +127,7 @@ This walkthrough demonstrates how to inspect a raw registry hive and extract for
 - **Type**: Windows Registry `SYSTEM` hive fragment (raw `regf` file).
 - **Safe Origin**: Generated inside a disposable Windows sandbox VM by exporting a stock `SYSTEM` hive, then trimmed for size. It is benign/inert data only—no executable code, malware, or network egress occurs when parsing it.
 - **Filename**: `exercise/SYSTEM_sample.hive`
-- **sha256**: `4bb9288b72efda173d0c86ac07166d80290ebd55197d9ef413a6cf536d14369c`
+- **sha256**: `5559b27a8691a00ce3d2e5055a3c1b463ff87be5f33a19acb9807ddd3f65a034`
 
 **Steps:**
 1. Run `regfinfo` to confirm the hive signature and metadata.
@@ -371,7 +371,7 @@ sha256sum exercise/SYSTEM_sample.hive
 **Output Validation**:
 - `regfinfo` confirms the `regf` signature and version.
 - `rip.pl -p compname` and `regfexport | grep ComputerName` both return the computer name from `ControlSet001\Control\ComputerName\ComputerName`.
-- `sha256sum` output must equal `4bb9288b72efda173d0c86ac07166d80290ebd55197d9ef413a6cf536d14369c`.
+- `sha256sum` output must equal `5559b27a8691a00ce3d2e5055a3c1b463ff87be5f33a19acb9807ddd3f65a034`.
 
 ## MITRE ATT&CK & DFIR phase
 This module covers the following MITRE ATT&CK techniques, mapped to the **Examination/Analysis** phase of the DFIR lifecycle:
