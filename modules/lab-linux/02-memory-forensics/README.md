@@ -156,6 +156,59 @@ Expected: rsakeyfind reports no RSA private keys for this synthetic sample.
 - **T1005 – Data from Local System** — feature carving (bulk_extractor) of in-memory data. https://attack.mitre.org/techniques/T1005/
 - **DFIR phase:** Collection (RAM capture) → **Examination / Analysis** (this module's focus) → Reporting.
 
+
+### Essential Commands & Features
+
+Below are **high-impact Volatility 3 plugins** that uncover artifacts not covered in prior labs. Each example assumes a memory image named `case.raw` and the correct profile auto-detected.
+
+1. **`psscan`** – Recover terminated or hidden processes by scanning pool-tag structures.
+   ```bash
+   vol -f case.raw windows.psscan.PsScan
+   ```
+   *Use when*: Suspecting process hollowing (MITRE **T1055.013 – Process Injection: Process Hollowing**) or rootkit activity that unlinks EPROCESS blocks.
+
+2. **`malfind`** – Detect injected code by scanning for executable memory regions with no backing module.
+   ```bash
+   vol -f case.raw windows.malfind.Malfind --dump
+   ```
+   *Use when*: Hunting for shellcode injection (MITRE **T1574.002 – Hijack Execution Flow: DLL Side-Loading**) or reflective DLL loading.
+
+3. **`netscan`** – Enumerate network connections and sockets, including closed ones.
+   ```bash
+   vol -f case.raw windows.netscan.NetScan
+   ```
+   *Use when*: Investigating C2 channels (MITRE **T1090.001 – Proxy: Internal Proxy**) or lateral movement via RDP.
+
+4. **`cmdline`** – Extract full command-line arguments for every process.
+   ```bash
+   vol -f case.raw windows.cmdline.CmdLine
+   ```
+   *Use when*: Tracing suspicious parent-child relationships or living-off-the-land binaries (LOLBins).
+
+5. **`dlllist`** – List all DLLs loaded by a process (specify PID with `--pid`).
+   ```bash
+   vol -f case.raw windows.dlllist.DllList --pid 1234
+   ```
+   *Use when*: Identifying DLL search-order hijacking (MITRE **T1574.001 – Hijack Execution Flow: DLL Search Order Hijacking**).
+
+6. **`handles`** – Enumerate open handles (files, registry keys, mutexes) for a process.
+   ```bash
+   vol -f case.raw windows.handles.Handles --pid 1234
+   ```
+   *Use when*: Detecting mutex-based malware persistence or fileless artifacts.
+
+7. **`timeliner`** – Generate a unified timeline of process, file, and registry events.
+   ```bash
+   vol -f case.raw windows.timeliner.Timeliner --output=body
+   ```
+   *Use when*: Correlating events across multiple data sources for incident response.
+
+**Authoritative Sources**:
+- [Volatility Foundation Plugin Documentation](https://volatilityfoundation.github
+
+### Threat Hunting & Detection Engineering
+To detect and hunt threats using memory forensics, analysts should focus on identifying suspicious patterns and anomalies in system memory. This can involve analyzing Windows Event IDs such as 4688 (Process Creation) and 4702 (Audit Policy Change) to identify potential execution of malicious code. Additionally, examining Zeek logs for unusual DNS queries or HTTP requests can help identify potential command and control (C2) communications. Threat hunters should also be aware of techniques such as **T1204** (User Execution) and **T1218** (Signed Binary Proxy Execution), where attackers may use legitimate system tools to execute malicious code. Pivoting on suspicious process creation or network activity can help identify potential malware or C2 servers. Analysts can also use tools like Volatility to analyze memory dumps for signs of malicious activity. For more information on threat hunting and detection engineering, see the Cyber and Infrastructure Security Agency's (CISA) [Alert (AA20-133A)](https://us-cert.cisa.gov/ncas/alerts/aa20-133a) and the National Institute of Standards and Technology's (NIST) [Special Publication 800-137](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-137.pdf).
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative pages):
 
@@ -191,3 +244,8 @@ Claim → source mapping (all URLs are official/authoritative pages):
 - [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares bulk_extractor; places memory analysis inside a full host-triage workflow.
 
 <!-- cyberlab-enriched: v2 -->
+- https://volatilityfoundation.github
+- https://us-cert.cisa.gov/ncas/alerts/aa20-133a
+- https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-137.pdf
+
+<!-- cyberlab-enriched: v3 -->
