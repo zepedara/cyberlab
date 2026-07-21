@@ -195,6 +195,41 @@ Red teams abuse WinDbg as a Microsoft-signed binary to proxy execution of arbitr
 - SANS. “Application Whitelisting and the Blue Team’s Dilemma.” https://www.sans.org/white-papers/33995/  
 - Microsoft. “Getting Started with WinDbg (User-Mode).” https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/getting-started-with-windbg
 
+
+### Essential Commands & Features
+
+- **`!exchain`** – Displays the structured exception handling (SEH) chain. Useful when analyzing exploits that overwrite SEH handlers (e.g., T1574.002: Hijack Execution Flow – DLL Side-Loading) or when debugging crashes caused by corrupted exception records.  
+  Example: `0:000> !exchain`  
+  Output shows each handler node’s address and the next pointer. Use after a `!analyze -v` to trace SEH abuse.
+
+- **`.writemem`** – Writes a memory region to a binary file. Essential for dumping shellcode, unpacked payloads, or hidden executable sections. Supports on‑disk analysis with tools like `pebear` or `scdbg`.  
+  Example: `.writemem C:\dumps\mimikatz.bin 0x7FF700000000 L0x1000`  
+  Use when you encounter suspicious RWX memory and want to preserve it for offline static/dynamic analysis (T1036.005: Masquerading – Match Legitimate Name or Location may involve in‑memory code).
+
+- **`.process / .thread`** – Switch context to another process or thread without breaking the kernel debug session. Crucial when hunting cross‑process injection or when a rootkit attacks a system process.  
+  Example: `.process /i /p FFFFFA800B42D040` (then `g` to attach), `.thread FFFFFA800B42E320`  
+  Use after `!process 0 0 lsass.exe` to inspect a specific process’s token, handles, or memory (T1518.001: Security Software Discovery).
+
+- **`dx`** – The modern expression evaluator for data model queries. Replaces old `dt` for complex structure navigation. Allows filtering, projections, and LINQ‑style queries on objects.  
+  Example: `dx -r2 @$curprocess.KernelObject.EnvironmentBlock.ProcessParameters`  
+  Use to quickly traverse `_EPROCESS` fields, enumerate active threads, or inspect heap structures (T1047: Windows Management Instrumentation – can be used to query process info, but `dx` provides raw memory access for verification).
+
+Cited MITRE ATT&CK techniques: T1574.002 (Hijack Execution Flow – DLL Side-Loading), T1036.005 (Masquerading – Match Legitimate Name or Location).
+
+Sources:  
+- SANS WinDbg Cheat Sheet (https://www.sans.org/posters/windbg-cheat-sheet/)  
+- Microsoft Learn: WinDbg Commands (https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/debugger-commands)
+
+### Threat Hunting & Detection Engineering
+
+In **WinDbg**, threat hunters can uncover adversary tradecraft by analyzing memory artifacts tied to **Process Injection (T1055.012: Process Hollowing)** and **Boot or Logon Autostart Execution (T1547.001: Registry Run Keys / Startup Folder)**. For **T1055.012**, inspect suspicious parent-child process relationships (e.g., `svchost.exe` spawning `cmd.exe`) via `!dml_proc` and cross-reference with **Windows Event ID 4688** (Process Creation) in the Security log, filtering for `ParentProcessName` and `NewProcessName`. Memory regions with `PAGE_EXECUTE_READWRITE` permissions (visible via `!address`) may indicate injected code—pivot to **Sysmon Event ID 10** (ProcessAccess) for `GrantedAccess` values like `0x1010` (PROCESS_VM_OPERATION | PROCESS_VM_WRITE).
+
+For **T1547.001**, hunt for persistence by dumping the **Registry hive** (`!reg`) and examining `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` or `HKCU\...\Run`. Correlate with **Sysmon Event ID 13** (RegistryValueSet) for `TargetObject` fields containing `Run` or `RunOnce`. Network-based pivots include **Zeek’s `conn.log`** for anomalous outbound connections from startup-linked processes (e.g., `explorer.exe` spawning `powershell.exe` to beacon) or **Suricata’s `alert` logs** for signatures like `ET INFO Executable Retrieved With Minimal HTTP Headers`.
+
+**Sources:**
+- [CISA: Detecting Post-Compromise Threat Activity in Microsoft Cloud Environments (T1055.012)](https://www.cisa.gov/resources-tools/services/detecting-post-compromise-threat-activity-microsoft-cloud-environments)
+- [FireEye: Detecting Process Hollowing with Volatility and YARA (T1547.001)](https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 - WinDbg overview, install location, and initial user-mode break — Microsoft Learn, *Debugging Tools for Windows (WinDbg)*: https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/ ; *Getting Started with WinDbg (User-Mode)*: https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/getting-started-with-windbg
@@ -245,3 +280,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.sans.org/white-papers/33995/
 
 <!-- cyberlab-enriched: v3 -->
+- https://www.sans.org/posters/windbg-cheat-sheet/
+- https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/debugger-commands
+- https://www.cisa.gov/resources-tools/services/detecting-post-compromise-threat-activity-microsoft-cloud-environments
+- https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html
+
+<!-- cyberlab-enriched: v4 -->
