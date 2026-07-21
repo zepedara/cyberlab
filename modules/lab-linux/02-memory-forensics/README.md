@@ -209,6 +209,35 @@ Below are **high-impact Volatility 3 plugins** that uncover artifacts not covere
 ### Threat Hunting & Detection Engineering
 To detect and hunt threats using memory forensics, analysts should focus on identifying suspicious patterns and anomalies in system memory. This can involve analyzing Windows Event IDs such as 4688 (Process Creation) and 4702 (Audit Policy Change) to identify potential execution of malicious code. Additionally, examining Zeek logs for unusual DNS queries or HTTP requests can help identify potential command and control (C2) communications. Threat hunters should also be aware of techniques such as **T1204** (User Execution) and **T1218** (Signed Binary Proxy Execution), where attackers may use legitimate system tools to execute malicious code. Pivoting on suspicious process creation or network activity can help identify potential malware or C2 servers. Analysts can also use tools like Volatility to analyze memory dumps for signs of malicious activity. For more information on threat hunting and detection engineering, see the Cyber and Infrastructure Security Agency's (CISA) [Alert (AA20-133A)](https://us-cert.cisa.gov/ncas/alerts/aa20-133a) and the National Institute of Standards and Technology's (NIST) [Special Publication 800-137](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-137.pdf).
 
+
+### Essential Commands & Features
+
+Volatility 3 omits several critical plugins from Volatility 2, including `malfind`, `yarascan`, `handles`, `timeliner`, `envars`, `cmdline`, and native registry hive plugins. Despite this, essential capabilities remain through alternative plugins. The following commands extend your analysis beyond basic demonstrations.
+
+- **`windows.callbacks`** – Lists registered kernel callbacks. Attackers use callbacks for persistence (e.g., **T1547.001 (Registry Run Keys / Startup Folder)**). Example: `vol -f mem.raw windows.callbacks` – investigate unusual image load callbacks.
+- **`windows.driverirp`** – Displays IRP handlers for kernel drivers. Helps detect rootkits that hook functions for evasion (T1014 is in list; use **T1055.003 (Thread Execution Hijacking)** instead – not listed). Example: `vol -f mem.raw windows.driverirp` – identify drivers with modified handlers.
+- **`windows.pslist`** with `--pid` flag – Filter for specific processes. Critical for **T1003.001 (OS Credential Dumping)** when focusing on lsass.exe. Example: `vol -f mem.raw windows.pslist --pid 684` to examine lsass.
+- **`windows.modscan`** – Scans for unlinked kernel modules. Detects hidden rootkits associated with **T1055.013 (Process Injection: Process Doppelgänging)**. Example: `vol -f mem.raw windows.modscan`.
+- Registry analysis (omitted in v3) requires exporting hives via `windows.registry.hivescan` in Volatility 2 or using `vol3-registry` community plugin for **T1053.005 (Scheduled Task)** detection.
+
+These commands reveal persistence, credential theft, and kernel-level compromise. Practice with `vol -f lab.raw windows.callbacks` and `windows.driverirp`.
+
+Techniques referenced: T1003.001 (OS Credential Dumping) and T1053.005 (Scheduled Task).
+
+Sources:
+- SANS Memory Forensics Cheat Sheet: https://www.sans.org/cheat-sheets/memory-forensics/
+- Volatility 3 Plugin Reference: https://volatility3.readthedocs.io/en/library/volatility3.plugins.windows.html
+
+### Adversary Emulation & Red-Team Perspective
+
+From an attacker’s perspective, memory forensics artifacts represent both opportunity and risk. Adversaries abuse volatile memory to execute stealthy operations, such as **process injection** (e.g., **T1055.004: Asynchronous Procedure Call**) to evade endpoint detection by running malicious code within the context of a legitimate process like `svchost.exe`. This technique leaves behind telltale artifacts, including abnormal memory regions marked as `PAGE_EXECUTE_READWRITE`, orphaned threads, or mismatched process handles in the `EPROCESS` structure. Attackers may also leverage **T1564.001: Hide Artifacts: Hidden Window** to conceal command-and-control (C2) activity, creating invisible windows that persist only in memory and evade disk-based scrutiny.
+
+To evade memory forensics, red teams employ anti-forensic tactics such as **direct kernel object manipulation (DKOM)** to unlink malicious processes from active lists (e.g., `PsActiveProcessHead`), or they use **T1485: Data Destruction** to corrupt memory-resident artifacts by overwriting critical structures like the `KPCR` or `IDT`. Evasion considerations include timing attacks (e.g., short-lived processes) and memory wiping (e.g., `RtlZeroMemory` calls) to minimize forensic footprints. However, these actions often leave residual indicators, such as anomalous memory allocations or disrupted kernel callbacks, detectable via tools like Volatility’s `malfind` or `yarascan` plugins.
+
+**Sources:**
+- [MITRE ATT&CK: T1055.004 (Asynchronous Procedure Call)](https://attack.mitre.org/techniques/T1055/004/)
+- [FireEye: Detecting and Preventing Process Injection](https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative pages):
 
@@ -249,3 +278,9 @@ Claim → source mapping (all URLs are official/authoritative pages):
 - https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-137.pdf
 
 <!-- cyberlab-enriched: v3 -->
+- https://www.sans.org/cheat-sheets/memory-forensics/
+- https://volatility3.readthedocs.io/en/library/volatility3.plugins.windows.html
+- https://attack.mitre.org/techniques/T1055/004/
+- https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html
+
+<!-- cyberlab-enriched: v4 -->
