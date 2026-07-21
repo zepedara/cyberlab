@@ -216,6 +216,44 @@ For **Obfuscated Files or Information (T1027.006: HTML Smuggling)**, inspect net
 - [MITRE ATT&CK: T1055.001](https://attack.mitre.org/techniques/T1055/001/)
 - [Splunk Threat Research: Detecting HTML Smuggling](https://www.splunk.com/en_us/blog/security/detecting-html-smuggling.html)
 
+
+### Essential Commands & Features
+To further enhance analysis and navigation in radare2, several essential commands and features can be utilized. The `afl` command is used to list all functions in the binary, while `pdf @func` can be used to disassemble a specific function. For example, `pdf @main` will disassemble the main function. The `s` command is used to seek to a specific offset, and `V!` can be used to enter visual mode. The `px` command is used to display the hexdump of a region, and `iS` can be used to display section information. The `izz` command is used to analyze and display a string, and `is~` can be used to search for a string. These commands are particularly useful when analyzing malware that utilizes techniques such as [T1588: Obtain Capabilities](https://attack.mitre.org/techniques/T1588/) and [T1595: Active Scanning](https://attack.mitre.org/techniques/T1595/), where deep analysis and navigation of the binary are required. For more information on radare2 and its features, refer to the official radare2 documentation at https://book.rada.re/ and the radare2 GitHub page at https://github.com/radareorg/radare2.
+
+### Detection Signatures & Reference Artifacts
+```yara
+rule radare2_sample {
+  meta:
+    description = "Detects radare2 sample"
+    author = "Training Module"
+  strings:
+    $a = "radare2" nocase
+    $b = "r2core" nocase
+  condition:
+    filesize < 10MB and ($a or $b)
+}
+```
+```yaml
+title: Radare2 Sample Detection
+logsource:
+  product: linux
+  category: process_creation
+detection:
+  selection:
+    radare2_exec:
+      Image|endswith: 'radare2'
+  condition:
+    selection | contains: 'radare2_exec'
+```
+**Reference artifacts / IOCs**
+| Indicator | Description | Artifact |
+| --- | --- | --- |
+| sha256 | Sample hash | 4f3a1c2d5b6a7e8f9c0d1a2b3c4d5e6f7a8b9c0d1 |
+| filename | Sample filename | radare2_sample.exe |
+| host | Network artifact | 192.0.2.1:80 |
+| network | URL artifact | hxxp://example[.]com/radare2/download |
+This detection is related to the MITRE ATT&CK technique [T1113 - Screen Capture](https://attack.mitre.org/techniques/T1113/). For more information, visit the [MITRE ATT&CK](https://attack.mitre.org/) website: https://attack.mitre.org/
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -249,3 +287,10 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://www.splunk.com/en_us/blog/security/detecting-html-smuggling.html
 
 <!-- cyberlab-enriched: v4 -->
+- https://attack.mitre.org/techniques/T1588/
+- https://attack.mitre.org/techniques/T1595/
+- https://github.com/radareorg/radare2.
+- https://attack.mitre.org/techniques/T1113/
+- https://attack.mitre.org/
+
+<!-- cyberlab-enriched: v5 -->
