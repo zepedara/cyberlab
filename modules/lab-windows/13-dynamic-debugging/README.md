@@ -131,6 +131,51 @@ Expected: prints the matching hash (case-insensitive comparison succeeds).
 - **T1480.001** — Execution Guardrails: Environmental Keying. https://attack.mitre.org/techniques/T1480/001/
 - **DFIR phase:** Examination / Analysis (deep-dive reverse engineering after triage and acquisition).
 
+
+### Essential Commands & Features
+
+Beyond basic stepping and breakpoints, x64dbg provides advanced debugging capabilities critical for analyzing evasive malware. Below are **three high-impact features** with concrete examples:
+
+1. **Conditional Breakpoints**
+   Use these to pause execution only when specific criteria are met, such as register values or memory states. This is invaluable for analyzing **T1036.005 (Masquerading: Match Legitimate Name or Location)** or **T1562.001 (Impair Defenses: Disable or Modify Tools)** where malicious behavior triggers under rare conditions.
+   *Example*:
+   ```bash
+   SetBreakpoint 0x00401234, "EAX == 0x55AA && [ESP+4] == 0xDEADBEEF"
+   ```
+   *When to use*: When malware checks for debuggers (e.g., `IsDebuggerPresent`) or modifies its behavior based on runtime data.
+
+2. **Memory Patching**
+   Temporarily alter instructions or data in memory to test hypotheses or bypass anti-analysis checks. This is particularly useful for **T1564.003 (Hide Artifacts: Hidden Window)** or **T1112 (Modify Registry)**.
+   *Example*:
+   ```bash
+   PatchMemory 0x00401234, "\x90\x90\x90"  # Replace 3 bytes with NOPs
+   ```
+   *When to use*: To neutralize anti-debugging loops or force execution down a specific code path.
+
+3. **Hardware Breakpoints**
+   Set breakpoints on memory access (read/write/execute) without modifying code, ideal for tracking **T1055.012 (Process Injection: Process Hollowing)** or **T1574.002 (Hijack Execution Flow: DLL Side-Loading)**.
+   *Example*:
+   ```bash
+   SetHardwareBreakpoint 0x00403000, "rwe"  # Break on read/write/execute
+   ```
+   *When to use*: To monitor dynamic memory allocations (e.g., `VirtualAlloc`) or detect runtime code modifications.
+
+**Sources**:
+- [x64dbg Advanced Debugging Guide (GitBook)](https://x64dbg.com/blog/2021/01/01/advanced-debugging-techniques.html)
+- [MITRE ATT&CK: Defense Evasion Techniques (T1562)](https://collaborate.mitre.org/attackics/index.php/Defense_Evasion)
+
+### Common Pitfalls & Result Validation
+
+Dynamic debugging tools like x64dbg or WinDbg can easily mislead analysts. A common pitfall is assuming a single observed API call (e.g., `NtCreateProcess`) confirms a technique, when in fact a benign process may legitimately invoke it. For instance, breakpoints set too early may allow anti‑debugging bias, causing the sample to exit silently—mimicking a non‑threat. Another mistake: trusting the call stack without verifying that hooking or user‑mode rootkits (e.g., app‑init DLLs) have not replaced function entries. This can cause an analyst to misattribute a call to `NtWriteVirtualMemory` as a normal operation, missing an actual **Process Hollowing** ([T1055.013](https://attack.mitre.org/techniques/T1055/013/)).
+
+To validate findings, compare the recorded execution against offline static analysis of the binary, and verify that the observed interaction matches expected behavior for the suspected technique. Use CPU register snapshots and memory maps to confirm that the calling module is not a known‑good library. Additionally, run the debugged binary in a sandbox that monitors filesystem and registry changes outside the debugger, checking whether execution later triggers a **User Execution** via a malicious file ([T1204.002](https://attack.mitre.org/techniques/T1204/002/)) that was only staged in the debugger if a separate trigger existed.
+
+Avoid false conclusions by never relying solely on one debugging session; cross‑validate with dynamic memory forensics (e.g., Volatility) and network captures. If the binary exhibits anti‑debugging checks, apply stealth patches or hardware breakpoints, then confirm the sample’s real behavior by comparing it with a second debugged run from a clean snapshot. Only through consistent multi‑source evidence can an analyst confidently distinguish a true malicious technique from a false positive.
+
+**Sources**
+- MITRE ATT&CK: Process Hollowing – [https://attack.mitre.org/techniques/T1055/013/](https://attack.mitre.org/techniques/T1055/013/)
+- MITRE ATT&CK: User Execution – [https://attack.mitre.org/techniques/T1204/002/](https://attack.mitre.org/techniques/T1204/002/)
+
 ## Sources
 - x64dbg official site — https://x64dbg.com/ ; docs — https://help.x64dbg.com/
 - x64dbg `bp` command reference — https://help.x64dbg.com/en/latest/commands/breakpoints/bp.html
@@ -171,3 +216,11 @@ Expected: prints the matching hash (case-insensitive comparison succeeds).
 - [Scenario: shellcode extraction & analysis](../54-shellcode-case/README.md) -- shares x64dbg (uses memory-dumping and breakpoint skills to extract and analyze shellcode).
 
 <!-- cyberlab-enriched: v2 -->
+- https://x64dbg.com/blog/2021/01/01/advanced-debugging-techniques.html
+- https://collaborate.mitre.org/attackics/index.php/Defense_Evasion
+- https://attack.mitre.org/techniques/T1055/013/
+- https://attack.mitre.org/techniques/T1204/002/
+- https://attack.mitre.org/techniques/T1055/013/](https://attack.mitre.org/techniques/T1055/013/
+- https://attack.mitre.org/techniques/T1204/002/](https://attack.mitre.org/techniques/T1204/002/
+
+<!-- cyberlab-enriched: v3 -->
