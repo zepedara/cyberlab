@@ -106,6 +106,11 @@ Concrete detection logic and pivots:
 - **`http.log`**: an `http_version` banner grab or an `-sV` HTTP probe appears as an HTTP request; version probes may carry an unusual or empty `user_agent` and hit uncommon URIs. Correlate `http.log` with the web server's own access logs.
 - Map the activity to MITRE ATT&CK **T1046 Network Service Discovery** (https://attack.mitre.org/techniques/T1046/) and **T1595 Active Scanning** (https://attack.mitre.org/techniques/T1595/). If a Metasploit exploit lands, follow-on Meterpreter C2 sessions and process anomalies on the host map to **T1190 Exploit Public-Facing Application** (https://attack.mitre.org/techniques/T1190/) and command execution to **T1059 Command and Scripting Interpreter** (https://attack.mitre.org/techniques/T1059/). This ties into the detection and the identification/containment phases of incident response (SANS FOR508 / DFIR guidance).
 
+**Deepened Detection Engineering & Threat Hunting:**
+- **Detection Logic for Service Discovery**: A high rate of TCP SYN packets to multiple ports from a single source within a short time window is a strong indicator of scanning. In Security Onion, a Suricata rule like `ET SCAN Potential Nmap User-Agent Detected` (SID 2019025) triggers on the default Nmap HTTP probe's User-Agent string. The rule logic matches the string `Nmap Scripting Engine` in the HTTP header, a direct artifact of Nmap's `-sV` or `-sC` scripts (Emerging Threats Open Ruleset, https://rules.emergingthreats.net/). In Zeek, the `conn.log` field `orig_pkts` can be used to identify short-lived connections (e.g., `duration < 1 sec` and `orig_pkts <= 3`) to many different destination ports, which is characteristic of a SYN scan.
+- **Post-Exploitation Detection Pivots**: Successful exploitation via Metasploit often leads to a Meterpreter or reverse shell session. This maps to **T1105 Ingress Tool Transfer** (https://attack.mitre.org/techniques/T1105/) as the payload is staged, and **T1573 Encrypted Channel** (https://attack.mitre.org/techniques/T1573/) if Meterpreter uses TLS. In Security Onion, hunt for these by looking for outbound connections from internal servers to external IPs on non-standard ports, especially if the `service` field in Zeek's `conn.log` is `unknown` and the `orig_bytes`/`resp_bytes` ratio is asymmetric (small request, large response). Correlate with Windows Event ID 4688 (process creation) for suspicious child processes of `svchost.exe` or `explorer.exe` spawning `cmd.exe` or `powershell.exe` with network-related command-line arguments, which indicates **T1059.001 PowerShell** (https://attack.mitre.org/techniques/T1059/001/).
+- **Additional MITRE ATT&CK Techniques**: The initial reconnaissance phase also maps to **T1083 File and Directory Discovery** (https://attack.mitre.org/techniques/T1083/) if post-exploitation modules are used to enumerate the filesystem. The use of encoded payloads via `msfvenom` is an instance of **T1027 Obfuscated Files or Information** (https://attack.mitre.org/techniques/T1027/). These techniques should be included in a defender's threat model when investigating scanning activity that precedes a compromise.
+
 ## Attacker perspective
 An attacker uses Nmap to fingerprint a target's exposed services, then selects a matching Metasploit module to gain access or extract information.
 
@@ -114,6 +119,11 @@ Concrete TTPs, artifacts, and evasion:
 - **Delivery and staging (T1190)**: the framework handles payload delivery, staging, and post-exploitation. `msfvenom` can encode/obfuscate payloads (encoders are described in the Metasploit Docs / rapid7 repo), though modern EDR largely detects known encoder stubs — encoding is not reliable AV evasion by itself.
 - **Artifacts the technique leaves**: scans leave rejected-connection floods (`REJ`/`S0`) in firewall and Zeek `conn.log`; version probes appear as odd or empty User-Agent and malformed/uncommon requests in web server and Zeek `http.log`. On the attacker box, the msfdb PostgreSQL backend and the `~/.msf4/` directory record imported hosts, services, loot, `msf.log`, and console history (`~/.msf4/history`) — see Metasploit Docs "Managing the Database" and the framework's file layout. Default Meterpreter staged callbacks produce recognizable TLS/HTTP C2 patterns and on-disk artifacts that DFIR examiners can hunt for.
 - **Evasion caveat**: even with timing and encoding, the volume and shape of scan traffic (many short sessions, one source, many destination ports) is the signal defenders key on — the discovery step is inherently noisy.
+
+**Deepened Attacker Tradecraft & Artifacts:**
+- **Evasion Techniques**: To evade signature-based detection of Nmap scans, an attacker can use `--scan-delay 1s` to add a delay between probes, fragment packets with `-f`, or use decoy scans with `-D RND:10`. However, these are well-documented in the Nmap Reference Guide (https://nmap.org/book/man-bypass-firewalls-ids.html) and many IDS rules, like Suricata's `ET SCAN Nmap -f fragmentation attempt`, detect them. For Metasploit, using a custom Meterpreter payload with a unique `User-Agent` and `URI` can bypass simple HTTP-based C2 signatures. The `set HttpUserAgent` and `set Uri` options in the `windows/meterpreter/reverse_http` handler are documented in the Metasploit payload options (https://docs.metasploit.com/docs/using-metasploit/basics/how-to-use-a-reverse-shell-in-metasploit.html).
+- **Post-Exploitation Artifacts**: After a successful exploit, Meterpreter injects into a process (e.g., `notepad.exe`), which is an instance of **T1055 Process Injection** (https://attack.mitre.org/techniques/T1055/). On a Windows target, this creates a memory artifact that can be detected by tools like Sysmon (Event ID 10, Process Access). The attacker's `~/.msf4/logs/framework.log` and `~/.msf4/history` files will contain timestamps, commands, and target IPs, which are critical forensic artifacts for DFIR. The Metasploit database (`msf.db`) stores loot, credentials, and session data in SQLite tables, as described in the Metasploit documentation on database support.
+- **Additional MITRE ATT&CK Techniques**: The act of transferring the exploit code and payload to the target is **T1105 Ingress Tool Transfer**. If the attacker uses a compromised host to scan laterally, that is **T1570 Lateral Tool Transfer** (https://attack.mitre.org/techniques/T1570/). Using Metasploit's `post/windows/gather/enum_logged_on_users` module post-compromise maps to **T1033 System Owner/User Discovery** (https://attack.mitre.org/techniques/T1033/). These techniques expand the attacker's kill chain and provide more hunting opportunities for defenders.
 
 ## Answer key
 - Sample type: benign Nmap XML scan report (`exercise/scan.xml`), inert text only, generated by the command in the Hands-on exercise (no live malware, no egress).
@@ -136,6 +146,10 @@ Expected: `1` host, `1` service line, and a `service` element showing `Apache ht
 - **T1046 Network Service Discovery** — service/version enumeration to select exploits (DFIR phase: identification). https://attack.mitre.org/techniques/T1046/
 - **T1190 Exploit Public-Facing Application** — Metasploit exploit modules against exposed services (DFIR phase: identification / containment). https://attack.mitre.org/techniques/T1190/
 - **T1059 Command and Scripting Interpreter** — post-exploitation command execution via payloads (DFIR phase: examination / eradication). https://attack.mitre.org/techniques/T1059/
+- **T1105 Ingress Tool Transfer** — Transfer of tools or files to the target system, such as Meterpreter payloads (DFIR phase: identification). https://attack.mitre.org/techniques/T1105/
+- **T1027 Obfuscated Files or Information** — Use of `msfvenom` encoders to evade detection (DFIR phase: examination). https://attack.mitre.org/techniques/T1027/
+- **T1055 Process Injection** — Meterpreter code injection into a legitimate process (DFIR phase: examination / eradication). https://attack.mitre.org/techniques/T1055/
+- **T1573 Encrypted Channel** — Use of TLS/SSL by Meterpreter for C2 communication (DFIR phase: examination). https://attack.mitre.org/techniques/T1573/
 
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, or Security Onion docs):
@@ -146,13 +160,23 @@ Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, o
 - metasploit-framework packaged in Kali — Kali Linux Tools — https://www.kali.org/tools/metasploit-framework/
 - nmap packaged in Kali — Kali Linux Tools — https://www.kali.org/tools/nmap/
 - Nmap flags `-sV`, `-Pn`, `-p`, `-oN`, `-oX`, timing (`-T`, `--max-rate`, `--scan-delay`), `--version-intensity` — Nmap Reference Guide — https://nmap.org/book/man.html
+- Nmap evasion techniques (`-f`, `-D`, `--scan-delay`) — Nmap Reference Guide, "Firewall/IDS Evasion and Spoofing" — https://nmap.org/book/man-bypass-firewalls-ids.html
 - Nmap XML output structure (`nmaprun`/`host`/`port`/`service` elements) — Nmap Reference Guide, "XML Output" — https://nmap.org/book/output-formats-xml-output.html
 - Zeek `conn.log` fields and connection states (`S0`, `REJ`, `RSTO`, `RSTR`) — Zeek documentation — https://docs.zeek.org/en/master/logs/conn.html
 - Security Onion Suricata/Zeek/Elastic pipeline and Alerts/Hunt views — Security Onion documentation — https://docs.securityonion.net/
+- Suricata ET SCAN rule for Nmap User-Agent (SID 2019025) — Emerging Threats Open Ruleset — https://rules.emergingthreats.net/
 - MITRE ATT&CK T1046 Network Service Discovery — https://attack.mitre.org/techniques/T1046/
 - MITRE ATT&CK T1595 Active Scanning — https://attack.mitre.org/techniques/T1595/
 - MITRE ATT&CK T1190 Exploit Public-Facing Application — https://attack.mitre.org/techniques/T1190/
 - MITRE ATT&CK T1059 Command and Scripting Interpreter — https://attack.mitre.org/techniques/T1059/
+- MITRE ATT&CK T1059.001 PowerShell — https://attack.mitre.org/techniques/T1059/001/
+- MITRE ATT&CK T1105 Ingress Tool Transfer — https://attack.mitre.org/techniques/T1105/
+- MITRE ATT&CK T1027 Obfuscated Files or Information — https://attack.mitre.org/techniques/T1027/
+- MITRE ATT&CK T1055 Process Injection — https://attack.mitre.org/techniques/T1055/
+- MITRE ATT&CK T1573 Encrypted Channel — https://attack.mitre.org/techniques/T1573/
+- MITRE ATT&CK T1083 File and Directory Discovery — https://attack.mitre.org/techniques/T1083/
+- MITRE ATT&CK T1570 Lateral Tool Transfer — https://attack.mitre.org/techniques/T1570/
+- MITRE ATT&CK T1033 System Owner/User Discovery — https://attack.mitre.org/techniques/T1033/
 - Nmap scanning technique reference and DFIR framing — SANS Nmap Cheat Sheet — https://www.sans.org/posters/nmap-cheat-sheet/
 - DFIR phases (identification, containment, eradication, examination) — SANS FOR508 / DFIR resources — https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting-training/
 - RFC 5737 documentation address range (203.0.113.0/24, TEST-NET-3) — https://datatracker.ietf.org/doc/html/rfc5737
@@ -163,4 +187,4 @@ Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, o
 - [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same Deep-dives learning path; analyze the host-side memory artifacts of a landed payload.
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same Deep-dives learning path; write detections for payload/on-disk artifacts.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
