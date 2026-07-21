@@ -229,6 +229,54 @@ False conclusions are avoided by never extrapolating intent from incomplete evid
 - [CISA - Event Log Clearing and Anti‑Forensic Techniques (Technical Guidance)](https://www.cisa.gov/uscert/ncas/tips/ST04-003)
 - [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://www.nist.gov/publications/guide-integrating-forensic-techniques-incident-response)
 
+
+### Essential Commands & Features
+
+Block-level analysis and signature-based recovery are critical for uncovering hidden or deleted artifacts. Below are **essential Sleuth Kit commands** not yet demonstrated, with concrete examples and use cases:
+
+#### **1. `blkcalc` – Map Block Addresses to Files**
+Recover file metadata from unallocated blocks by mapping a block address (e.g., from `blkls`) back to its original file.
+**Example:**
+```bash
+blkcalc -d disk.img -u 1024
+```
+**When to use:** After identifying suspicious blocks with `blkls`, determine which file(s) they belonged to (e.g., for **T1074.001 Data Staged** or **T1564.004 NTFS File Attributes**).
+
+#### **2. `blkls` – Extract Unallocated Blocks**
+Dump unallocated or slack space from a disk/image for deeper analysis.
+**Example:**
+```bash
+blkls -A disk.img > unallocated_blocks.raw
+```
+**When to use:** Analyze unallocated space for remnants of deleted files (e.g., **T1485 Data Destruction** or **T1070.004 File Deletion**).
+
+#### **3. `sigfind` – Locate File Signatures**
+Scan raw data for file headers/footers (e.g., `PK` for ZIP, `FFD8` for JPEG) to recover fragmented or hidden files.
+**Example:**
+```bash
+sigfind -b 512 -t jpeg disk.img
+```
+**When to use:** Recover obfuscated files (e.g., **T1140 Deobfuscate/Decode Files or Information** or **T1027.001 Binary Padding**).
+
+**Authoritative Sources:**
+- [Sleuth Kit Man Pages (blkcalc, blkls, sigfind)](https://www.sleuthkit.org/sleuthkit/man/)
+- [DFIR Review: Sleuth Kit for Block-Level Analysis](https://www.dfir.review/)
+
+### Threat Hunting & Detection Engineering
+
+Once disk artifacts are recovered, pivot to **threat hunting** by correlating file-system metadata with live telemetry. Focus on **T1033 (System Owner/User Discovery)** and **T1574.002 (Hijack Execution Flow: DLL Side-Loading)**—both leave distinct disk and log footprints.
+
+**Detection Logic**
+- **Windows Event Logs**: Hunt for `Event ID 4688` (Process Creation) where `ParentProcessName` is `explorer.exe` and `NewProcessName` is an unsigned `.dll` in `%TEMP%` or `%APPDATA%` (T1574.002). Cross-reference with `Event ID 7` (Image Loaded) in `Microsoft-Windows-Sysmon/Operational` to confirm DLLs loaded from unusual paths.
+- **Zeek/Suricata**: Monitor `files.log` for `.dll` or `.exe` downloads via HTTP (`mime_type: application/x-dosexec`) with `conn_state == "SF"` (successful transfer). Pivot to `pe.log` to extract `section_names` or `import_hash` (T1033 often uses `NetUserGetInfo` or `NetLocalGroupGetMembers` imports).
+- **Hunting Pivots**:
+  - **Registry**: Query `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options` for debugger hijacks (T1574.002).
+  - **Prefetch**: Parse `.pf` files for executables with mismatched `LastRunTime` and `VolumeCreateTime` (timestomping, T1070.006).
+
+**Sources**
+- [MITRE ATT&CK: T1033](https://attack.mitre.org/techniques/T1033/)
+- [SANS DFIR: Hunting DLL Side-Loading](https://www.sans.org/blog/hunting-dll-side-loading-with-sysmon/)
+
 ## Sources
 Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK, SANS, or recognized vendor/project sites):
 
@@ -286,3 +334,9 @@ Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK,
 - https://www.nist.gov/publications/guide-integrating-forensic-techniques-incident-response
 
 <!-- cyberlab-enriched: v4 -->
+- https://www.sleuthkit.org/sleuthkit/man/
+- https://www.dfir.review/
+- https://attack.mitre.org/techniques/T1033/
+- https://www.sans.org/blog/hunting-dll-side-loading-with-sysmon/
+
+<!-- cyberlab-enriched: v5 -->
