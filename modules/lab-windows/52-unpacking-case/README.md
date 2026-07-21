@@ -207,6 +207,43 @@ Sample sha256 (of the locally built unpacked reference `sample.exe`; recorded by
 - **T1620** — Reflective Code Loading (advanced packers) — [MITRE ATT&CK T1620](https://attack.mitre.org/techniques/T1620/)
 - **DFIR phase:** Examination / Analysis (malware static+dynamic reverse engineering).
 
+
+### Essential Commands & Features
+
+While basic debugging in **x64dbg** is covered, mastering these advanced features will significantly improve your analysis efficiency and resilience against anti-debugging techniques:
+
+1. **Conditional Breakpoints**
+   Use conditional breakpoints to pause execution only when specific criteria are met, reducing noise during analysis.
+   *Example:* Set a breakpoint at `0x00401234` that triggers only if `EAX == 0x55`:
+   ```
+   bp 0x00401234, "eax == 0x55"
+   ```
+   *When to use:* Ideal for tracking specific API calls (e.g., `VirtualAlloc` with `MEM_COMMIT`) or register states tied to **T1480.001 (Execution Guardrails: Environmental Keying)**.
+
+2. **Script Automation**
+   Automate repetitive tasks (e.g., logging function arguments) using x64dbg’s built-in scripting engine.
+   *Example:* Log all calls to `WriteProcessMemory` with their arguments:
+   ```python
+   log("WriteProcessMemory called with args: {0}, {1}, {2}, {3}, {4}",
+       [arg.get(1), arg.get(2), arg.get(3), arg.get(4), arg.get(5)])
+   ```
+   *When to use:* Critical for analyzing **T1106 (Native API)** abuse, such as process injection or hooking.
+
+3. **Exception Handling for Anti-Debug Evasion**
+   Configure x64dbg to intercept and ignore exceptions commonly used for anti-debugging (e.g., `INT3`, `SEH`).
+   *Example:* Ignore `EXCEPTION_BREAKPOINT` (0x80000003) to bypass `IsDebuggerPresent` checks:
+   ```
+   SetExceptionHandler 0x80000003, "ignore"
+   ```
+   *When to use:* Counters **T1622 (Debugger Evasion)** by suppressing exceptions like `OutputDebugString` crashes.
+
+**Authoritative Sources:**
+- [x64dbg Scripting Documentation (GitBook)](https://x64dbg.com/script/)
+- [SANS FOR610: Reverse-Engineering Malware (Anti-Debugging Section)](https://www.sans.org/blog/anti-debugging-techniques-cheat-sheet/)
+
+### Threat Hunting & Detection Engineering
+To detect and hunt for threats related to the 52-unpacking-case, focus on identifying suspicious patterns in system and network logs. Analyze Windows Event ID 4688 (Process Creation) for unusual process executions, particularly those involving unsigned or unknown binaries. Additionally, monitor for T1588 (Obtain Capabilities) and T1204 (User Execution) techniques, where attackers may attempt to obtain or execute capabilities, such as exploiting vulnerabilities or using social engineering tactics to trick users into executing malicious code. Inspect Zeek logs for unusual DNS queries or HTTP requests that may indicate malicious activity. Threat hunters can pivot on fields like `process_command_line` or `dns_query` to uncover related events. By combining these detection methods, security teams can improve their ability to identify and respond to potential threats. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov](https://www.cisa.gov) or the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov](https://csrc.nist.gov).
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -237,3 +274,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Scenario: shellcode extraction & analysis](../54-shellcode-case/README.md) -- shares x64dbg for memory-based extraction and dumping.
 
 <!-- cyberlab-enriched: v2 -->
+- https://x64dbg.com/script/
+- https://www.sans.org/blog/anti-debugging-techniques-cheat-sheet/
+- https://www.cisa.gov](https://www.cisa.gov
+- https://csrc.nist.gov](https://csrc.nist.gov
+
+<!-- cyberlab-enriched: v3 -->
