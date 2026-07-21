@@ -170,6 +170,65 @@ Expected: the file count is greater than zero, confirming PhotoRec recovered car
 - **T1564.005** – Hide Artifacts: Hidden File System (slack/unpartitioned-gap abuse defeated by carving). https://attack.mitre.org/techniques/T1564/005/
 - **DFIR phase:** Identification and Examination (evidence acquisition triage, filesystem analysis, timeline reconstruction, and deleted-file recovery).
 
+
+### Essential Commands & Features
+
+Below are **critical but undemonstrated** Sleuth Kit commands for **block-level analysis** and **signature-based recovery**, each with a concrete example and tactical use case.
+
+---
+
+#### **1. `blkcalc` – Map Unallocated Blocks to Files**
+**When to use:** After identifying suspicious unallocated blocks (e.g., via `blkls`), map them back to their original file metadata to recover deleted artifacts.
+**Example:**
+```bash
+blkcalc -d disk.img -u 1024
+```
+*Outputs the inode/file associated with unallocated block 1024 in `disk.img`.*
+**MITRE ATT&CK:** [T1074.001 Data Staged: Local Data Staging](https://attack.mitre.org/techniques/T1074/001/) (e.g., staging exfil data in unallocated space).
+
+---
+
+#### **2. `blkls` – Extract Unallocated or Slack Space**
+**When to use:** Dump unallocated blocks or slack space for deep analysis (e.g., carving hidden payloads or remnants of deleted files).
+**Example (unallocated blocks):**
+```bash
+blkls -A disk.img > unallocated.raw
+```
+**Example (slack space only):**
+```bash
+blkls -s disk.img > slack.raw
+```
+**MITRE ATT&CK:** [T1564.004 Hide Artifacts: NTFS File Attributes](https://attack.mitre.org/techniques/T1564/004/) (e.g., hiding data in slack space).
+
+---
+
+#### **3. `sigfind` – Locate File Signatures in Raw Data**
+**When to use:** Search for file headers/footers (e.g., `PK` for ZIP, `MZ` for PE) in raw dumps (e.g., `unallocated.raw` from `blkls`).
+**Example (find ZIP files):**
+```bash
+sigfind -b 512 504B unallocated.raw
+```
+*Searches for `PK` (hex `504B`) at 512-byte block offsets.*
+**MITRE ATT&CK:** [T1132.001 Data Encoding: Standard Encoding](https://attack.mitre.org/techniques/T1132/001/) (e.g., obfuscated payloads in archives).
+
+---
+
+**Authoritative Sources:**
+- Sleuth Kit Man Pages: [https://www.sleuthkit.org/sleuthkit/man/](https://www.sleuthkit.org/sleuthkit/man/)
+- DFIR Review (Peer-Reviewed): [https://www.dfir
+
+### Common Pitfalls & Result Validation
+
+Common pitfalls in disk forensics stem from over-relying on a single tool or default settings. Analysts often assume that deleted files are always recoverable, ignoring file slack and MFT record overwrites. Timestamps are frequently misinterpreted as absolute creation times, while they can be modified or inaccurately reported by tools. Another mistake is treating a clean `$LogFile` or event log as evidence of benign activity—attackers systematically clear logs using **T1070.001 (Indicator Removal on Host: Clear Windows Event Logs)**, which may leave behind residual entries in `Security.evtx` or $MFT. Similarly, adversaries hide malicious accounts by modifying registry values to prevent them from appearing in standard user enumeration; this is captured by **T1564.002 (Hide Artifacts: Hidden Users)**.
+
+To validate findings, cross‑reference file system metadata with log analysis, timeline generation, and multiple carving tools (e.g., `scalpel` against `bulk_extractor` results). Hash sets like NSRL should be used to eliminate known good files, but beware of hash collisions and partial matches. For timestamp verification, compare `fn` (filename) and `si` (standard information) timestamps in the MFT; anomalies may indicate anti‑forensic manipulation.
+
+False conclusions are avoided by never extrapolating intent from incomplete evidence—a single partially overwritten cluster does not confirm data destruction, and recovered registry hives may lack cross‑validation with actual user profiles. Always test conclusions by reproducing results on a clean, immutable copy of the evidence. Engage chain‑of‑custody logs and document every tool version to ensure repeatability.
+
+**Authoritative References:**
+- [CISA - Event Log Clearing and Anti‑Forensic Techniques (Technical Guidance)](https://www.cisa.gov/uscert/ncas/tips/ST04-003)
+- [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://www.nist.gov/publications/guide-integrating-forensic-techniques-incident-response)
+
 ## Sources
 Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK, SANS, or recognized vendor/project sites):
 
@@ -218,3 +277,12 @@ Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK,
 - [Memory forensics](../02-memory-forensics/README.md) -- same Foundations learning path, pairing disk artifacts with volatile memory evidence.
 
 <!-- cyberlab-enriched: v3 -->
+- https://attack.mitre.org/techniques/T1074/001/
+- https://attack.mitre.org/techniques/T1564/004/
+- https://attack.mitre.org/techniques/T1132/001/
+- https://www.sleuthkit.org/sleuthkit/man/](https://www.sleuthkit.org/sleuthkit/man/
+- https://www.dfir
+- https://www.cisa.gov/uscert/ncas/tips/ST04-003
+- https://www.nist.gov/publications/guide-integrating-forensic-techniques-incident-response
+
+<!-- cyberlab-enriched: v4 -->
