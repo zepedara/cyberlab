@@ -170,6 +170,60 @@ These commands bridge gaps in traditional forensic workflows, enabling deeper an
 ### Threat Hunting & Detection Engineering
 To effectively hunt and detect threats, it's crucial to analyze logs from various sources, including Windows Event IDs and network traffic captures. For instance, detecting `T1190: Exploit Public-Facing Application` and `T1204: User Execution` requires monitoring Windows Event ID 4688 for suspicious process creations and command-line arguments. Additionally, analyzing Zeek logs for unusual HTTP requests or Suricata alerts for potential exploit attempts can help identify malicious activity. Threat hunters can pivot on fields like user agents, source IP addresses, or DNS queries to uncover related events. By leveraging these log sources and detection logic, security teams can engineer targeted detection rules to identify and disrupt attacker techniques. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency's (CISA) website at [https://www.cisa.gov](https://www.cisa.gov) or the National Institute of Standards and Technology's (NIST) Computer Security Resource Center at [https://csrc.nist.gov](https://csrc.nist.gov).
 
+
+### Essential Commands & Features
+
+Mastering block-level recovery and signature-based carving is critical for forensic investigations. Below are **three undemonstrated but essential SleuthKit commands**, each with a concrete example and use case:
+
+1. **`blkls` (Block List)**
+   Extracts unallocated or slack space from a disk image for deeper analysis. Use this when recovering deleted files or analyzing disk artifacts left in unallocated blocks.
+   ```bash
+   blkls -A disk.img > unallocated.raw
+   ```
+   *Why?* Unallocated space often contains remnants of deleted files (e.g., logs, malware). This aligns with **T1074.001 (Data Staged: Local Data Staging)** where adversaries hide data in slack space.
+
+2. **`blkcalc` (Block Calculator)**
+   Maps block addresses between a raw image and a carved file (e.g., from `blkls`). Use this to correlate carved data with its original disk location.
+   ```bash
+   blkcalc -u disk.img 1024
+   ```
+   *Why?* Critical for attributing carved artifacts to specific disk regions, aiding in reconstructing attacker activity (e.g., **T1560.001 (Archive Collected Data: Archive via Utility)**).
+
+3. **`sigfind` (Signature Finder)**
+   Scans for file signatures (magic numbers) in raw data. Use this to recover files when headers/footers are intact but metadata is lost.
+   ```bash
+   sigfind -b 512 -o 0xFFD8FF JPEG disk.img
+   ```
+   *Why?* Detects fragmented or partially overwritten files, such as those hidden via **T1564.003 (Hide Artifacts: Hidden Window)**.
+
+**Sources:**
+- [SleuthKit Man Pages (blkcalc, blkls, sigfind)](https://www.sleuthkit.org/sleuthkit/man/)
+- [DFIR Review: File Carving with SleuthKit](https://www.dfir.review/2021/03/15/file-carving-with-sleuthkit/)
+
+### Adversary Emulation & Red-Team Perspective
+
+Attackers leverage **The Sleuth Kit (TSK)** and its utilities (e.g., `fls`, `icat`, `mmls`) to conduct **file system reconnaissance** and **data exfiltration** while minimizing forensic footprints. A red team might abuse TSK to:
+
+1. **Extract Sensitive Files Without Triggering File Access Auditing**
+   Using `icat` to read files via inode references (bypassing traditional file handles), attackers evade detection mechanisms that rely on `CreateFile` API calls. This aligns with **T1555.003: Credentials from Password Stores: Credentials from Web Browsers**, where adversaries extract browser credential databases (e.g., `Login Data` in Chrome) without leaving typical access logs.
+
+2. **Stealthy Data Staging via Alternate Data Streams (ADS)**
+   Attackers use `fls -r` to enumerate files and `icat` to copy data into NTFS ADS (e.g., `file.txt:hidden`), evading directory listing tools. This supports **T1564.004: Hide Artifacts: NTFS File Attributes**, where data is concealed in ADS to avoid detection by endpoint protection or EDR solutions.
+
+**Artifacts Left Behind:**
+- **Command-line history** (e.g., `~/.bash_history` or `ConsoleHost_history.txt`) showing TSK tool invocations.
+- **File system metadata changes** (e.g., last access timestamps) if `icat` is used without `-r` (read-only) flag.
+- **Network artifacts** if exfiltrating data via `icat` piped to `netcat` or `curl`.
+
+**Evasion Considerations:**
+- **Time stomping**: Use `touch -r` to restore original timestamps post-extraction.
+- **Memory-resident execution**: Load TSK binaries into memory (e.g., via `memfd_create`) to avoid disk-based detection.
+- **Living-off-the-land**: Rename TSK binaries (e.g., `fls` → `svchost.exe`) to blend with legitimate processes.
+
+**Sources:**
+- [MITRE ATT&CK: T1555.003](https://attack.mitre.org/techniques/T1555/003/)
+- [DFIR Review: NTFS ADS Forensics](https://www.dfir.review/2021/03/15/ntfs-alternate-data-streams-forensics/)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -220,3 +274,8 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://csrc.nist.gov](https://csrc.nist.gov
 
 <!-- cyberlab-enriched: v3 -->
+- https://www.dfir.review/2021/03/15/file-carving-with-sleuthkit/
+- https://attack.mitre.org/techniques/T1555/003/
+- https://www.dfir.review/2021/03/15/ntfs-alternate-data-streams-forensics/
+
+<!-- cyberlab-enriched: v4 -->
