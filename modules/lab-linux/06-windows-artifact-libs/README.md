@@ -150,6 +150,37 @@ Expected findings: `grep -c "Record number"` returns the total record count for 
 - **T1053.005** — Scheduled Task/Job (use of `vshadowinfo` via scheduled task). https://attack.mitre.org/techniques/T1053/005/
 - **DFIR phase:** Examination & Analysis (parsing acquired artifacts) supporting Identification of scope.
 
+
+### Essential Commands & Features
+
+#### **`esedbexport` Table Filtering**
+Use `-T` to extract only specific tables from ESE databases (e.g., `Windows.edb` or `NTDS.dit`), reducing processing time and disk usage. Critical for investigating **T1552.001 Unsecured Credentials: Credentials In Files** (e.g., cached credentials in `SystemIndex_0A`) or **T1562.002 Impair Defenses: Disable Windows Event Logging** (e.g., `MSysObjects` in `Windows.edb` to identify tampered logs).
+
+```bash
+esedbexport -T "SystemIndex_0A,MSysObjects" Windows.edb
+```
+
+#### **`pffexport` Recovered/Deleted Items Mode**
+Add `-r` to recover deleted items from PST/OST files (e.g., Outlook artifacts). Essential for analyzing **T1566.001 Phishing: Spearphishing Attachment** (e.g., malicious emails moved to "Deleted Items").
+
+```bash
+pffexport -r -o output_folder suspect_mailbox.ost
+```
+
+#### **`vshadowmount` Mount Command**
+Mount Volume Shadow Copies (VSCs) to access historical filesystem states. Use `-o` to specify a mount point and `-X` to list available snapshots. Vital for **T1070.004 Indicator Removal: File Deletion** investigations (e.g., recovering deleted malware or logs).
+
+```bash
+vshadowmount -o /mnt/vss -X C:\vssadmin_list_shadows.txt
+```
+
+**Sources:**
+- [libesedb Documentation (GitLab)](https://github.com/libyal/libesedb/wiki/Command-line-tools)
+- [Forensic Focus: Volume Shadow Copy Analysis](https://www.forensicfocus.com/articles/volume-shadow-copy-forensics/)
+
+### Threat Hunting & Detection Engineering
+To detect malicious activity related to Windows artifact libraries, threat hunters can focus on techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - User Execution, where an adversary may execute malicious code or scripts, and [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution, which involves using signed Windows binaries to execute malicious code. Detection logic can be based on Windows Event IDs such as 4688 (Process Creation) and 4703 (Token Elevation Type), where the `CommandLine` field may indicate suspicious script execution or binary usage. Additionally, analyzing Zeek logs for unusual DNS queries or HTTP requests can help identify potential malicious activity. Threat hunters can pivot on fields such as `Image` (executable name) and `CommandLine` to investigate further. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) website or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) Cybersecurity Framework page.
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn, MITRE ATT&CK, or recognized project docs):
 
@@ -182,3 +213,11 @@ Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn
 - [Registry analysis](../04-registry-analysis/README.md) -- same learning path (Foundations)
 
 <!-- cyberlab-enriched: v2 -->
+- https://github.com/libyal/libesedb/wiki/Command-line-tools
+- https://www.forensicfocus.com/articles/volume-shadow-copy-forensics/
+- https://attack.mitre.org/techniques/T1204
+- https://attack.mitre.org/techniques/T1218
+- https://www.cisa.gov/
+- https://www.nist.gov/
+
+<!-- cyberlab-enriched: v3 -->
