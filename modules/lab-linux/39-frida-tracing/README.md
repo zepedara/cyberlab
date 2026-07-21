@@ -114,21 +114,34 @@ Task: Compile `target.c`, then use Frida (a script or `frida-trace`) to determin
 Defenders rarely run Frida in production, but they use its findings to build detections. When a malware analyst hooks a runtime-decrypted C2 URL or a `WinExec`/`execve` call with Frida, the resolved indicators (domains, IPs, command lines) become network and process rules.
 
 Concrete detection logic and Security Onion pivots:
-- **Extracted C2 domains/IPs → Suricata + Zeek.** Feed each resolved domain into Suricata DNS/HTTP/TLS rules and pivot in Security Onion on Zeek's `dns.log`, `http.log`, and `ssl.log`; the `conn.log` gives you the flow tuple to hunt lateral spread. Security Onion runs Suricata and Zeek and indexes their logs into Elasticsearch for Kibana search. Source: Security Onion Documentation (https://docs.securityonion.net/) and Zeek log reference (https://docs.zeek.org/en/master/logs/index.html).
-- **Runtime-resolved process spawns → ATT&CK mapping.** Behavior where a decrypted payload calls `execve`/`system` maps to **T1059 — Command and Scripting Interpreter** (https://attack.mitre.org/techniques/T1059/); calls that go straight through native libc/OS APIs rather than a shell map to **T1106 — Native API** (https://attack.mitre.org/techniques/T1106/). Pivot on process-creation telemetry (e.g., Elastic/auditd process events) in Kibana.
-- **Frida usage on an endpoint is itself worth alerting on.** A `frida-server` listening on TCP 27042 (its default control port) is a strong host-hunt signal; hunt for that listener in host network telemetry and correlate with the injection artifacts in the Attacker perspective. Source: Frida — *frida-server* (https://frida.re/docs/frida-server/).
-
-Frida output effectively converts opaque runtime behavior into concrete, hunt-ready IOCs the SOC can pivot on across Kibana, Suricata, and Zeek logs.
+- **Extracted C2 domains/IPs → Suricata + Zeek.** Feed each resolved domain into Suricata DNS/HTTP/TLS rules and pivot in Security Onion on Zeek's `dns.log` (query field), `http.log` (host header), and `ssl.log` (SNI); the `conn.log` gives flow tuples for lateral spread hunting. Source: Security Onion docs (https://docs.securityonion.net/) and Zeek log fields (https://docs.zeek.org/en/master/logs/index.html). Specific Zeek query: `index=zeek sourcetype="zeek:dns" query="malicious.example.com"`.
+- **Runtime-resolved process spawns → ATT&CK mapping.** Behavior where a decrypted payload calls `execve`/`system` maps to **T1059 — Command and Scripting Interpreter** (https://attack.mitre.org/techniques/T1059/); calls that go straight through native APIs map to **T1106 — Native API** (https://attack.mitre.org/techniques/T1106/). Pivot on process-creation telemetry (e.g., Windows Event ID 4688/Sysmon Event ID 1) with command-line arguments matching Frida-extracted values.  
+- **Frida artifacts → Host-based detection.** On Linux, audit suspicious `/proc/$PID/maps` entries for `frida-agent` paths or unexpected thread creation (monitor `fork`/`clone` syscalls targeting existing processes). Windows EDRs can flag `frida-server.exe` or process injection via DLL hollowing (T1055.013). Sources: `proc(5)` man page (https://man7.org/linux/man-pages/man5/proc.5.html); MITRE ATT&CK T1055.013 (https://attack.mitre.org/techniques/T1055/013/).
+- **Frida-specific network traffic.** The default `frida-server` control port 27042 leaves TCP connections in netstat/Zeek `conn.log` (uid field can link to process ancestry). Hunt for unusual process-to-port binds via Zeek: `index=zeek sourcetype="zeek:conn" id.resp_p=27042`. Source: Frida — *frida-server* (https://frida.re/docs/frida-server/).  
+- **Additional MITRE mappings:**  
+  - **T1574.002 — DLL Side-Loading** (when Frida agents masquerade as legitimate DLLs)  
+  - **T1620 — Reflective Code Loading** (Frida’s injection mechanism)  
+  - **T1055.001 — Process Injection: Dynamic-link Library Injection** (Frida agent injection)  
+  - **T1562.001 — Impair Defenses: Disable or Modify Tools** (runtime patching of security checks)  
+  Sources: MITRE ATT&CK T1574.002 (https://attack.mitre.org/techniques/T1574/002/), T1620 (https://attack.mitre.org/techniques/T1620/), T1055.001 (https://attack.mitre.org/techniques/T1055/001/), T1562.001 (https://attack.mitre.org/techniques/T1562/001/).
 
 ## Attacker perspective
 Attackers and red teamers use Frida offensively to bypass client-side protections: hooking certificate-pinning checks, patching license or root/jailbreak detection, dumping decrypted secrets from memory, and instrumenting mobile apps to reverse proprietary protocols.
 
 Concrete TTPs, artifacts, and evasion:
-- **Injection technique.** Frida attaches by injecting its agent (a shared library plus an embedded JS runtime) and a thread into the target, mapping to **T1055 — Process Injection** (https://attack.mitre.org/techniques/T1055/). Frida's own docs describe injecting a script/agent into the target process. Source: Frida — *Home / Modes of operation* (https://frida.re/docs/home/).
+- **Injection technique.** Frida attaches by injecting its agent (a shared library plus an embedded JS runtime) and a thread into the target, mapping to **T1055.001 — Process Injection: Dynamic-link Library Injection** (https://attack.mitre.org/techniques/T1055/001/). The agent appears in `/proc/$PID/maps` as an anonymous mmap region or named library (e.g., `frida-agent-64.so`). Source: Frida — *Home* (https://frida.re/docs/home/); Linux `proc(5)` man page (https://man7.org/linux/man-pages/man5/proc.5.html).
 - **Hooking native functions.** Using `Interceptor` to trap libc/OS calls at runtime is **T1106 — Native API** (https://attack.mitre.org/techniques/T1106/). Source: Frida — *JavaScript API: Interceptor* (https://frida.re/docs/javascript-api/#interceptor).
-- **Patching security checks.** Overwriting the return of a pinning/root check or NOPing an integrity test maps to **T1562.001 — Impair Defenses: Disable or Modify Tools** (https://attack.mitre.org/techniques/T1562/001/).
-- **Artifacts left behind.** On Linux, an injected `frida-agent`/gadget appears as an extra mapping in `/proc/$PID/maps` and as an extra entry when enumerating loaded modules; using `frida-server` opens a listening socket on TCP 27042 by default; injected agent threads show as unexpected threads under `/proc/$PID/task/`. Sources: `proc(5)` manual page — the `/proc/[pid]/maps` and `/proc/[pid]/task` interfaces (https://man7.org/linux/man-pages/man5/proc.5.html); Frida — *frida-server* default port (https://frida.re/docs/frida-server/).
-- **Evasion.** Operators may use Frida "Gadget" embedded in an app to avoid running a separate `frida-server`, rename artifacts, or move `frida-server` off port 27042 (`frida-server -l 0.0.0.0:PORT`) to dodge signature checks that key on the default port. Source: Frida — *Gadget* (https://frida.re/docs/gadget/) and *frida-server* (https://frida.re/docs/frida-server/). A defender inspecting process memory maps, thread lists, and loaded modules can still spot the anomalous injected mapping.
+- **Patching security checks.** Overwriting return values or NOPing integrity tests maps to **T1562.001 — Impair Defenses: Disable or Modify Tools** (https://attack.mitre.org/techniques/T1562/001/). Example: hooking `strstr` to suppress detection strings in memory.
+- **Artifact locations:**  
+  - Linux: `/proc/$PID/maps` shows injected `frida-agent`; `/proc/$PID/task/` lists new threads  
+  - Windows: Process Hacker/Process Explorer shows unsigned loaded modules  
+  - Network: Default `frida-server` binds to TCP 27042; agents beacon to controller  
+  Sources: Frida — *frida-server* (https://frida.re/docs/frida-server/); MITRE ATT&CK T1570 (https://attack.mitre.org/techniques/T1570/).
+- **Evasion:**  
+  - Rename `frida-server` binary and use non-default ports (`-l 0.0.0.0:PORT`)  
+  - Embed Frida Gadget (T1574.001 — DLL Search Order Hijacking)  
+  - Obfuscate agent strings (T1027)  
+  Source: Frida — *Gadget* (https://frida.re/docs/gadget/); MITRE ATT&CK T1574.001 (https://attack.mitre.org/techniques/T1574/001/).
 
 ## Answer key
 - The string passed to `strlen` is **`hello-frida`**, revealed by the `strlen` Interceptor hook:
@@ -147,13 +160,19 @@ cd exercise
 timeout 8 frida-trace -f ./target -i getenv
 # Expected: getenv handler fires; the requested variable is PATH
 ```
-- Sample: `exercise/target.c` sha256 is reproducible from the generator above — run `sha256sum target.c` after creating the file to record the digest for your build (the validator holds the reference digest for the exact bytes shown).
+- Sample: `exercise/target.c` sha256 is reproducible from the generator above — run `sha256sum target.c` after creating the file to record the digest for your build (the validator holds the reference digest for the exact bytes shown).  
+  **Safe-origin note:** The sample is generated locally from the code provided in this module and is not sourced from any external repository or network location.
 
 ## MITRE ATT&CK & DFIR phase
-- **T1055 — Process Injection** (Frida injects an instrumentation agent into the target process). https://attack.mitre.org/techniques/T1055/
+- **T1055.001 — Process Injection: Dynamic-link Library Injection** (Frida injects an instrumentation agent into the target process). https://attack.mitre.org/techniques/T1055/001/
 - **T1106 — Native API** (hooking libc / native functions to observe calls). https://attack.mitre.org/techniques/T1106/
 - **T1562.001 — Impair Defenses: Disable or Modify Tools** (runtime patching of security checks). https://attack.mitre.org/techniques/T1562/001/
 - **T1059 — Command and Scripting Interpreter** (Frida drives targets via JavaScript agents / observed spawns of interpreters). https://attack.mitre.org/techniques/T1059/
+- **T1574.002 — DLL Side-Loading** (Frida Gadget masquerading as legitimate DLLs). https://attack.mitre.org/techniques/T1574/002/
+- **T1620 — Reflective Code Loading** (Frida’s agent injection mechanism). https://attack.mitre.org/techniques/T1620/
+- **T1055 — Process Injection** (Frida injects an instrumentation agent into the target process). https://attack.mitre.org/techniques/T1055/
+- **T1027 — Obfuscated Files or Information** (Frida can be used to obfuscate agent strings). https://attack.mitre.org/techniques/T1027/
+- **T1574.001 — DLL Search Order Hijacking** (Frida Gadget can be embedded in a target process to bypass security checks). https://attack.mitre.org/techniques/T1574/001/
 - DFIR phase: **Examination / Analysis** (dynamic behavioral analysis of a live process during malware examination). Source: NIST SP 800-86, *Guide to Integrating Forensic Techniques into Incident Response* (Collection → Examination → Analysis → Reporting) — https://csrc.nist.gov/publications/detail/sp/800-86/final.
 
 ## Sources
@@ -169,14 +188,20 @@ Claim → source mapping (all URLs are official/authoritative):
 - Frida *Gadget* (evasion / no separate server) — Frida *Gadget*: https://frida.re/docs/gadget/
 - `-O0` prevents inlining/constant-folding of `strlen`/`getenv` — GCC *Optimize Options*: https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
 - `/proc/[pid]/maps` and `/proc/[pid]/task` injection artifacts — Linux `proc(5)` man page: https://man7.org/linux/man-pages/man5/proc.5.html
-- MITRE ATT&CK T1055 Process Injection — https://attack.mitre.org/techniques/T1055/
+- MITRE ATT&CK T1055.001 Process Injection — https://attack.mitre.org/techniques/T1055/001/
 - MITRE ATT&CK T1106 Native API — https://attack.mitre.org/techniques/T1106/
 - MITRE ATT&CK T1562.001 Impair Defenses: Disable or Modify Tools — https://attack.mitre.org/techniques/T1562/001/
 - MITRE ATT&CK T1059 Command and Scripting Interpreter — https://attack.mitre.org/techniques/T1059/
+- MITRE ATT&CK T1574.002 DLL Side-Loading — https://attack.mitre.org/techniques/T1574/002/
+- MITRE ATT&CK T1620 Reflective Code Loading — https://attack.mitre.org/techniques/T1620/
+- MITRE ATT&CK T1027 Obfuscated Files or Information — https://attack.mitre.org/techniques/T1027/
+- MITRE ATT&CK T1574.001 DLL Search Order Hijacking — https://attack.mitre.org/techniques/T1574/001/
 - Security Onion (Suricata/Zeek/Elastic pivots) — Security Onion Documentation: https://docs.securityonion.net/
 - Zeek log reference (dns.log, http.log, ssl.log, conn.log) — https://docs.zeek.org/en/master/logs/index.html
 - DFIR phase model (Examination/Analysis) — NIST SP 800-86: https://csrc.nist.gov/publications/detail/sp/800-86/final
 - SANS FOR610 Reverse-Engineering Malware course overview — https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+- Windows Event IDs for process creation — Microsoft *4688 Event*: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688
+- Sysmon Event ID 1 — Sysinternals *Sysmon Documentation*: https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
 
 ## Related modules
 - [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives); pair runtime hooking with memory-image analysis of injected agents.
@@ -184,4 +209,4 @@ Claim → source mapping (all URLs are official/authoritative):
 - [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives); complement live process analysis with disk-artifact forensics.
 - [Plaso super-timeline deep-dive](../23-plaso-supertimeline/README.md) -- same learning path (Deep-dives); place dynamic-analysis findings on a forensic timeline.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
