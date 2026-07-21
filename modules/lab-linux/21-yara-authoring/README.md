@@ -236,6 +236,50 @@ For **Lateral Movement (T1021.002 – SMB/Windows Admin Shares)**, hunt for YARA
 - [MITRE ATT&CK: Process Hollowing (T1055.012)](https://attack.mitre.org/techniques/T1055/012/)
 - [CISA Alert AA23-347A: Hunting SMB Activity](https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a)
 
+
+### Essential Commands & Features
+
+When authoring and testing YARA rules, several flags and modules accelerate rule refinement and detection of real-world threats. The **`-s`** flag displays the matching strings and their offsets in the scanned file. Use it to verify which substring triggered a rule:
+
+```
+yara -s myrule.yar suspect.exe
+```
+
+The **`-C`** flag enables case‑insensitive pattern matching, critical when analyzing file paths or registry keys that vary in case – e.g., detecting `C:\Users\Public` irrespective of letter casing:
+
+```
+yara -C myrule.yar sample.bin
+```
+
+The **`-w`** flag suppresses non‑critical syntax warnings, keeping output clean during rapid testing:
+
+```
+yara -w myrule.yar malware.exe
+```
+
+YARA’s **modules** extend rule capability. `import "pe"` grants access to PE header fields, such as `pe.entry_point` or `pe.sections[0].name`. Use this to detect techniques like **T1059** (Command and Scripting Interpreter) – a rule can flag executables that bundle a Python interpreter by checking `pe.sections[1].name == ".text"` and a specific import. The **`elf`** module provides analogous fields for ELF binaries. The **`math`** module offers `math.entropy()` to calculate entropy of a data block; high entropy can indicate packed or obfuscated payloads, relevant to detecting spearphishing links (**T1566.002**) when combined with string scanning for URL patterns.
+
+These commands and modules refine your detection of malicious artifacts. For a deeper dive, consult the official YARA documentation on modules and command‑line flags (SANS) and the NIST guide to malware analysis workflows.  
+<https://www.sans.org/blog/yara-rule-development-workshop/>  
+<https://www.nist.gov/publications/guide-malware-incident-prevention-and-handling>
+
+### Common Pitfalls & Result Validation
+
+When authoring YARA rules, analysts often fall into traps that lead to false positives or missed detections. A frequent mistake is **overly broad strings** (e.g., `$s1 = "http"`), which match benign files. Instead, combine strings with **contextual conditions** (e.g., `$s1 and uint16(0) == 0x5A4D` for PE headers) to reduce noise. Another pitfall is **ignoring file size or entropy**, which can cause rules to trigger on compressed or encrypted payloads (e.g., **T1027.003: Obfuscated Files or Information: Steganography**). Validate entropy using `filesize < 1MB and math.entropy(0, filesize) > 7` to avoid false matches.
+
+**False negatives** occur when rules lack coverage for **evasion techniques**. For example, adversaries may split malicious code across sections (e.g., **T1564.003: Hide Artifacts: Hidden Window**) or use dynamic imports. Test rules against samples with these traits using tools like `yarGen` or `Thor Lite` to ensure detection.
+
+**Validation steps**:
+1. **Cross-check** with sandbox reports (e.g., Any.Run) to confirm matches align with behavioral indicators.
+2. **Benchmark** against known benign files (e.g., `C:\Windows\System32\*.dll`) to measure false positive rates.
+3. **Iterate** using `yara -s` to inspect partial matches and refine conditions.
+
+Avoid conclusions without **corroborating evidence**—a YARA hit alone doesn’t prove maliciousness. Combine with process telemetry (e.g., Sysmon logs) or network traffic (e.g., Suricata alerts) for context.
+
+**Sources**:
+- [Florian Roth’s YARA Best Practices (Nextron Systems)](https://www.nextron-systems.com/2020/04/07/yara-best-practices/)
+- [CERT-EU’s YARA Performance Guidelines](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-001_YARA_Performance_Guidelines.pdf)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, or recognized project docs):
 
@@ -284,3 +328,9 @@ Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, o
 - https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a
 
 <!-- cyberlab-enriched: v4 -->
+- https://www.sans.org/blog/yara-rule-development-workshop/>
+- https://www.nist.gov/publications/guide-malware-incident-prevention-and-handling>
+- https://www.nextron-systems.com/2020/04/07/yara-best-practices/
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-001_YARA_Performance_Guidelines.pdf
+
+<!-- cyberlab-enriched: v5 -->
