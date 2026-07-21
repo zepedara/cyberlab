@@ -115,6 +115,39 @@ Expected: the output folder contains `open_me.txt`. Sample sha256: `9b540c701e13
 - **T1547.001** — Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder (post-execution persistence) — https://attack.mitre.org/techniques/T1547/001/
 - **DFIR phase:** Identification and Examination — static triage and IOC extraction of a suspected malicious document prior to (or in place of) dynamic detonation. (Aligned with SANS FOR610 document-analysis workflow — https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/.)
 
+
+### Essential Commands & Features
+
+To deepen analysis of malicious PDFs, leverage these **undocumented or underused** features in **PDFStreamDumper** (v2023.01 or later):
+
+1. **`/AA` (Additional Actions) Extraction**
+   Use to uncover **JavaScript triggers** (e.g., `OpenAction`, `PageOpen`) that execute on document events. These often align with **T1203 (Exploitation for Client Execution)** or **T1548.001 (Abuse Elevation Control Mechanism: Setuid and Setgid)**.
+   ```cmd
+   pdfsd.exe -file "malicious.pdf" -extract /AA -out "output_aa.txt"
+   ```
+   *When to use*: Suspected **event-driven execution** (e.g., auto-run scripts on document open).
+
+2. **`/URI` Resource Extraction**
+   Extract **embedded URLs** (e.g., phishing links, C2 callbacks) tied to **T1598 (Phishing for Information)**.
+   ```cmd
+   pdfsd.exe -file "malicious.pdf" -extract /URI -out "uris.txt"
+   ```
+   *When to use*: Investigating **external resource abuse** (e.g., drive-by downloads, credential harvesting).
+
+3. **Batch Export for Bulk Analysis**
+   Process **entire directories** of PDFs to extract streams/objects (e.g., `/JS`, `/EmbeddedFiles`) for triage.
+   ```cmd
+   pdfsd.exe -dir "C:\samples\" -batch -extract /JS -out "batch_js_output"
+   ```
+   *When to use*: **Large-scale hunting** (e.g., SOC triage, malware campaigns).
+
+**Authoritative Sources**:
+- [PDF Association: PDF Specification (ISO 32000-2)](https://www.pdfa.org/pdf-specification-index/)
+- [NIST SP 800-172 (Enhanced Security Requirements for Controlled Unclassified Information)](https://csrc.nist.gov/publications/detail/sp/800-172/final) (See Section 3.14 for PDF threats)
+
+### Threat Hunting & Detection Engineering
+To detect malicious Office PDFs, threat hunters can focus on identifying suspicious activity related to [T1625: Kernel-mode Rootkits](https://attack.mitre.org/techniques/T1625) and [T1497: Defacement](https://attack.mitre.org/techniques/T1497). Monitoring Windows Event ID 4688 for unusual process creation, particularly those involving `winword.exe` or `excel.exe`, can help identify potential exploitation. Analyzing Zeek logs for HTTP requests with suspicious User-Agent headers or unusual PDF downloads can also indicate malicious activity. Threat hunters can pivot on these findings by investigating related network connections, examining system logs for signs of privilege escalation, and inspecting file system modifications. Additionally, monitoring for unusual registry modifications, such as changes to the `HKEY_CLASSES_ROOT` hive, can indicate attempts to establish persistence. For more information on threat hunting and detection engineering, see the [Cybersecurity and Infrastructure Security Agency (CISA) website](https://www.cisa.gov/) and the [National Institute of Standards and Technology (NIST) Special Publication 800-53](https://csrc.nist.gov/publications/detail/sp/800-53/revison/5/final).
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -147,3 +180,11 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [Behavioral / dynamic analysis](../15-behavioral-dynamic/README.md) -- same learning path (Windows RE); detonate the extracted payload in an instrumented sandbox to confirm the C2 and persistence artifacts predicted by static analysis.
 
 <!-- cyberlab-enriched: v2 -->
+- https://www.pdfa.org/pdf-specification-index/
+- https://csrc.nist.gov/publications/detail/sp/800-172/final
+- https://attack.mitre.org/techniques/T1625
+- https://attack.mitre.org/techniques/T1497
+- https://www.cisa.gov/
+- https://csrc.nist.gov/publications/detail/sp/800-53/revison/5/final
+
+<!-- cyberlab-enriched: v3 -->
