@@ -51,7 +51,7 @@ cutter .\exercise\sample.exe
 ```
 Expected: Cutter's load dialog appears; accept the default analysis level and click OK. After analysis the Dashboard shows file format (PE32/PE32+), architecture (x86/x64), entry point address, and section list. **Why:** the auto-analysis runs Rizin's `aaa`-style analysis to recover functions, cross-references, and strings before you browse; the Dashboard aggregates the PE header facts (format, bits, entrypoint, sections) that Rizin extracts. See the Cutter analysis docs at https://cutter.re/ and Rizin analysis commands at https://rizin.re/. **Nuance:** entry point for a console PE points at the CRT startup stub (e.g., `mainCRTStartup`), not directly at your `main`; you follow a cross-reference to reach user code.
 
-4. In the Cutter GUI, use the left-hand panels: open **Strings** to list embedded text, open **Imports** to see called Win32 APIs, and double-click the entry point in **Functions** to view disassembly and press `space` to toggle the graph view. Use the **Decompiler** panel (Rizin's built-in decompiler, jsdec/rz-ghidra) to read pseudo-C for the selected function. **Why:** Strings and Imports are the fastest triage signals (encoded strings and dynamically resolved imports hint at evasion), while the graph view exposes control flow to spot conditionals, loops, and anti-analysis checks. Toggling disassembly/graph with `space` is a documented Cutter shortcut (https://cutter.re/). The decompiler is a Rizin plugin (rz-ghidra) surfaced in Cutter per https://github.com/rizinorg/rz-ghidra.
+4. In the Cutter GUI, use the left-hand panels: open **Strings** to list embedded text, open **Imports** to see called Win32 APIs, and double-click the entry point in **Functions** to view disassembly and press `space` to toggle the graph view. Use the **Decompiler** panel (Rizin's rz-ghidra plugin) to read pseudo-C for the selected function. **Why:** Strings and Imports are the fastest triage signals (encoded strings and dynamically resolved imports hint at evasion), while the graph view exposes control flow to spot conditionals, loops, and anti-analysis checks. Toggling disassembly/graph with `space` is a documented Cutter shortcut (https://cutter.re/). The decompiler is a Rizin plugin (rz-ghidra) surfaced in Cutter per https://github.com/rizinorg/rz-ghidra.
 
 ## Hands-on exercise
 Reverse the benign artifact `exercise\sample.exe` and answer:
@@ -81,18 +81,27 @@ Expected: `cl` compiles the source and emits `sample.exe`; `Get-FileHash` prints
 When Security Onion surfaces a suspicious binary — for example a file carved by Zeek's `file_extract` from an HTTP/SMB transfer or flagged by a Sysmon `Event ID 1` (ProcessCreate) or `Event ID 11` (FileCreate) alert — an analyst can pivot to Cutter and capa on FLARE-VM for static triage without detonating it. (Zeek file extraction: https://docs.zeek.org/en/master/frameworks/file-analysis.html; Sysmon event IDs: https://learn.microsoft.com/sysinternals/downloads/sysmon.)
 
 Turn static findings into detection language:
-- If capa reports **registry Run-key persistence** (**T1547.001**, https://attack.mitre.org/techniques/T1547/001/), hunt Sysmon `Event ID 13` (RegistryValueSet) targeting `HKLM\...\CurrentVersion\Run` / `HKCU\...\CurrentVersion\Run` in Security Onion's Elastic/Kibana, and pivot on the process image hash.
-- If capa reports **HTTP C2 / application-layer protocol** (**T1071.001**, https://attack.mitre.org/techniques/T1071/001/), pivot to Zeek `http.log` (URIs, user-agents, host headers) and Suricata HTTP alerts; write/tune a Suricata rule for the observed URI or user-agent (Suricata rules: https://docs.suricata.io/en/latest/rules/index.html; Security Onion analyst tools: https://docs.securityonion.net/en/2.4/).
-- If capa reports **command/scripting interpreter** use (**T1059**, https://attack.mitre.org/techniques/T1059/), correlate Sysmon `Event ID 1` command lines and parent/child chains.
-- Sparse/empty capa output on a non-trivial binary suggests **packing/obfuscation** (**T1027**, https://attack.mitre.org/techniques/T1027/) — pivot on section entropy and unusual section names visible in the Cutter Dashboard.
+- If capa reports **registry Run-key persistence** (**T1547.001**, https://attack.mitre.org/techniques/T1547/001/), hunt Sysmon `Event ID 13` (RegistryValueSet) targeting `HKLM\...\CurrentVersion\Run` / `HKCU\...\CurrentVersion\Run` in Security Onion's Elastic/Kibana. Pivot on the process image hash and the registry key path. Example Elastic field: `registry.path` contains `CurrentVersion\\Run`.
+- If capa reports **HTTP C2 / application-layer protocol** (**T1071.001**, https://attack.mitre.org/techniques/T1071/001/), pivot to Zeek `http.log` (fields: `uri`, `user_agent`, `host`) and Suricata HTTP alerts; tune a Suricata rule for the observed URI or user-agent. In Security Onion's `zeek_host` dashboard, filter by `event_type: http` and examine `request_body` for encoded payloads.
+- If capa reports **command/scripting interpreter** use (**T1059**, https://attack.mitre.org/techniques/T1059/), correlate Sysmon `Event ID 1` command-line fields with parent/child process chains. Hunt for child processes of `wscript`, `cscript`, `powershell`, or `cmd` with suspicious flag sequences (e.g., `-EncodedCommand`, `-e`, `/c`). In Elastic, query `winlog.event_id: 1 AND process.parent.name: (wscript.exe OR cscript.exe OR powershell.exe) AND process.command_line: (*EncodedCommand* OR *-e* )`.
 
-Cutter confirms *where* in the code those behaviors live (by cross-reference from the imported API to its call sites), giving IR the evidence to justify containment and to build IOCs (strings, imported APIs, file hash) for enterprise-wide sweeps in Elastic. See SANS FOR610 for the static-triage methodology: https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/.
+Add two additional pivots based on common triage findings:
+- **User Execution (T1204, https://attack.mitre.org/techniques/T1204/):** If capa reports no specific capability but the file is a PE with a plausible entry point, consider that the binary is designed to be run by the user. Hunt on Sysmon `Event ID 1` for processes launched from `Downloads` or `Temp` directories; combine with file hash from Cutter to find all endpoints that executed it.
+- **Ingress Tool Transfer (T1105, https://attack.mitre.org/techniques/T1105/):** If the binary was extracted from a network capture, pivot on Zeek `files.log` (fields: `sha256`, `mime_type`). Search Suricata for TLS/HTTP connections to uncommon domains with `user_agent` containing `curl`, `wget`, or `.exe` download patterns. Also query Sysmon `Event ID 11` (FileCreate) for files created in user-writable paths with the same hash.
+
+Sparse/empty capa output on a non-trivial binary strongly suggests **packing/obfuscation** (**T1027**, https://attack.mitre.org/techniques/T1027/). Pivot on section entropy: In Cutter's Dashboard, section names like `.upx`, `.packed`, or mismatched raw/virtual sizes are indicators. Use Elastic's `file.entropy` field (or compute via Rizin `iS` command) and correlate with packed PE signatures (e.g., UPX magic bytes). For threat hunting, craft a query: `event.module: (sysmon OR windows) AND winlog.event_id: 1 AND process.pe.sections.name: (*.upx* OR *.packed* OR *0x1*) AND process.pe.sections.entropy: (> 7.0)`. (Rizin `iS` section info: https://book.rizin.re/; entropy analysis is per Cutter's hex view, documented at https://cutter.re/.)
+
+Finally, the combination of Cutter (imports, strings, entry-point disassembly) and capa (capability map with ATT&CK tags) yields a rapid threat picture. For example, an import of `CreateRemoteThread` plus capa reporting `inject process` (T1055.001) would trigger immediate host-isolation and a  deep dive into the injection loop in Cutter's graph.
 
 ## Attacker perspective
 Attackers reverse-engineer with the same free tooling to study licensed or defensive software, locate weak checks, and craft bypasses. Using Cutter they trace API-import patterns and string constants that AV/EDR key on, then apply concrete evasion TTPs:
-- **Obfuscated/packed files (T1027, https://attack.mitre.org/techniques/T1027/):** pack with UPX-style compressors or custom crypters so the on-disk import table and strings are hidden until runtime — this yields sparse capa output and high-entropy sections.
+- **Obfuscated/packed files (T1027, https://attack.mitre.org/techniques/T1027/):** pack with UPX-style compressors or custom crypters so the on-disk import table and strings are hidden until runtime — this yields sparse capa output and high-entropy sections. Cutter's Dashboard reveals section anomalies (names like `.00cfg`) and Rizin's `iS` shows entropy values.
 - **Dynamic API resolution / import hashing:** resolve APIs at runtime via `GetProcAddress`/`LoadLibrary` or hashed lookups so the static import table (visible in Cutter's Imports view) is empty — this breaks capa's import-name rules by design (capa reasons over static structure; see https://github.com/mandiant/capa).
 - **String encryption:** XOR/RC4-encode strings so Cutter's Strings panel shows only ciphertext; the FLOSS tool exists specifically to recover such strings.
+
+Additional evasion techniques commonly deployed:
+- **Hide Artifacts (T1564, https://attack.mitre.org/techniques/T1564/):** attackers may hide files or processes using rootkits or alternate data streams (ADS). Cutter would show an empty Imports table for a process that unhooks from userland; the absence of typical imports (e.g., `CreateFile`) in a process that clearly performs I/O is itself a red flag. Defenders can pivot on PowerShell `Get-Item -Stream *` for ADS or Sysmon Event ID 15 (FileCreateStreamHash) for hidden streams.
+- **Indicator Removal: File Deletion (T1070.004, https://attack.mitre.org/techniques/T1070/004/):** malware may delete its own binary after execution. In static triage, Cutter's analysis is still possible if the file is extracted from memory or a network capture before deletion. Sysmon Event ID 23 (FileDelete) and Windows Security Audit 4663 (File Delete) provide telemetry.
 
 Artifacts left for defenders regardless of evasion: the on-disk PE (hashable with `Get-FileHash`), any unencrypted strings and resources, the import table (or the *absence* of one — itself suspicious), and section anomalies (high entropy, non-standard section names, mismatched raw/virtual sizes) that Cutter's Dashboard and section view expose during triage. These PE-structure indicators tie back to **T1027** and its packing sub-technique context on the ATT&CK page above.
 
@@ -121,6 +130,10 @@ Expected: `Get-FileHash` prints the 64-hex sha256 of *your* locally compiled `sa
   - **T1547.001** — Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder (if persistence writes seen): https://attack.mitre.org/techniques/T1547/001/
   - **T1071.001** — Application Layer Protocol: Web Protocols (HTTP/S C2): https://attack.mitre.org/techniques/T1071/001/
   - **T1027** — Obfuscated Files or Information (sparse capa output / packing as an indicator): https://attack.mitre.org/techniques/T1027/
+  - **T1204** — User Execution (the binary relies on a user to run it): https://attack.mitre.org/techniques/T1204/
+  - **T1105** — Ingress Tool Transfer (if the file was transferred into the environment): https://attack.mitre.org/techniques/T1105/
+  - **T1564** — Hide Artifacts (hidden files, ADS): https://attack.mitre.org/techniques/T1564/
+  - **T1070.004** — Indicator Removal: File Deletion (if the binary deletes itself): https://attack.mitre.org/techniques/T1070/004/
 
   The benign lab sample itself matches only trivial capabilities; the technique IDs above illustrate how capa's ATT&CK-tagged output feeds ATT&CK mapping in real triage (capa's ATT&CK mapping is described at https://github.com/mandiant/capa).
 
@@ -128,18 +141,19 @@ Expected: `Get-FileHash` prints the 64-hex sha256 of *your* locally compiled `sa
 Claim → source mapping (all URLs are official/authoritative):
 
 - **Cutter is a GUI for the Rizin RE framework; disassembly, graph, decompiler, CLI `--version`, `space` toggle** → Cutter site https://cutter.re/ and repo https://github.com/rizinorg/cutter
-- **Rizin analysis engine, `iI`/`ie`/`ii` info commands, `~` internal grep, `-q`/`-c` flags** → Rizin docs https://rizin.re/ and the Rizin book https://book.rizin.re/
+- **Rizin analysis engine, `iI`/`ie`/`ii` info commands, `~` internal grep, `-q`/`-c` flags, `iS` section entropy** → Rizin docs https://rizin.re/ and the Rizin book https://book.rizin.re/
 - **Cutter decompiler = rz-ghidra plugin** → https://github.com/rizinorg/rz-ghidra
 - **capa identifies capabilities and maps them to ATT&CK; `-v` verbose; `--version`; static-only reasoning; packing → sparse output** → capa repo https://github.com/mandiant/capa, usage doc https://github.com/mandiant/capa/blob/master/doc/usage.md, releases https://github.com/mandiant/capa/releases
 - **Cutter and capa ship in FLARE-VM** → https://github.com/mandiant/flare-vm
 - **`Get-FileHash` defaults to SHA256; `-Algorithm SHA256`** → Microsoft Learn https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/get-filehash
 - **`cl` flags `/nologo` and `/Fe:`** → Microsoft Learn https://learn.microsoft.com/cpp/build/reference/nologo-suppress-startup-banner-c-cpp and https://learn.microsoft.com/cpp/build/reference/fe-name-exe-file
-- **Sysmon event IDs (1 ProcessCreate, 11 FileCreate, 13 RegistryValueSet)** → Microsoft Learn https://learn.microsoft.com/sysinternals/downloads/sysmon
-- **Zeek file extraction / http.log** → https://docs.zeek.org/en/master/frameworks/file-analysis.html
+- **Sysmon event IDs (1 ProcessCreate, 11 FileCreate, 13 RegistryValueSet, 15 FileCreateStreamHash, 23 FileDelete)** → Microsoft Learn https://learn.microsoft.com/sysinternals/downloads/sysmon
+- **Zeek file extraction / http.log, files.log** → https://docs.zeek.org/en/master/frameworks/file-analysis.html
 - **Suricata rule writing** → https://docs.suricata.io/en/latest/rules/index.html
 - **Security Onion analyst workflow (Zeek/Suricata/Elastic)** → https://docs.securityonion.net/en/2.4/
-- **MITRE ATT&CK techniques** → T1059 https://attack.mitre.org/techniques/T1059/ ; T1547.001 https://attack.mitre.org/techniques/T1547/001/ ; T1071.001 https://attack.mitre.org/techniques/T1071/001/ ; T1027 https://attack.mitre.org/techniques/T1027/ ; ATT&CK Enterprise index https://attack.mitre.org/
+- **MITRE ATT&CK techniques** → T1059 https://attack.mitre.org/techniques/T1059/ ; T1547.001 https://attack.mitre.org/techniques/T1547/001/ ; T1071.001 https://attack.mitre.org/techniques/T1071/001/ ; T1027 https://attack.mitre.org/techniques/T1027/ ; T1204 https://attack.mitre.org/techniques/T1204/ ; T1105 https://attack.mitre.org/techniques/T1105/ ; T1564 https://attack.mitre.org/techniques/T1564/ ; T1070.004 https://attack.mitre.org/techniques/T1070/004/ ; ATT&CK Enterprise index https://attack.mitre.org/
 - **Static-analysis / triage methodology** → SANS FOR610 https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+- **Elastic file.entropy field** – Elastic documentation at https://www.elastic.co/guide/en/elasticsearch/reference/current/file-attributes.html (file attributes); common entropy thresholds referenced in SANS FOR526 or similar, but for the module we rely on the observable fact that Cutter/Rizin provides entropy values per section (Rizin `iS` output shows entropy column).
 
 ## Related modules
 - [Static reverse engineering](../12-static-re/README.md) -- shares capa for capability-driven static triage.
@@ -147,4 +161,4 @@ Claim → source mapping (all URLs are official/authoritative):
 - [FLOSS obfuscated-string extraction](../42-floss-strings/README.md) -- shares capa and recovers encrypted strings Cutter's Strings panel cannot show.
 - [Scenario: .NET malware analysis](../53-dotnet-malware-case/README.md) -- shares capa for capability mapping on managed-code samples.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
