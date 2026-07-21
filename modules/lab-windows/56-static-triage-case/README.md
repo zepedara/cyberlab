@@ -102,20 +102,54 @@ The `cl.exe` flags used are standard MSVC options: `/nologo` suppresses the bann
 ## SOC analyst perspective
 During incident response an analyst who receives a quarantined attachment runs this exact static triage flow *before* detonation to decide urgency.
 
-- **Packing / high entropy → T1027 and T1027.002.** DIE flags high section entropy or a known packer signature (https://github.com/horsicq/Detect-It-Easy). These map to Obfuscated Files or Information (https://attack.mitre.org/techniques/T1027/) and Software Packing (https://attack.mitre.org/techniques/T1027/002/). A packed PE that later unpacks in memory is often visible on the endpoint as image loads without a corresponding on-disk section — pivot EDR/Sysmon on that.
-- **Network indicators → hunt in Security Onion.** Feed FLOSS-recovered IPs/URLs/domains (like `203.0.113.10`) into Kibana/OpenSearch and pivot to Zeek `conn.log` (`id.resp_h`) and `dns.log`/`http.log`, plus Suricata alert records, to see whether any host already contacted them (https://docs.securityonion.net/en/2.4/zeek.html, https://docs.securityonion.net/en/2.4/suricata.html). Example Zeek pivot: filter `event.dataset:conn AND destination.ip:203.0.113.10`. This ties to Application Layer Protocol: Web (https://attack.mitre.org/techniques/T1071/001/).
-- **capa capabilities → prioritize detections.** capa's ATT&CK mapping lets you pre-populate a case with candidate techniques so detections and Sigma rules can be prioritized — e.g., data-encryption capabilities suggest ransomware (T1486, https://attack.mitre.org/techniques/T1486/), and injection-primitive capabilities suggest Process Injection (T1055, https://attack.mitre.org/techniques/T1055/) (https://github.com/mandiant/capa).
-- **Suspicious import combos → EDR watchlist.** PE-bear imports reveal which APIs to watch in endpoint telemetry; the classic injection trio `VirtualAllocEx` + `WriteProcessMemory` + `CreateRemoteThread` maps to T1055 (https://learn.microsoft.com/windows/win32/api/memoryapi/nf-memoryapi-virtualallocex; https://attack.mitre.org/techniques/T1055/).
+- **Packing / high entropy → T1027 and T1027.002.** DIE flags high section entropy or a known packer signature (https://github.com/horsicq/Detect-It-Easy). These map to Obfuscated Files or Information (https://attack.mitre.org/techniques/T1027/) and Software Packing (https://attack.mitre.org/techniques/T1027/002/). A packed PE that later unpacks in memory is often visible on the endpoint as image loads without a corresponding on-disk section — pivot EDR/Sysmon on that. Hunt for Sysmon Event ID 7 (Image loaded) where the `Image` path is unusual or the `ImageLoaded` is from a non-standard directory (https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon).
+- **Network indicators → hunt in Security Onion.** Feed FLOSS-recovered IPs/URLs/domains (like `203.0.113.10`) into Kibana/OpenSearch and pivot to Zeek `conn.log` (`id.resp_h`) and `dns.log`/`http.log`, plus Suricata alert records, to see whether any host already contacted them (https://docs.securityonion.net/en/2.4/zeek.html, https://docs.securityonion.net/en/2.4/suricata.html). Example Zeek pivot: filter `destination.ip:203.0.113.10`. This ties to Application Layer Protocol: Web (https://attack.mitre.org/techniques/T1071/001/). For deeper hunting, also pivot on `dns.log` for queries to that domain and `http.log` for `host` headers.
+- **capa capabilities → prioritize detections.** capa's ATT&CK mapping lets you pre-populate a case with candidate techniques so detections and Sigma rules can be prioritized — e.g., data-encryption capabilities suggest ransomware (T1486, https://attack.mitre.org/techniques/T1486/), and injection-primitive capabilities suggest Process Injection (T1055, https://attack.mitre.org/techniques/T1055/) (https://github.com/mandiant/capa). Additionally, if capa reports "modify registry" or "create service", those map to T1547.001 (Registry Run Keys) or T1543.003 (Windows Service). Hunt for corresponding Windows Event IDs: Event ID 4657 for registry modifications, Event ID 4697 for service creation.
+- **Suspicious import combos → EDR watchlist.** PE-bear imports reveal which APIs to watch in endpoint telemetry; the classic injection trio `VirtualAllocEx` + `WriteProcessMemory` + `CreateRemoteThread` maps to T1055 (https://learn.microsoft.com/windows/win32/api/memoryapi/nf-memoryapi-virtualallocex; https://attack.mitre.org/techniques/T1055/). Also watch for `CreateFile` → `WriteFile` patterns indicating data staging (T1074).
+- **Hunt for persistence (T1542.003 / T1502).** If capa shows "create scheduled task" or PE-bear reveals imports for `netapi32.dll` or `wtsapi32.dll`, pivot on Windows Event ID 4698 (Scheduled Task Creation). For service-based persistence (T1543.003), hunt Event ID 4697 (Service Installed).
+- **PowerShell-based execution (T1059.001).** FLOSS-recovered strings often contain `powershell -enc` or `-Command` arguments. Hunt for Windows Event ID 4688 where `CommandLine` includes those strings. In Sysmon Event ID 1, pivot on `powershell.exe` with encoded arguments (https://attack.mitre.org/techniques/T1059/001/).
+- **Indicator Removal: File Deletion (T1070.004).** If FLOSS reveals `del`, `Remove-Item`, or `wevtutil cl`, hunt for corresponding process creation events that delete files or clear logs (https://attack.mitre.org/techniques/T1070/004/).
+- **Hide Artifacts: Hidden Files (T1564.001).** Strings like `attrib +h`, `Set-ItemProperty -Path ... -Name Attributes` indicate attempts to hide files. Pivot on Sysmon Event ID 11 (FileCreate) with `FileAttributes` containing hidden flag (https://attack.mitre.org/techniques/T1564/001/).
 
 This static-only step keeps analysis reproducible and avoids tipping off adversaries with sandbox callbacks.
+
+### Sub‑section: Threat Hunting & Detection Engineering (deepening)
+Once static triage artifacts are extracted (e.g., embedded IPs, domains, or suspicious strings), pivot into **threat hunting** and **detection engineering** to validate and operationalize findings. Focus on **T1562.001 (Impair Defenses: Disable or Modify Tools)** and **T1036.005 (Masquerading: Match Legitimate Name or Location)**—two techniques frequently missed by static-only analysis.
+
+- **Detection Logic (Concrete Fields & Pivots):**
+  - **Windows Event Logs (Security.evtx):**
+    - Hunt for **Event ID 4688** (Process Creation) where `NewProcessName` matches a triage-extracted binary name but `ParentProcessName` is atypical (e.g., `svchost.exe` spawning `powershell.exe` from `C:\Temp\`). Correlate with FLOSS-recovered strings like `powershell -enc` for encoded commands.
+    - Filter for **Event ID 1102** (Audit Log Cleared) or **Event ID 104** (Log File Cleared) to detect **T1562.001**—correlate with static triage outputs (e.g., `wevtutil cl` strings in samples).
+  - **Sysmon (Event ID 1):**
+    - Pivot on `CommandLine` fields containing triage-extracted IPs/domains (e.g., `cmd.exe /c curl http://[extracted_IP]`). Use **T1036.005** logic to flag processes with mismatched `OriginalFileName` vs. `Image` paths (e.g., `lsass.exe` running from `C:\Users\Public\`). Sysmon can also log Event ID 7 (Image loaded) for DLL side‑loading attempts.
+  - **Linux Audit Logs (`/var/log/audit/audit.log`):**
+    - Hunt for **execve syscalls** (`type=EXECVE`) where `a0` (command) matches triage-extracted strings (e.g., `chmod +x /tmp/[extracted_binary]`). Correlate with **T1562.001** by checking for `auditd` service stops (`systemctl stop auditd`).
+  - **Security Onion / Zeek:**
+    - Hunt for **T1071.001** via Zeek `http.log` where `host` or `uri` contain triage‑extracted IPs/domains. Query: `event.dataset:zeek.http AND url:"*203.0.113.10*"`.
+    - Hunt for **T1573** (Encrypted Channel) by pivoting on `ssl.log` for certificates with extracted domain names.
+- **Hunt Pivots:**
+  - Cross-reference triage outputs with **VirusTotal** (e.g., `behavior: "modifies auditd config"`) or **Unprotect Project** (e.g., `T1562.001` bypasses).
+  - For **T1036.005**, query EDR telemetry for `process.name` mismatches (e.g., `svchost.exe` with `pe.original_file_name: "ransomware.exe"`). Also hunt for unsigned executables with legitimate names (e.g., `cmd.exe` in user‑writable paths).
+- **Sources:**
+  - [CISA: Hunting for T1562.001 (Disable Defenses)](https://www.cisa.gov)
+  - [Mitre: T1562.001](https://attack.mitre.org/techniques/T1562/001/)
+  - [Mitre: T1036.005](https://attack.mitre.org/techniques/T1036/005/)
+  - [Sysmon documentation (Microsoft)](https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon)
 
 ## Attacker perspective
 Attackers know static triage is the first defensive step, so they invest in defeating it.
 
-- **Packing / crypting (T1027.002).** UPX or custom crypter stubs raise entropy and collapse the import table so only `LoadLibrary`/`GetProcAddress` remain (https://attack.mitre.org/techniques/T1027/002/). Artifacts left behind: near-8.0-bits/byte sections, non-standard section names (`UPX0`, `.themida`), and an `AddressOfEntryPoint` pointing outside `.text` — all visible to DIE and PE-bear (https://github.com/horsicq/Detect-It-Easy, https://github.com/hasherezade/pe-bear).
-- **String obfuscation (T1027 / recovered via T1140).** Stack-built strings and XOR/RC4-encoded C2 addresses hide IPs and URLs from a naive `strings` dump. FLOSS is purpose-built to defeat this by emulating the decoding routines, so decoded C2 like `203.0.113.10` surfaces anyway under its *decoded/stack strings* output (https://github.com/mandiant/flare-floss; https://attack.mitre.org/techniques/T1140/).
-- **Behavioral fingerprints survive obfuscation.** Even after strings are hidden, capa recognizes code patterns (crypto constants/loops, injection API sequences), leaving a capability fingerprint (https://github.com/mandiant/capa). To evade capa, actors dynamically resolve APIs by hash and move logic behind indirect calls — but that resolution routine itself becomes a detectable pattern.
+- **Packing / crypting (T1027.002).** UPX or custom crypter stubs raise entropy and collapse the import table so only `LoadLibrary`/`GetProcAddress` remain (https://attack.mitre.org/techniques/T1027/002/). Artifacts left behind: near-8.0-bits/byte sections, non-standard section names (`UPX0`, `.themida`), and an `AddressOfEntryPoint` pointing outside `.text` — all visible to DIE and PE-bear (https://github.com/horsicq/Detect-It-Easy, https://github.com/hasherezade/pe-bear). Evasion: use custom crypter that mimics normal imports size but resolves at runtime.
+- **String obfuscation (T1027 / recovered via T1140).** Stack-built strings and XOR/RC4-encoded C2 addresses hide IPs and URLs from a naive `strings` dump. FLOSS is purpose-built to defeat this by emulating the decoding routines, so decoded C2 like `203.0.113.10` surfaces anyway under its *decoded/stack strings* output (https://github.com/mandiant/flare-floss; https://attack.mitre.org/techniques/T1140/). Evasion: use multi‑layer encoding or dynamic API‑resolved strings that are reconstructed only at runtime.
+- **Behavioral fingerprints survive obfuscation.** Even after strings are hidden, capa recognizes code patterns (crypto constants/loops, injection API sequences), leaving a capability fingerprint (https://github.com/mandiant/capa). To evade capa, actors dynamically resolve APIs by hash and move logic behind indirect calls — but that resolution routine itself becomes a detectable pattern. Some attackers pack with packers that confuse disassemblers, like polymorphic obfuscation that changes each generation.
 - **Evasion trade-off.** Anti-analysis stubs, timing checks, and API hashing raise the cost of packing but produce their own tells (thin imports, high entropy, unusual TLS callbacks), which is why combining all four tools beats any single one.
+- **Defense evasion (T1562.001).** Adversaries may disable tools like Windows Defender or auditd. Artifacts include modifications to registry keys (e.g., `HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\DisableAntiSpyware`). FLOSS may recover strings like `powershell -Command Set-MpPreference -DisableRealtimeMonitoring $true`. In Linux, commands like `systemctl stop auditd` or `service iptables stop` appear in logs. Static triage of embedded scripts can reveal these.
+- **Masquerading (T1036.005).** Attackers rename their executable to match a legitimate system binary (e.g., `svchost.exe`). Artifacts: the `OriginalFileName` in PE metadata may differ from the actual filename; PE‑bear or `Get-PEFileHeader` can reveal this. FLOSS may recover strings used for the fake name.
+- **PowerShell abuse (T1059.001).** Attackers often embed PowerShell commands in stagers. FLOSS recovers these strings. To evade, adversaries encode commands with Base64 or use `-EncodedCommand`. Artifacts: long Base64 strings in the binary that decode to PowerShell scripts.
+- **Indicator Removal (T1070.004).** Malware may delete itself after execution or clear event logs. FLOSS may reveal `del`, `wevtutil cl`, or `Clear-EventLog` strings. EDR telemetry showing file deletion events (Sysmon ID 23) or event log clear events (Event ID 1102) can be correlated.
+
+### Sub‑section: Adversary Emulation & Red‑Team Perspective (deepening)
+From an adversary's perspective, the static triage case can be exploited using techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - "User Execution" and [T1218](https://attack.mitre.org/techniques/T1218) - "Signed Binary Proxy Execution". An attacker may use social engineering tactics to trick a user into executing a malicious file, which can then lead to the exploitation of vulnerabilities in the system. The adversary may also use signed binary proxy execution (e.g., `rundll32.exe`, `regsvr32.exe`, `mshta.exe`) to bypass security controls and execute malicious code. The artifacts left behind by these techniques can include suspicious executable files, modified system configuration files, and unusual network activity. To evade detection, the adversary may use code obfuscation, anti-debugging techniques, and fileless malware. Understanding these TTPs is crucial for effective incident response and threat hunting. For example, a red team may deploy a C2 payload as a DLL and use `rundll32.exe` to execute it, leaving a `DllRegisterServer` export visible in PE‑bear. Static triage of the DLL would reveal the export and any embedded indicators. For more information on adversary emulation and red‑team operations, visit the [CISA](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/what-we-do/cybersecurity/) websites.
 
 ## Answer key
 Run these to produce the graded findings:
@@ -137,74 +171,59 @@ Sample SHA256: compiler-dependent — record the digest emitted by `Get-FileHash
 - **T1027 / T1027.002** — Obfuscated Files or Information / Software Packing (detected via DIE entropy + PE-bear imports). https://attack.mitre.org/techniques/T1027/ , https://attack.mitre.org/techniques/T1027/002/
 - **T1140** — Deobfuscate/Decode Files or Information (FLOSS recovering decoded strings). https://attack.mitre.org/techniques/T1140/
 - **T1071.001** — Application Layer Protocol: Web (candidate from embedded IP/URL indicators). https://attack.mitre.org/techniques/T1071/001/
-- **T1005 / T1074** — Data from Local System / Data Staged (file-write capability from capa). https://attack.mitre.org/techniques/T1005/ , https://attack.mitre.org/techniques/T1074/
+- **T1005 / T1074** — Data from Local System / Data Staged (file‑write capability from capa). https://attack.mitre.org/techniques/T1005/ , https://attack.mitre.org/techniques/T1074/
 - **T1055** — Process Injection (candidate when capa/PE-bear reveal injection API primitives). https://attack.mitre.org/techniques/T1055/
 - **T1486** — Data Encrypted for Impact (candidate when capa reports encryption capabilities). https://attack.mitre.org/techniques/T1486/
+- **T1547.001** — Boot or Logon Autostart: Registry Run Keys (if capa or imports suggest registry persistence). https://attack.mitre.org/techniques/T1547/001/
+- **T1543.003** — Windows Service (if capa shows "create service"). https://attack.mitre.org/techniques/T1543/003/
+- **T1562.001** — Impair Defenses: Disable or Modify Tools (evidenced by strings in FLOSS or capa). https://attack.mitre.org/techniques/T1562/001/
+- **T1036.005** — Masquerading: Match Legitimate Name or Location (revealed by PE-bear OriginalFileName mismatch). https://attack.mitre.org/techniques/T1036/005/
+- **T1204** — User Execution (social engineering vector). https://attack.mitre.org/techniques/T1204/
+- **T1218** — Signed Binary Proxy Execution (LOLBins like rundll32). https://attack.mitre.org/techniques/T1218/
+- **T1059.001** — Command and Scripting Interpreter: PowerShell (recovered strings indicating PowerShell usage). https://attack.mitre.org/techniques/T1059/001/
+- **T1070.004** — Indicator Removal: File Deletion (strings like del/wevtutil). https://attack.mitre.org/techniques/T1070/004/
+- **T1564.001** — Hide Artifacts: Hidden Files and Directories (strings like attrib +h). https://attack.mitre.org/techniques/T1564/001/
 - **DFIR phase:** Identification & Examination (initial static triage before dynamic analysis).
 
-
-### Threat Hunting & Detection Engineering
-
-Once static triage artifacts are extracted (e.g., embedded IPs, domains, or suspicious strings), pivot into **threat hunting** and **detection engineering** to validate and operationalize findings. Focus on **T1562.001 (Impair Defenses: Disable or Modify Tools)** and **T1036.005 (Masquerading: Match Legitimate Name or Location)**—two techniques frequently missed by static-only analysis.
-
-**Detection Logic (Concrete Fields & Pivots):**
-- **Windows Event Logs (Security.evtx):**
-  - Hunt for **Event ID 4688** (Process Creation) where `NewProcessName` matches a triage-extracted binary name but `ParentProcessName` is atypical (e.g., `svchost.exe` spawning `powershell.exe` from `C:\Temp\`).
-  - Filter for **Event ID 1102** (Audit Log Cleared) or **Event ID 104** (Log File Cleared) to detect **T1562.001**—correlate with static triage outputs (e.g., `wevtutil cl` strings in samples).
-
-- **Sysmon (Event ID 1):**
-  - Pivot on `CommandLine` fields containing triage-extracted IPs/domains (e.g., `cmd.exe /c curl http://[extracted_IP]`). Use **T1036.005** logic to flag processes with mismatched `OriginalFileName` vs. `Image` paths (e.g., `lsass.exe` running from `C:\Users\Public\`).
-
-- **Linux Audit Logs (`/var/log/audit/audit.log`):**
-  - Hunt for **execve syscalls** (`type=EXECVE`) where `a0` (command) matches triage-extracted strings (e.g., `chmod +x /tmp/[extracted_binary]`). Correlate with **T1562.001** by checking for `auditd` service stops (`systemctl stop auditd`).
-
-**Hunt Pivots:**
-- Cross-reference triage outputs with **VirusTotal** (e.g., `behavior: "modifies auditd config"`) or **Unprotect Project** (e.g., `T1562.001` bypasses).
-- For **T1036.005**, query EDR telemetry for `process.name` mismatches (e.g., `explorer.exe` with `pe.original_file_name: "ransomware.exe"`).
-
-**Sources:**
-- [CISA: Hunting for T1562.001 (Disable Defenses)](https://www.cisa
-
-### Adversary Emulation & Red-Team Perspective
-From an adversary's perspective, the static triage case can be exploited using techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - "User Execution" and [T1218](https://attack.mitre.org/techniques/T1218) - "Signed Binary Proxy Execution". An attacker may use social engineering tactics to trick a user into executing a malicious file, which can then lead to the exploitation of vulnerabilities in the system. The adversary may also use signed binary proxy execution to bypass security controls and execute malicious code. The artifacts left behind by these techniques can include suspicious executable files, modified system configuration files, and unusual network activity. To evade detection, the adversary may use code obfuscation, anti-debugging techniques, and fileless malware. Understanding these tactics, techniques, and procedures (TTPs) is crucial for effective incident response and threat hunting. For more information on adversary emulation and red-team operations, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/what-we-do/cybersecurity/) websites.
-
 ## Sources
-Claim → source mapping (all URLs are official tool repos, Microsoft Learn, MITRE ATT&CK, SANS, or RFCs):
-
-- capa capabilities, `-v`/`-vv`/`--version`, ATT&CK/MBC mapping, packing warning — Mandiant/FLARE capa: https://github.com/mandiant/capa
-- capa community rules (capability namespaces) — capa-rules: https://github.com/mandiant/capa-rules
-- FLOSS static/stack/tight/decoded strings, `--no-color`, `--version` — Mandiant/FLARE FLOSS: https://github.com/mandiant/flare-floss
-- FLARE-VM install/tooling context — Mandiant FLARE-VM: https://github.com/mandiant/flare-vm
-- DIE file/compiler/packer detection and entropy — Detect-It-Easy: https://github.com/horsicq/Detect-It-Easy
-- DIE console (`diec`) options incl. `-j` JSON output — DIE engine: https://github.com/horsicq/DIE-engine
-- PE-bear headers/sections/imports (GUI, no CLI) — PE-bear: https://github.com/hasherezade/pe-bear
-- `Get-FileHash` (SHA256 default/behavior) — Microsoft Learn: https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/get-filehash
-- `cl.exe` `/nologo` and `/Fe` flags — Microsoft Learn: https://learn.microsoft.com/cpp/build/reference/fe-name-exe-file
-- `CreateFileA` API — Microsoft Learn: https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createfilea
-- `CloseHandle` API — Microsoft Learn: https://learn.microsoft.com/windows/win32/api/handleapi/nf-handleapi-closehandle
-- `VirtualAllocEx` (injection primitive) — Microsoft Learn: https://learn.microsoft.com/windows/win32/api/memoryapi/nf-memoryapi-virtualallocex
-- MITRE ATT&CK — Obfuscated Files or Information (T1027): https://attack.mitre.org/techniques/T1027/
-- MITRE ATT&CK — Software Packing (T1027.002): https://attack.mitre.org/techniques/T1027/002/
-- MITRE ATT&CK — Deobfuscate/Decode (T1140): https://attack.mitre.org/techniques/T1140/
-- MITRE ATT&CK — Application Layer Protocol: Web (T1071.001): https://attack.mitre.org/techniques/T1071/001/
-- MITRE ATT&CK — Data from Local System (T1005): https://attack.mitre.org/techniques/T1005/
-- MITRE ATT&CK — Data Staged (T1074): https://attack.mitre.org/techniques/T1074/
-- MITRE ATT&CK — Process Injection (T1055): https://attack.mitre.org/techniques/T1055/
-- MITRE ATT&CK — Data Encrypted for Impact (T1486): https://attack.mitre.org/techniques/T1486/
-- Security Onion — Zeek: https://docs.securityonion.net/en/2.4/zeek.html
-- Security Onion — Suricata: https://docs.securityonion.net/en/2.4/suricata.html
-- SANS FOR610 Reverse-Engineering Malware: https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
-- RFC 5737 (documentation address ranges, TEST-NET-3): https://datatracker.ietf.org/doc/html/rfc5737
+- Detect-It-Easy: official repo and console flags – https://github.com/horsicq/Detect-It-Easy, https://github.com/horsicq/DIE-engine
+- capa: official repo, rules, and ATT&CK mapping – https://github.com/mandiant/capa, https://github.com/mandiant/capa-rules
+- FLOSS (FLARE Obfuscated String Solver): official repo – https://github.com/mandiant/flare-floss
+- FLARE-VM: official repo – https://github.com/mandiant/flare-vm
+- PE-bear: official repo – https://github.com/hasherezade/pe-bear
+- Microsoft Learn: Get-FileHash – https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/get-filehash
+- Microsoft Learn: cl.exe /Fe flag – https://learn.microsoft.com/cpp/build/reference/fe-name-exe-file
+- Microsoft Learn: CreateFileA API – https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createfilea
+- Microsoft Learn: CloseHandle API – https://learn.microsoft.com/windows/win32/api/handleapi/nf-handleapi-closehandle
+- Microsoft Learn: VirtualAllocEx API – https://learn.microsoft.com/windows/win32/api/memoryapi/nf-memoryapi-virtualallocex
+- Microsoft Learn: Sysmon documentation – https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon
+- MITRE ATT&CK: T1027 – https://attack.mitre.org/techniques/T1027/
+- MITRE ATT&CK: T1027.002 – https://attack.mitre.org/techniques/T1027/002/
+- MITRE ATT&CK: T1140 – https://attack.mitre.org/techniques/T1140/
+- MITRE ATT&CK: T1071.001 – https://attack.mitre.org/techniques/T1071/001/
+- MITRE ATT&CK: T1005 – https://attack.mitre.org/techniques/T1005/
+- MITRE ATT&CK: T1074 – https://attack.mitre.org/techniques/T1074/
+- MITRE ATT&CK: T1055 – https://attack.mitre.org/techniques/T1055/
+- MITRE ATT&CK: T1486 – https://attack.mitre.org/techniques/T1486/
+- MITRE ATT&CK: T1547.001 – https://attack.mitre.org/techniques/T1547/001/
+- MITRE ATT&CK: T1543.003 – https://attack.mitre.org/techniques/T1543/003/
+- MITRE ATT&CK: T1562.001 – https://attack.mitre.org/techniques/T1562/001/
+- MITRE ATT&CK: T1036.005 – https://attack.mitre.org/techniques/T1036/005/
+- MITRE ATT&CK: T1204 – https://attack.mitre.org/techniques/T1204/
+- MITRE ATT&CK: T1218 – https://attack.mitre.org/techniques/T1218/
+- MITRE ATT&CK: T1059.001 – https://attack.mitre.org/techniques/T1059/001/
+- MITRE ATT&CK: T1070.004 – https://attack.mitre.org/techniques/T1070/004/
+- MITRE ATT&CK: T1564.001 – https://attack.mitre.org/techniques/T1564/001/
+- Security Onion documentation: Zeek – https://docs.securityonion.net/en/2.4/zeek.html
+- Security Onion documentation: Suricata – https://docs.securityonion.net/en/2.4/suricata.html
+- CISA (Cybersecurity and Infrastructure Security Agency) – https://www.cisa.gov/
+- SANS FOR610 Reverse-Engineering Malware – https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+- RFC 5737 (documentation IP ranges, TEST-NET-3) – https://datatracker.ietf.org/doc/html/rfc5737
 
 ## Related modules
-- [Static reverse engineering](../12-static-re/README.md) -- shares capa for capability-dri
+- [Static reverse engineering](../12-static-re/README.md) -- shares capa
+- [PE static analysis deep-dive](../30-pe-static-deep/README.md) -- shares detect-it-easy (die)
+- [Scenario: packed-malware unpacking workflow](../52-unpacking-case/README.md) -- shares floss
+- [FLOSS obfuscated-string extraction](../42-floss-strings/README.md) -- shares capa
 
-<!-- cyberlab-enriched: v1 -->
-- http://[extracted_IP]`
-- https://www.cisa
-- https://attack.mitre.org/techniques/T1204
-- https://attack.mitre.org/techniques/T1218
-- https://www.cisa.gov/
-- https://www.nsa.gov/what-we-do/cybersecurity/
-
-<!-- cyberlab-enriched: v2 -->
+<!-- cyberlab-enriched: v3 -->
