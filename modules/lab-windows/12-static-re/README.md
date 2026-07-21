@@ -159,6 +159,44 @@ The validator holds the exact expected capability/string set; learners submit th
 - **T1071.001** — Application Layer Protocol: Web Protocols (HTTP C2 pivots to Zeek `http.log`). https://attack.mitre.org/techniques/T1071/001/
 - **DFIR phase:** Identification and Examination (static triage of an extracted artifact prior to dynamic analysis).
 
+
+### Essential Commands & Features
+
+While Ghidra’s GUI is powerful, mastering its CLI and advanced features unlocks deeper analysis. Below are **undocumented or underused** capabilities critical for reverse engineering:
+
+1. **Auto-Analysis Tuning**
+   Ghidra’s auto-analysis (`Analysis > Auto Analyze`) can be customized via **`analyzeHeadless`** to exclude noisy or irrelevant passes (e.g., decompiler, demangler). Useful for large binaries or when focusing on specific techniques like **T1027.009 (Obfuscated Files or Information: Embedded Payloads)**.
+   ```bash
+   analyzeHeadless /path/to/project ProjectName -import /path/to/binary -noanalysis -scriptPath /scripts -postScript CustomAnalysis.java
+   ```
+
+2. **Patching Bytes**
+   Modify instructions directly in the Listing view (`Right-click > Patch Instruction`) or via Python scripting. Critical for testing hypotheses or bypassing anti-analysis (e.g., **T1562.001 (Impair Defenses: Disable or Modify Tools)**).
+   ```python
+   currentProgram.getMemory().setBytes(toAddr(0x00401000), b"\x90\x90\x90")  # NOP sled
+   ```
+
+3. **Python Scripting**
+   Ghidra’s built-in Jython interpreter (`Window > Python`) automates repetitive tasks. Example: Enumerate all calls to `VirtualAlloc` (common in **T1055.012 (Process Injection: Process Hollowing)**).
+   ```python
+   for ref in getReferencesTo(toAddr(0x00402000)):  # Replace with VirtualAlloc's address
+       print(f"Call at {ref.getFromAddress()}")
+   ```
+
+4. **Function Signatures (FLIRT)**
+   Apply FLIRT signatures (`File > Parse C Source` or `File > Add FLIRT Signature`) to identify statically linked libraries (e.g., OpenSSL, zlib). Reduces noise when analyzing packed malware (e.g., **T1027.001 (Obfuscated Files or Information: Binary Padding)**).
+   ```bash
+   # Generate signatures from a library (requires FLAIR tools)
+   pelf /path/to/libcrypto.so libcrypto.sig
+   ```
+
+**Sources**:
+- Ghidra Scripting Guide: [https://ghidra.re/ghidra_docs/api/ghidra/app/script/GhidraScript.html](https://ghidra.re/ghidra_docs/api/ghidra/app/script/GhidraScript.html)
+- FLIRT Signature Documentation: [https://www.hex-rays.com/products/ida/tech/flirt/](https://www.hex-rays.com/products/ida
+
+### Threat Hunting & Detection Engineering
+To detect and hunt threats in the realm of static reconnaissance, focus on monitoring system and network logs for signs of unauthorized access or information gathering. Specifically, look for Windows Event ID 4624 (An account was successfully logged on) with a Logon Type of 3 (Network), indicating a potential remote access attempt. Additionally, analyze Zeek logs for unusual DNS queries or Suricata alerts for suspicious HTTP requests, such as those using the `HEAD` method. These could be indicative of techniques like [T1588](https://attack.mitre.org/techniques/T1588) - Obtain Capabilities: Tool, where an adversary obtains or purchases tools that can be used to support their operations, or [T1590](https://attack.mitre.org/techniques/T1590) - Gather Technical Data: Network Configuration, where an adversary gathers information about the network configuration. Threat hunters can pivot on these findings by investigating related IP addresses, domains, or user accounts to uncover further malicious activity. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative project or vendor pages):
 
@@ -186,3 +224,11 @@ Claim → source mapping (all URLs are official/authoritative project or vendor 
 - [FLOSS obfuscated-string extraction](../42-floss-strings/README.md) -- focused practice on FLOSS/capa decoded-string recovery.
 
 <!-- cyberlab-enriched: v2 -->
+- https://ghidra.re/ghidra_docs/api/ghidra/app/script/GhidraScript.html](https://ghidra.re/ghidra_docs/api/ghidra/app/script/GhidraScript.html
+- https://www.hex-rays.com/products/ida/tech/flirt/](https://www.hex-rays.com/products/ida
+- https://attack.mitre.org/techniques/T1588
+- https://attack.mitre.org/techniques/T1590
+- https://www.cisa.gov/
+- https://www.nist.gov/
+
+<!-- cyberlab-enriched: v3 -->
