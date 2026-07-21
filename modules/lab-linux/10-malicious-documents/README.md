@@ -174,6 +174,36 @@ When analyzing malicious documents, leveraging advanced features of core tools l
 ### Threat Hunting & Detection Engineering
 To detect malicious document-based attacks, threat hunters can monitor Windows Event IDs 4663 and 4738 for suspicious file access and creation patterns. Specifically, they can look for instances where a document opens a suspicious executable or script, indicating potential use of [T1499: Signature Validation Bypass](https://attack.mitre.org/techniques/T1499) or [T1625: Graphical User Interface Window Capture](https://attack.mitre.org/techniques/T1625). In network logs, such as those collected by Zeek or Suricata, analysts can search for HTTP requests containing suspicious document-related keywords or anomalies in file transfer protocols. Threat hunters can pivot on these findings by investigating related Windows Event IDs, such as 4688 for process creation, to identify potential command and control (C2) communications or lateral movement. For deeper analysis, security teams can leverage tools like Sysinternals or Windows Management Instrumentation (WMI) to inspect system calls and registry modifications. More information on threat hunting and detection engineering can be found at [https://www.cisecurity.org/](https://www.cisecurity.org/) and [https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf](https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf).
 
+
+### Essential Commands & Features
+
+To extract deeper insights from malicious documents, leverage these undemonstrated but critical commands and flags in the core tools:
+
+#### **Olevba (VBA Deobfuscation)**
+- **`--decode` (`-d`)** – Decodes obfuscated VBA strings (e.g., hex, Base64, or XOR-encoded payloads). Use when static analysis reveals suspicious patterns like `Chr()` or `StrReverse()`.
+  ```bash
+  olevba -d malicious.docm
+  ```
+  *Targets*: **[T1132.001: Data Encoding: Standard Encoding](https://attack.mitre.org/techniques/T1132/001/)** (e.g., Base64-encoded macros).
+
+- **`--reveal`** – Unhides strings concealed via whitespace or non-printable characters (e.g., tabs, null bytes). Critical for spotting **T1027.006: Indicator Removal: Timestomping** or stealthy C2 URLs.
+  ```bash
+  olevba --reveal malicious.xls
+  ```
+
+#### **Pdf-parser (Stream Filtering)**
+- **`--filter`** – Applies stream filters (e.g., `/FlateDecode`) to decompress obfuscated content. Essential for analyzing **T1001.003: Data Obfuscation: Protocol Impersonation** (e.g., PDFs hiding JavaScript in compressed streams).
+  ```bash
+  pdf-parser --filter malicious.pdf
+  ```
+
+**Sources**:
+- [Didier Stevens’ PDF Tools Documentation](https://blog.didierstevens.com/programs/pdf-tools/)
+- [REMnux Tools Guide: Olevba](https://docs.remnux.org/discover-the-tools/analyze+documents+and+scripts/office+files#olevba)
+
+### Adversary Emulation & Red-Team Perspective
+From an adversary's perspective, malicious documents can be used to gain initial access to a system, as seen in techniques such as [T1190](https://attack.mitre.org/techniques/T1190/) "Spearphishing via Service" and [T1562](https://attack.mitre.org/techniques/T1562/) "Impair Defenses". Attackers may use social engineering tactics to trick victims into opening malicious documents, which can then execute code and establish a foothold on the system. The malicious document may leave behind artifacts such as temporary files or registry entries, which can be detected by defenders. To evade detection, attackers may use code obfuscation or anti-debugging techniques to make it difficult for analysts to reverse-engineer the malicious code. Understanding these tactics, techniques, and procedures (TTPs) is crucial for effective adversary emulation and red-teaming. For more information on adversary emulation and red-teaming, see the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [Center for Internet Security (CIS)](https://www.cisecurity.org/) resources.
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, Microsoft Learn, SANS, or recognized project docs):
 
@@ -215,3 +245,11 @@ Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, M
 - https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf](https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf
 
 <!-- cyberlab-enriched: v3 -->
+- https://attack.mitre.org/techniques/T1132/001/
+- https://docs.remnux.org/discover-the-tools/analyze+documents+and+scripts/office+files#olevba
+- https://attack.mitre.org/techniques/T1190/
+- https://attack.mitre.org/techniques/T1562/
+- https://www.cisa.gov/
+- https://www.cisecurity.org/
+
+<!-- cyberlab-enriched: v4 -->
