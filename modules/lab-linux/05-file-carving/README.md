@@ -146,6 +146,44 @@ Sample sha256 (for grading integrity):
 - **T1561 — Disk Wipe:** physical overwrite/wipe is the effective anti-carving countermeasure. https://attack.mitre.org/techniques/T1561/
 - **T1005 — Data from Local System:** recovered documents/secrets from imaged media. https://attack.mitre.org/techniques/T1005/
 
+
+### Essential Commands & Features
+
+When carving files with **foremost** and **scalpel**, mastering advanced flags unlocks deeper forensic insights. Below are the most impactful yet underutilized commands, with concrete examples and tactical use cases:
+
+#### **Foremost**
+- **`-d` (Indirect Block Detection)**: Enables carving from indirect blocks (e.g., NTFS/FAT metadata). Critical for recovering files from fragmented or corrupted filesystems.
+  ```bash
+  foremost -d -t jpg,pdf -i /dev/sdb1 -o /recovery/
+  ```
+  *Use when*: Suspecting adversaries hid data in filesystem metadata (e.g., [T1564.001: Hide Artifacts: Hidden Files and Directories](https://attack.mitre.org/techniques/T1564/001/)).
+
+- **`-q` (Quick Mode)**: Speeds up carving by skipping header/footer validation. Ideal for triage when time is limited.
+  ```bash
+  foremost -q -t docx -i disk.img -o /quick_recovery/
+  ```
+  *Use when*: Prioritizing speed over completeness (e.g., [T1119: Automated Collection](https://attack.mitre.org/techniques/T1119/)).
+
+- **`-w` (Audit-Only Mode)**: Generates an audit file without writing carved files. Useful for pre-carve analysis.
+  ```bash
+  foremost -w -t all -i evidence.dd -o /audit/
+  ```
+  *Use when*: Assessing potential recovery scope before committing storage.
+
+#### **Scalpel**
+- **`-b` (Carve from File Head)**: Forces carving from the start of each block, ignoring footer signatures. Essential for files with corrupted/missing footers.
+  ```bash
+  scalpel -b -o /output/ disk.img
+  ```
+  *Use when*: Recovering files from damaged media (e.g., [T1485: Data Destruction](https://attack.mitre.org/techniques/T1485/)).
+
+**Sources**:
+- Foremost man page: [https://linux.die.net/man/1/foremost](https://linux.die.net/man/1/foremost)
+- Scalpel GitHub Wiki: [https://github.com/sleuthkit/scalpel/wiki](https://github.com/sleuthkit/scalpel/wiki)
+
+### Threat Hunting & Detection Engineering
+To detect file carving techniques, threat hunters can monitor Windows Event ID 4663, which logs file deletion events, and look for suspicious patterns such as multiple deletions of small files in a short timeframe. Additionally, analyzing Zeek's `http` log for unusual HTTP request patterns, such as multiple requests for small files or files with unusual extensions, can help identify potential file carving activity. This technique is related to [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution and [T1222](https://attack.mitre.org/techniques/T1222) - File and Directory Permissions Modification. Threat hunters can pivot on these findings by investigating related logs, such as Windows Event ID 4657, which logs file permission changes, and looking for other indicators of malicious activity. For more information on threat hunting and detection engineering, see the [Cybersecurity and Infrastructure Security Agency (CISA) website](https://www.cisa.gov/) and the [National Institute of Standards and Technology (NIST) Special Publication 800-53](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r5.pdf).
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -180,3 +218,14 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Scenario: ransomware memory investigation](../47-ransomware-memory-case/README.md) -- shares bulk_extractor in a full case workflow.
 
 <!-- cyberlab-enriched: v2 -->
+- https://attack.mitre.org/techniques/T1564/001/
+- https://attack.mitre.org/techniques/T1119/
+- https://attack.mitre.org/techniques/T1485/
+- https://linux.die.net/man/1/foremost](https://linux.die.net/man/1/foremost
+- https://github.com/sleuthkit/scalpel/wiki](https://github.com/sleuthkit/scalpel/wiki
+- https://attack.mitre.org/techniques/T1218
+- https://attack.mitre.org/techniques/T1222
+- https://www.cisa.gov/
+- https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r5.pdf
+
+<!-- cyberlab-enriched: v3 -->
