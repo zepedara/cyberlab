@@ -137,6 +137,51 @@ Expected: `Get-FileHash` prints the 64-hex sha256 of *your* locally compiled `sa
 
   The benign lab sample itself matches only trivial capabilities; the technique IDs above illustrate how capa's ATT&CK-tagged output feeds ATT&CK mapping in real triage (capa's ATT&CK mapping is described at https://github.com/mandiant/capa).
 
+
+### Essential Commands & Features
+
+Cutter’s advanced features accelerate reverse-engineering by revealing hidden relationships and intent in malware. Below are three **undemonstrated** but critical capabilities:
+
+1. **Decompiler (Pseudocode View)**
+   Use the decompiler to convert assembly into readable C-like pseudocode, drastically reducing analysis time for obfuscated logic (e.g., **T1127.001: Trusted Developer Utilities Proxy Execution: MSBuild**).
+   *Example*:
+   ```bash
+   # In Cutter's GUI: Right-click a function → "Decompile" or press `F5`
+   # CLI alternative (via rizin):
+   [0x00401000]> pdc @main
+   ```
+   *When to use*: When static analysis of raw assembly is too time-consuming (e.g., unpacked payloads or custom encryption routines).
+
+2. **Function Renaming**
+   Rename functions to reflect their purpose (e.g., `sub_401000` → `decrypt_config`), improving collaboration and documentation. This is vital for tracking adversary techniques like **T1574.002: Hijack Execution Flow: DLL Side-Loading**.
+   *Example*:
+   ```bash
+   # In Cutter: Right-click a function → "Rename" or press `N`
+   # CLI alternative:
+   [0x00401000]> afn decrypt_config @sub_401000
+   ```
+
+3. **Cross-Reference (X-Ref) Navigation**
+   Beyond basic X-refs, use Cutter’s "X-Refs Graph" (`X` key) to visualize callers/callees of a function, uncovering hidden dependencies (e.g., **T1055.012: Process Injection: Process Hollowing**).
+   *Example*:
+   ```bash
+   # In Cutter: Right-click a function → "Show X-Refs" or press `X`
+   # CLI alternative (list callers):
+   [0x00401000]> axt @sub_401000
+   ```
+
+**Sources**:
+- [Cutter’s Official Decompiler Docs (GitLab)](https://cutter.re/docs/)
+- [SANS FOR610: Reverse-Engineering Malware (Function Renaming)](https://www.sans.org/blog/for610-reverse-engineering-malware/)
+
+### Common Pitfalls & Result Validation
+
+Common mistakes when using Cutter for Windows malware analysis include misclassifying packed or obfuscated samples as benign due to over-reliance on static imports and string scans. Analysts may overlook indirect control flow implementing **T1055.011 (Process Hollowing)** when Cutter’s graph view appears clean, missing subtle API call sequences like `ZwUnmapViewOfSection` followed by `SetThreadContext`. Another frequent pitfall is dismissing scheduled task persistence (**T1053.005, Scheduled Task/Job**) because Cutter’s cross-references to `schtasks.exe` are static and may not reveal encoded command lines. To validate findings, always run the sample in a controlled sandbox with process monitoring and capture dynamic API calls. Compare Cutter’s resolved strings with memory dumps after execution; decryption loops or stack strings will not appear in the binary’s initial scan. For suspected injection, use Cutter’s emulation (`esz` mode) to step through calls to `WriteProcessMemory` and verify the target process ID matches a system process. Confirm persistence by comparing registry key listings (e.g., `\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`) against baseline snapshots taken before execution. Avoid concluding that an export function’s name reflects its true purpose—malware often renames exports to disguise functionality. Always cross-validate with YARA behavioral rules and network traffic analysis. A finding must be reproducible with at least two independent detection methods before reporting.  
+
+**Authoritative References**  
+- CISA Malware Analysis in an Enterprise Environment: https://www.cisa.gov/resources-tools/resources/malware-analysis-enterprise-environment  
+- Australian Cyber Security Centre (ACSC) Malware Analysis Guide: https://www.cyber.gov.au/acsc/view-all-content/publications/malware-analysis-guide
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -162,3 +207,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Scenario: .NET malware analysis](../53-dotnet-malware-case/README.md) -- shares capa for capability mapping on managed-code samples.
 
 <!-- cyberlab-enriched: v2 -->
+- https://cutter.re/docs/
+- https://www.sans.org/blog/for610-reverse-engineering-malware/
+- https://www.cisa.gov/resources-tools/resources/malware-analysis-enterprise-environment
+- https://www.cyber.gov.au/acsc/view-all-content/publications/malware-analysis-guide
+
+<!-- cyberlab-enriched: v3 -->
