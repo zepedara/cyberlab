@@ -93,20 +93,23 @@ The `example.com` name and the 93.184.216.34 address range are IANA-reserved doc
 A defender uses these tools during network-based detection and incident response. In Security Onion, alerts from Suricata and Zeek link to the underlying PCAP, and you can pull the full capture for a flow directly from the alert ([Security Onion PCAP retrieval](https://docs.securityonion.net/en/2.4/pcap.html); [Security Onion Suricata](https://docs.securityonion.net/en/2.4/suricata.html); [Security Onion Zeek](https://docs.securityonion.net/en/2.4/zeek.html)).
 
 Concrete detection logic and pivots:
-- **HTTP C2 / suspicious User-Agent (T1071.001 — Web Protocols).** Pivot from a Suricata `alert http` signature to Zeek's `http.log`, then confirm with `tshark -Y 'http.request' -T fields -e http.host -e http.request.uri -e http.user_agent`. In Elastic/Kibana, filter on the `http.user_agent` and `http.virtual_host` fields Zeek populates. A `Host:` header that does not match the destination IP's expected service, or a rare/hard-coded User-Agent, is a strong lead ([Zeek http.log fields](https://docs.zeek.org/en/master/scripts/base/protocols/http/main.zeek.html)).
-- **DNS tunneling / DGA (T1071.004 — DNS; T1568.002 — Domain Generation Algorithms).** Pivot to Zeek `dns.log` and hunt for high query volume, long labels, or high-entropy names, then reproduce with the `dns.flags.response == 0` extraction above ([Zeek dns.log fields](https://docs.zeek.org/en/master/scripts/base/protocols/dns/main.zeek.html)).
-- **TLS/JA3 and SNI (T1071.001, T1573 — Encrypted Channel).** When payloads are encrypted, ngrep will not match; pivot instead to Zeek's `ssl.log` for the SNI (`server_name`) and JA3/JA3S fingerprints and correlate the destination with threat intel. tshark exposes the SNI via `-e tls.handshake.extensions_server_name` ([Zeek ssl.log fields](https://docs.zeek.org/en/master/scripts/base/protocols/ssl/main.zeek.html); [Wireshark display filter reference: tls](https://www.wireshark.org/docs/dfref/t/tls.html)).
+- **HTTP C2 / suspicious User-Agent (T1071.001 — Web Protocols).** Pivot from a Suricata `alert http` signature to Zeek's `http.log`, then confirm with `tshark -Y 'http.request' -T fields -e http.host -e http.request.uri -e http.user_agent`. In Elastic/Kibana, filter on the Zeek `http.log` fields `user_agent`, `host`, `uri`, and `method`; a `Host:` header that does not match the destination IP's expected service, or a rare/hard-coded User-Agent, is a strong lead. Suricata's `http.user_agent` and `http.host` sticky buffers are the keywords a signature inspects for those same values, so a Suricata hit and a Zeek `http.log` row describe the same transaction from two engines ([Zeek http.log fields](https://docs.zeek.org/en/master/scripts/base/protocols/http/main.zeek.html); [Suricata HTTP keywords](https://docs.suricata.io/en/latest/rules/http-keywords.html)).
+- **DNS tunneling / DGA (T1071.004 — DNS; T1568.002 — Domain Generation Algorithms).** Pivot to Zeek `dns.log` and hunt on the `query` field for high query volume to one parent domain, long or high-entropy labels, and unusual `qtype_name` values (e.g. bursts of `TXT` or `NULL` records that carry tunneled data). Reproduce with the `dns.flags.response == 0` extraction above, and in tshark add `-e dns.qry.type` to separate record types. Threat-hunting pivot: aggregate Zeek `dns.log` by the registered domain and count distinct subdomains per hour — a single second-level domain with hundreds of unique random-looking child labels is the classic tunneling/DGA signature ([Zeek dns.log fields](https://docs.zeek.org/en/master/scripts/base/protocols/dns/main.zeek.html); [MITRE ATT&CK T1568.002](https://attack.mitre.org/techniques/T1568/002/)).
+- **TLS/JA3 and SNI (T1071.001, T1573 — Encrypted Channel).** When payloads are encrypted, ngrep will not match; pivot instead to Zeek's `ssl.log` for the SNI (`server_name`) and JA3/JA3S fingerprints (`ja3`, `ja3s`) and correlate the destination with threat intel. Threat-hunting pivot: a JA3 hash that is common across many suspect hosts but maps to a rare or self-signed certificate (`ssl.log` `validation_status`) and a mismatched or absent `server_name` is a beaconing indicator. tshark exposes the SNI via `-e tls.handshake.extensions_server_name` ([Zeek ssl.log fields](https://docs.zeek.org/en/master/scripts/base/protocols/ssl/main.zeek.html); [Wireshark display filter reference: tls](https://www.wireshark.org/docs/dfref/t/tls.html)).
+- **Cleartext credential exposure (T1040 — Network Sniffing; T1552.001 — Unsecured Credentials: Credentials In Files/traffic).** Zeek's `ftp.log` records `user` and `password` fields for cleartext FTP, and Zeek can log HTTP Basic-auth material; hunt those log sources for credentials traversing the wire, and confirm the raw bytes with `ngrep -I $IMAGE -q -W byline 'PASS|Authorization'`. Any recovered credential is an escalation trigger for account-compromise scoping ([Zeek ftp.log fields](https://docs.zeek.org/en/master/scripts/base/protocols/ftp/main.zeek.html); [MITRE ATT&CK T1552.001](https://attack.mitre.org/techniques/T1552/001/)).
+- **Adversary-in-the-Middle on the LAN (T1557.001 — LLMNR/NBT-NS Poisoning and SMB Relay).** Zeek's `dns.log` (with the LLMNR/NBT-NS analyzers) and its ARP logging surface name-resolution poisoning and gratuitous-ARP anomalies — hunt for a single host answering LLMNR/NBT-NS broadcasts for many different names, or one MAC suddenly claiming the gateway IP. Correlate with SMB authentication attempts in Zeek's `smb`/`ntlm` logs to catch relay ([MITRE ATT&CK T1557.001](https://attack.mitre.org/techniques/T1557/001/)).
 - **Content reconstruction.** ngrep confirms cleartext IOCs (exfiltrated strings, beacon markers), and tcpflow reassembles the full request/response so you can carve a dropped payload and hash it. This evidence-grade extraction validates or dismisses an alert, scopes affected hosts, and feeds new detection signatures — the core of the examination phase ([MITRE ATT&CK T1071](https://attack.mitre.org/techniques/T1071/); [MITRE ATT&CK T1568](https://attack.mitre.org/techniques/T1568/)).
 
 ## Attacker perspective
-An attacker who gains a network foothold uses the same capture capability for reconnaissance and credential theft — sniffing cleartext protocols (HTTP, FTP, Telnet) with ngrep or tshark to harvest passwords (**T1040 — Network Sniffing**), or reassembling sessions with tcpflow to steal transferred files and tokens ([MITRE ATT&CK T1040](https://attack.mitre.org/techniques/T1040/)). To position for capture on a switched network they commonly pair sniffing with **T1557 — Adversary-in-the-Middle** (e.g., ARP cache poisoning or LLMNR/NBT-NS/mDNS spoofing) so traffic that would not normally reach them is redirected ([MITRE ATT&CK T1557](https://attack.mitre.org/techniques/T1557/); [T1557.001 LLMNR/NBT-NS Poisoning and SMB Relay](https://attack.mitre.org/techniques/T1557/001/)). Offensively, running Wireshark/tshark against a mirrored or AiTM'd link maps internal services and protocols before pivoting.
+An attacker who gains a network foothold uses the same capture capability for reconnaissance and credential theft — sniffing cleartext protocols (HTTP, FTP, Telnet) with ngrep or tshark to harvest passwords (**T1040 — Network Sniffing**), or reassembling sessions with tcpflow to steal transferred files and tokens ([MITRE ATT&CK T1040](https://attack.mitre.org/techniques/T1040/)). Credentials caught in cleartext feed directly into **T1552.001 — Unsecured Credentials** reuse ([MITRE ATT&CK T1552.001](https://attack.mitre.org/techniques/T1552/001/)). To position for capture on a switched network they commonly pair sniffing with **T1557 — Adversary-in-the-Middle** (e.g., ARP cache poisoning or LLMNR/NBT-NS/mDNS spoofing) so traffic that would not normally reach them is redirected, and **T1557.001 — LLMNR/NBT-NS Poisoning and SMB Relay** turns forced authentication into relayed access ([MITRE ATT&CK T1557](https://attack.mitre.org/techniques/T1557/); [T1557.001](https://attack.mitre.org/techniques/T1557/001/)). Offensively, running Wireshark/tshark against a mirrored or AiTM'd link maps internal services and protocols before pivoting.
 
 Artifacts left for defenders:
-- **Host telemetry:** the NIC entering promiscuous mode, and unexpected packet-capture processes (`tshark`, `tcpdump`, `ngrep`) — visible in process/EDR logs.
-- **On the wire:** ARP-spoofing races produce duplicate/gratuitous ARP replies mapping the gateway IP to the attacker MAC (detectable in Zeek and via Suricata ARP-anomaly logic), and LLMNR/NBT-NS poisoning produces attacker responses to name-resolution broadcasts.
+- **Host telemetry:** the NIC entering promiscuous mode, and unexpected packet-capture processes (`tshark`, `tcpdump`, `ngrep`) — visible in process/EDR logs. On Windows relay tooling, correlate with process-creation events (Sysmon Event ID 1 / Security Event ID 4688) for the sniffer/relay binary.
+- **On the wire:** ARP-spoofing races produce duplicate/gratuitous ARP replies mapping the gateway IP to the attacker MAC (detectable in Zeek and via Suricata ARP-anomaly logic), and LLMNR/NBT-NS poisoning produces attacker responses to name-resolution broadcasts (Zeek `dns.log` shows one responder answering many disparate names).
+- **Relay fallout:** SMB relay leaves failed/anomalous NTLM authentication in Zeek `ntlm`/`smb` logs and, on the victim/domain side, Windows Event ID 4624/4625 logons from unexpected source hosts.
 - **The cleartext sessions themselves** reveal both the reconnaissance targets and any credentials grabbed.
 
-Evasion: passive sniffing generates no packets of its own and is essentially invisible on the wire, so defenders rely on host-side detection (promiscuous-mode/process monitoring) and on catching the AiTM prerequisite rather than the capture itself. Attackers further reduce cleartext exposure risk to themselves by tunneling their own C2 inside TLS or DNS (**T1573 — Encrypted Channel**, **T1071.004 — DNS**) so that a defender's ngrep sweep finds nothing ([MITRE ATT&CK T1573](https://attack.mitre.org/techniques/T1573/)).
+Evasion: passive sniffing generates no packets of its own and is essentially invisible on the wire, so defenders rely on host-side detection (promiscuous-mode/process monitoring) and on catching the AiTM prerequisite rather than the capture itself. Attackers further reduce cleartext exposure risk to themselves by tunneling their own C2 inside TLS or DNS (**T1573 — Encrypted Channel**, **T1071.004 — DNS**) so that a defender's ngrep sweep finds nothing, and by domain-fronting or mimicking common User-Agent strings so a Suricata `http.user_agent` signature does not fire ([MITRE ATT&CK T1573](https://attack.mitre.org/techniques/T1573/); [MITRE ATT&CK T1071.004](https://attack.mitre.org/techniques/T1071/004/)).
 
 ## Answer key
 Sample sha256: `c039d5d4db1a5d96dd80c4a321a2bdf6013428a9cf0782f780883e0b44851c77`
@@ -135,8 +138,9 @@ Expected finding: a line such as `User-Agent: curl/8.5.0` (the exact agent recor
 - **T1040** — Network Sniffing (capturing and reading traffic). https://attack.mitre.org/techniques/T1040/
 - **T1071.001** — Application Layer Protocol: Web Protocols (HTTP host/URI analysis). https://attack.mitre.org/techniques/T1071/001/
 - **T1071.004** — Application Layer Protocol: DNS (query-name extraction). https://attack.mitre.org/techniques/T1071/004/
-- **T1568** — Dynamic Resolution (and **T1568.002** Domain Generation Algorithms for DGA hunting). https://attack.mitre.org/techniques/T1568/
-- **T1557** — Adversary-in-the-Middle (prerequisite for on-switch capture / relay). https://attack.mitre.org/techniques/T1557/
+- **T1568** — Dynamic Resolution, and **T1568.002** Domain Generation Algorithms (DGA hunting). https://attack.mitre.org/techniques/T1568/ ; https://attack.mitre.org/techniques/T1568/002/
+- **T1552.001** — Unsecured Credentials: Credentials In Files (cleartext credentials recovered from traffic). https://attack.mitre.org/techniques/T1552/001/
+- **T1557** — Adversary-in-the-Middle (prerequisite for on-switch capture / relay), and **T1557.001** LLMNR/NBT-NS Poisoning and SMB Relay. https://attack.mitre.org/techniques/T1557/ ; https://attack.mitre.org/techniques/T1557/001/
 - **T1573** — Encrypted Channel (attacker evasion of cleartext inspection). https://attack.mitre.org/techniques/T1573/
 - **DFIR phase:** Identification → Examination (network evidence triage and content reconstruction).
 
@@ -157,9 +161,11 @@ Security Onion / detection pivots:
 - Security Onion — retrieving PCAP: https://docs.securityonion.net/en/2.4/pcap.html
 - Security Onion — Suricata: https://docs.securityonion.net/en/2.4/suricata.html
 - Security Onion — Zeek: https://docs.securityonion.net/en/2.4/zeek.html
+- Suricata HTTP keywords (`http.user_agent`, `http.host` sticky buffers): https://docs.suricata.io/en/latest/rules/http-keywords.html
 - Zeek http.log fields: https://docs.zeek.org/en/master/scripts/base/protocols/http/main.zeek.html
 - Zeek dns.log fields: https://docs.zeek.org/en/master/scripts/base/protocols/dns/main.zeek.html
-- Zeek ssl.log fields (SNI, JA3/JA3S): https://docs.zeek.org/en/master/scripts/base/protocols/ssl/main.zeek.html
+- Zeek ssl.log fields (SNI, JA3/JA3S, validation_status): https://docs.zeek.org/en/master/scripts/base/protocols/ssl/main.zeek.html
+- Zeek ftp.log fields (user/password): https://docs.zeek.org/en/master/scripts/base/protocols/ftp/main.zeek.html
 
 MITRE ATT&CK techniques:
 - T1040 Network Sniffing: https://attack.mitre.org/techniques/T1040/
@@ -167,9 +173,15 @@ MITRE ATT&CK techniques:
 - T1071.001 Web Protocols: https://attack.mitre.org/techniques/T1071/001/
 - T1071.004 DNS: https://attack.mitre.org/techniques/T1071/004/
 - T1568 Dynamic Resolution: https://attack.mitre.org/techniques/T1568/
+- T1568.002 Domain Generation Algorithms: https://attack.mitre.org/techniques/T1568/002/
+- T1552.001 Unsecured Credentials — Credentials In Files: https://attack.mitre.org/techniques/T1552/001/
 - T1557 Adversary-in-the-Middle: https://attack.mitre.org/techniques/T1557/
 - T1557.001 LLMNR/NBT-NS Poisoning and SMB Relay: https://attack.mitre.org/techniques/T1557/001/
 - T1573 Encrypted Channel: https://attack.mitre.org/techniques/T1573/
+
+Windows event-log references (host-side AiTM/relay corroboration):
+- Sysmon Event ID 1 (process creation): https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+- Windows Security auditing — logon events (4624/4625) and process creation (4688): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/basic-audit-logon-events
 
 Sample-data provenance (documentation-only names/addresses):
 - IANA reserved / special-use domain names (`example.com`, RFC 6761): https://www.iana.org/domains/reserved
@@ -181,4 +193,4 @@ Sample-data provenance (documentation-only names/addresses):
 - [Disk & filesystem forensics](../01-disk-forensics/README.md) -- same learning path (Foundations); complements network evidence with host disk artifacts.
 - [Memory forensics](../02-memory-forensics/README.md) -- same learning path (Foundations); recovers network connections and payloads from RAM.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
