@@ -252,6 +252,56 @@ Red teams emulate these TTPs to test defenses, often combining static RE with dy
 - [MITRE ATT&CK: T1552.001](https://attack.mitre.org/techniques/T1552/001/)
 - [FireEye: TrickBot Malware Analysis (2021)](https://www.fireeye.com/blog/threat-research/2021/04/trickbot-malware-analysis.html)
 
+
+### Essential Commands & Features
+
+- **Missing Auto-Analysis & Manual Triggering**: When Ghidra’s initial analysis skips sections (e.g., packed code), re-run specific analyzers via `analyzeHeadless -postScript RunAllAnalyzers.java`.  
+  *Example*: `analyzeHeadless /tmp/out -import sample.exe -postScript RunAllAnalyzers.java`  
+  *When to use*: After unpacking a binary (or adding a new processor module) to reveal hidden imports and functions, aiding detection of **T1059.001** (Command and Scripting Interpreter: PowerShell) via overlooked string references.
+
+- **Patching (Binary Modification)**: Use `PatchInstruction` (right-click in Listing) or scripting: `clearCodeUnitAt(addr); setByte(addr, 0x90)` to NOP a check.  
+  *Example*: In a Python script:  
+  ```python  
+  from ghidra.program.model.listing import CodeUnit  
+  addr = toAddr(0x401000)  
+  currentProgram.getListing().clearCodeUnitAt(addr)  
+  setByte(addr, 0x90)  
+  ```  
+  *When to use*: Bypass anti-debug calls; modify import table entries to enable **T1574.002** (DLL Side-Loading) by redirecting a DLL load.
+
+- **Python Scripting for Automation**: Ghidra’s Jython (2.7) lets you inspect & automate.  
+  *Example*: List all calls to `CreateProcess` to spot process creation—relevant to detecting **T1059.001** (PowerShell) or **T1218.010** (Regsvr32):  
+  ```python  
+  fm = currentProgram.getFunctionManager()  
+  for func in fm.getFunctions(True):  
+      if 'Regsvr32' in func.getName():  
+          print("Potential Regsvr32 execution at", func.getEntryPoint())  
+  ```  
+  *When to use*: Batch‑analyze samples for indicators of known living‑off‑the‑land binaries (LOLBins).
+
+- **Function Signature/FLIRT Usage**: Apply the `FunctionID` analyzer to match statically linked libraries.  
+  *Example*: `analyzeHeadless /tmp/out -import sample.exe -postScript ApplyFidScript.java`  
+  *When to use*: Identify embedded library code (e.g., OpenSSL), which can aid attribution; uncovers architecture‑specific calls that may be abused for **T1574.002** (DLL Side-Loading) when the binary references `kernel32.dll` or `ole32.dll`.
+
+**Sources**:  
+- Ghidra Headless Mode Documentation: [https://ghidra.re/ghidra_docs/analyzeHeadlessREADME.html](https://ghidra.re/ghidra_docs/analyzeHeadlessREADME.html)  
+- SANS Ghidra Cheat Sheet (Scripting & Patching): [https://www.sans.org/blog/ghidra-cheat-sheet/](https://www.sans.org/blog/ghidra-cheat-sheet/)
+
+### Common Pitfalls & Result Validation
+
+When performing static reverse engineering, analysts often fall into traps that lead to false conclusions or wasted time. A frequent mistake is **overlooking compiler optimizations** (e.g., dead code elimination or inlining), which can obscure malicious logic or mislead control-flow analysis. For example, **T1027.006: HTML Smuggling** may embed payloads in seemingly benign JavaScript, but aggressive minification can make manual inspection unreliable—always cross-validate with dynamic analysis or deobfuscation tools like *de4js*.
+
+Another pitfall is **assuming all strings are meaningful**. Hardcoded strings (e.g., C2 domains in **T1102.002: Web Service: Bidirectional Communication**) may be decoys or encrypted. Validate findings by:
+1. **Cross-referencing strings** with imports (e.g., `CryptDecrypt` for **T1027.008: Steganography**) to confirm usage.
+2. **Checking entropy**—high-entropy strings often indicate encryption or encoding (e.g., base64 in **T1027.004: Compile After Delivery**).
+3. **Correlating with behavior**: If a string isn’t referenced in code paths, it may be a red herring.
+
+To avoid false positives, **triangulate static findings with dynamic tools** (e.g., *Process Monitor* for file/registry activity) and **document assumptions** (e.g., "This XOR loop *appears* to decrypt C2 traffic—verify with a debugger"). Always test hypotheses by patching suspected malicious code and observing behavioral changes.
+
+**Sources**:
+- [MITRE ATT&CK: T1027.006](https://attack.mitre.org/techniques/T1027/006/)
+- [CERT-EU: Static Analysis Pitfalls in Malware RE](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001.pdf)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative project or vendor pages):
 
@@ -293,3 +343,9 @@ Claim → source mapping (all URLs are official/authoritative project or vendor 
 - https://www.fireeye.com/blog/threat-research/2021/04/trickbot-malware-analysis.html
 
 <!-- cyberlab-enriched: v4 -->
+- https://ghidra.re/ghidra_docs/analyzeHeadlessREADME.html](https://ghidra.re/ghidra_docs/analyzeHeadlessREADME.html
+- https://www.sans.org/blog/ghidra-cheat-sheet/](https://www.sans.org/blog/ghidra-cheat-sheet/
+- https://attack.mitre.org/techniques/T1027/006/
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001.pdf
+
+<!-- cyberlab-enriched: v5 -->
