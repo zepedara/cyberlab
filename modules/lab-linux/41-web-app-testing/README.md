@@ -130,6 +130,51 @@ Because the sample is generated deterministically by the `printf` command shown,
 - **T1040 — Network Sniffing** (Burp Suite proxy capturing HTTP traffic). DFIR phase: **identification**. (https://attack.mitre.org/techniques/T1040/)
 - **T1059 — Command And Scripting Interpreter** (scripting nmap or Burp Extender usage). DFIR phase: **exploitation**. (https://attack.mitre.org/techniques/T1059/)
 
+
+```markdown
+### Essential Commands & Features
+
+Master these **undemonstrated** Nmap commands to enhance web-app testing efficiency and depth:
+
+1. **`-A` (Aggressive OS/Service Detection)**
+   Enables OS detection (`-O`), version detection (`-sV`), script scanning (`-sC`), and traceroute. Use when you need **comprehensive host profiling** in a single scan.
+   ```bash
+   nmap -A -p 80,443 192.168.1.1
+   ```
+   *Targets*: [T1082 (System Information Discovery)](https://attack.mitre.org/techniques/T1082/), [T1592.004 (Gather Victim Host Information: Client Configurations)](https://attack.mitre.org/techniques/T1592/004/).
+
+2. **`--script vuln` (Vulnerability Scanning)**
+   Runs Nmap’s **vulnerability detection scripts** (e.g., `http-sql-injection`, `ssl-heartbleed`). Critical for identifying CVEs in web apps.
+   ```bash
+   nmap --script vuln -p 443 192.168.1.1
+   ```
+
+3. **`-O` (OS Detection)**
+   Fingerprints the OS via TCP/IP stack behavior. Useful for **targeted exploit selection** when `-A` is too noisy.
+   ```bash
+   nmap -O -Pn 192.168.1.1
+   ```
+
+4. **`-T4` (Speed Optimization)**
+   Aggressive timing template (1–5, where 4 = "aggressive"). Balances speed and accuracy for **large-scale scans**.
+   ```bash
+   nmap -T4 -p- 192.168.1.0/24
+   ```
+
+5. **`-oA` (Output All Formats)**
+   Saves results in **normal (`-oN`), XML (`-oX`), and grepable (`-oG`)** formats simultaneously. Essential for reporting and tool integration.
+   ```bash
+   nmap -sV -oA web_scan 192.168.1.1
+   ```
+
+**Sources**:
+- [Nmap Scripting Engine (NSE) Guide](https://nmap.org/nsedoc/)
+- [OWASP Testing Guide: Fingerprinting](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server)
+```
+
+### Threat Hunting & Detection Engineering
+To effectively hunt and detect threats in web application testing, it's crucial to analyze logs from various sources, including web server logs, database logs, and system logs. For instance, Windows Event ID 4688 can indicate a suspicious process creation, while Zeek's HTTP logs can reveal potential command and control (C2) communications. By monitoring these logs, you can detect techniques like [T1204](https://attack.mitre.org/techniques/T1204) - User Execution, where an attacker tricks a user into executing malicious code, and [T1558](https://attack.mitre.org/techniques/T1558) - Steal or Manipulate Other Application Data, where an attacker steals or manipulates sensitive data from other applications. Threat hunters can pivot on fields like user agents, IP addresses, and request URLs to identify patterns of suspicious activity. By leveraging these detection engineering techniques, you can improve your ability to identify and respond to web application threats. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [Center for Internet Security (CIS)](https://www.cisecurity.org/) websites.
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -171,3 +216,12 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [Network traffic analysis with Wireshark](../34-wireshark/README.md) — demonstrates deep packet inspection for HTTP.
 
 <!-- cyberlab-enriched: v2 -->
+- https://attack.mitre.org/techniques/T1082/
+- https://attack.mitre.org/techniques/T1592/004/
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server
+- https://attack.mitre.org/techniques/T1204
+- https://attack.mitre.org/techniques/T1558
+- https://www.cisa.gov/
+- https://www.cisecurity.org/
+
+<!-- cyberlab-enriched: v3 -->
