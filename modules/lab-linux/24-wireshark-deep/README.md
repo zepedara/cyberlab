@@ -91,8 +91,11 @@ Concrete detection logic and pivots:
 - **TLS C2 (T1071.001 / T1573 Encrypted Channel):** Pivot from Zeek `ssl.log` / `x509.log` using SNI and the JA3/JA3S fingerprint fields Zeek emits, then correlate to the ClientHello in pcap via `tls.handshake.extensions_server_name`. A JA3 hash matching known offensive tooling with a suspicious SNI is a strong lead.
 - **Exfiltration over C2 (T1041):** Look for large outbound byte counts on the C2 flow in Zeek `conn.log` (`orig_bytes` vs `resp_bytes`) or Suricata flow records, then reconstruct the transfer in pcap.
 - **Cleartext credentials on the wire:** `ngrep` proves whether credentials, tokens, or tool output traversed unencrypted — a direct check that supports Network Sniffing (T1040) impact assessment.
+- **Ingress Tool Transfer (T1105):** Detect the download of tools or payloads by analyzing HTTP `GET` requests for known malicious URIs or file extensions (e.g., `.exe`, `.ps1`, `.dll`). In Zeek `http.log`, filter on `method=="GET"` and examine the `uri` field for suspicious patterns. In the pcap, use `tshark -Y "http.request.method == GET && http.request.uri contains .exe"` to find executable downloads. Correlate with Suricata alerts for known malicious file hashes or domains.
+- **Command and Scripting Interpreter (T1059) via HTTP POST:** Identify potential command execution by searching for POST requests with encoded or obfuscated parameters. In Zeek `http.log`, look for `method=="POST"` to unusual domains with high `request_body_len`. In the pcap, use `tshark -Y "http.request.method == POST" -T fields -e http.host -e http.request.uri` and examine payloads with `ngrep -I $IMAGE -q -W byline "cmd\|powershell\|/bin/sh"`.
+- **Threat Hunting Pivot:** From a Suricata alert for a known C2 domain, retrieve the full pcap session via Security Onion's `soc` or `capme` tools. Use `tshark -r $IMAGE -Y "ip.addr == $SUSPECT_IP" -z conv,ip` to list all conversations involving that IP, then extract the JA3 fingerprint with `tshark -r $IMAGE -Y "tls.handshake.type == 1 && ip.addr == $SUSPECT_IP" -T fields -e tls.handshake.ja3_hash`. Hunt for other internal hosts with the same JA3 hash across historical Zeek `ssl.log` data.
 
-Document each confirmed indicator (domain, IP, URI, SNI, JA3, User-Agent) as an IOC for blocking and threat-hunt retro-search. Technique IDs: T1071 (https://attack.mitre.org/techniques/T1071/), T1071.001 (https://attack.mitre.org/techniques/T1071/001/), T1071.004 (https://attack.mitre.org/techniques/T1071/004/), T1573 (https://attack.mitre.org/techniques/T1573/), T1041 (https://attack.mitre.org/techniques/T1041/).
+Document each confirmed indicator (domain, IP, URI, SNI, JA3, User-Agent) as an IOC for blocking and threat-hunt retro-search. Technique IDs: T1071 (https://attack.mitre.org/techniques/T1071/), T1071.001 (https://attack.mitre.org/techniques/T1071/001/), T1071.004 (https://attack.mitre.org/techniques/T1071/004/), T1573 (https://attack.mitre.org/techniques/T1573/), T1041 (https://attack.mitre.org/techniques/T1041/), T1105 (https://attack.mitre.org/techniques/T1105/), T1059 (https://attack.mitre.org/techniques/T1059/).
 
 ## Attacker perspective
 An attacker uses the same packet-level visibility, but as a defender-awareness problem: they know that unencrypted C2, cleartext credentials, and noisy scanning all leave a permanent record in any capture appliance. Offensive operators therefore encrypt beacons (TLS — Encrypted Channel, T1573.002 Asymmetric Cryptography), blend into common ports (443/80/53), and use protocol tunneling (T1572) or DNS tunneling to evade grep-style detection — yet each still leaves artifacts.
@@ -102,8 +105,11 @@ Concrete TTPs, artifacts, and evasion:
 - **DNS tunneling (T1071.004):** Encoding data into subdomains and TXT records leaves abnormally long labels, high query entropy, and elevated query volume in Zeek `dns.log` — all detectable without decrypting anything.
 - **Network sniffing after a tap (T1040):** An adversary running tshark/ngrep on a network they've tapped can harvest cleartext creds, but achieving the tap via ARP cache poisoning (T1557.002) generates its own artifacts — duplicate/changing MAC-to-IP mappings and gratuitous ARP visible in the capture and in Zeek/Suricata ARP anomaly detection.
 - **Evasion vs. residual signal:** Domain fronting (formerly cataloged under T1090.004) and encrypted payloads defeat payload inspection but do not hide flow metadata, SNI, JA3, or timing — which is why full-pcap + Zeek metadata retention beats payload-only searching.
+- **Ingress Tool Transfer (T1105):** Attackers often stage tools via HTTP/S downloads from external servers. To evade signature-based detection, they may use compromised legitimate sites (watering holes), split payloads across multiple requests, or use non-standard ports. Artifacts include HTTP `GET` requests with unusual `User-Agent` strings (e.g., default Python-urllib) and mismatched content-type vs. file extension in Zeek `http.log`.
+- **Command and Scripting Interpreter (T1059) via Web Shells:** Web shells (T1505.003) often communicate via HTTP POST with base64 or URL-encoded command parameters. While encryption (TLS) hides the payload, the pattern of frequent POST requests to a specific URI with small, regular response sizes can be detected in Zeek `http.log` via the `post_body_len` and `resp_body_len` fields. Attackers may rotate URIs or use `GET` with parameters to blend in.
+- **Data Exfiltration via DNS (T1048.003):** Beyond tunneling, attackers exfiltrate data via DNS TXT or NULL record queries. This leaves a trail of high-volume, sequential queries to the same authoritative server, with request names containing encoded data (high entropy). Detection via Zeek `dns.log` focuses on `qtype_name=="TXT"` and `query` length anomalies.
 
-Technique references: T1071.001 (https://attack.mitre.org/techniques/T1071/001/), T1071.004 (https://attack.mitre.org/techniques/T1071/004/), T1040 (https://attack.mitre.org/techniques/T1040/), T1557.002 (https://attack.mitre.org/techniques/T1557/002/), T1572 (https://attack.mitre.org/techniques/T1572/), T1573.002 (https://attack.mitre.org/techniques/T1573/002/).
+Technique references: T1071.001 (https://attack.mitre.org/techniques/T1071/001/), T1071.004 (https://attack.mitre.org/techniques/T1071/004/), T1040 (https://attack.mitre.org/techniques/T1040/), T1557.002 (https://attack.mitre.org/techniques/T1557/002/), T1572 (https://attack.mitre.org/techniques/T1572/), T1573.002 (https://attack.mitre.org/techniques/T1573/002/), T1105 (https://attack.mitre.org/techniques/T1105/), T1059 (https://attack.mitre.org/techniques/T1059/), T1505.003 (https://attack.mitre.org/techniques/T1505/003/), T1048.003 (https://attack.mitre.org/techniques/T1048/003/).
 
 ## Answer key
 Sample sha256: `c039d5d4db1a5d96dd80c4a321a2bdf6013428a9cf0782f780883e0b44851c77`
@@ -135,6 +141,10 @@ Expected: the `User-Agent:` header line from the HTTP request. Equivalent tshark
 - T1040 — Network Sniffing (offensive capture / defender detection of taps). https://attack.mitre.org/techniques/T1040/
 - T1557.002 — Adversary-in-the-Middle: ARP Cache Poisoning (tap technique). https://attack.mitre.org/techniques/T1557/002/
 - T1041 — Exfiltration Over C2 Channel. https://attack.mitre.org/techniques/T1041/
+- T1105 — Ingress Tool Transfer. https://attack.mitre.org/techniques/T1105/
+- T1059 — Command and Scripting Interpreter. https://attack.mitre.org/techniques/T1059/
+- T1505.003 — Server Software Component: Web Shell. https://attack.mitre.org/techniques/T1505/003/
+- T1048.003 — Exfiltration Over Alternative Protocol: Exfiltration Over Unencrypted Non-C2 Protocol. https://attack.mitre.org/techniques/T1048/003/
 - DFIR phase: **Examination / Analysis** (deep inspection of previously collected network evidence), feeding **Identification** of IOCs.
 
 ## Sources
@@ -150,7 +160,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - REMnux docs (network analysis tools incl. tshark/ngrep) — https://docs.remnux.org/discover-the-tools/examine+network+interactions
 - SANS FOR572: Advanced Network Forensics — https://www.sans.org/cyber-security-courses/advanced-network-forensics-threat-hunting-incident-response/
 - Security Onion Documentation — PCAP retrieval: https://docs.securityonion.net/en/2.4/pcap.html ; Zeek: https://docs.securityonion.net/en/2.4/zeek.html ; Suricata: https://docs.securityonion.net/en/2.4/suricata.html
-- MITRE ATT&CK techniques — T1071 https://attack.mitre.org/techniques/T1071/ ; T1071.001 https://attack.mitre.org/techniques/T1071/001/ ; T1071.004 https://attack.mitre.org/techniques/T1071/004/ ; T1573 https://attack.mitre.org/techniques/T1573/ ; T1573.002 https://attack.mitre.org/techniques/T1573/002/ ; T1572 https://attack.mitre.org/techniques/T1572/ ; T1040 https://attack.mitre.org/techniques/T1040/ ; T1557.002 https://attack.mitre.org/techniques/T1557/002/ ; T1041 https://attack.mitre.org/techniques/T1041/
+- MITRE ATT&CK techniques — T1071 https://attack.mitre.org/techniques/T1071/ ; T1071.001 https://attack.mitre.org/techniques/T1071/001/ ; T1071.004 https://attack.mitre.org/techniques/T1071/004/ ; T1573 https://attack.mitre.org/techniques/T1573/ ; T1573.002 https://attack.mitre.org/techniques/T1573/002/ ; T1572 https://attack.mitre.org/techniques/T1572/ ; T1040 https://attack.mitre.org/techniques/T1040/ ; T1557.002 https://attack.mitre.org/techniques/T1557/002/ ; T1041 https://attack.mitre.org/techniques/T1041/ ; T1105 https://attack.mitre.org/techniques/T1105/ ; T1059 https://attack.mitre.org/techniques/T1059/ ; T1505.003 https://attack.mitre.org/techniques/T1505/003/ ; T1048.003 https://attack.mitre.org/techniques/T1048/003/
+- Zeek Log Documentation — conn.log, http.log, dns.log, ssl.log, x509.log fields: https://docs.zeek.org/en/master/script-reference/log-files.html
+- Suricata Rule Writing — Flow and HTTP keywords: https://docs.suricata.io/en/suricata-7.0.0/rules/intro.html
 
 ## Related modules
 - [Network / PCAP analysis](../07-network-pcap/README.md) -- shares ngrep for payload pattern matching against captures.
@@ -158,4 +170,4 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives) for host-side memory evidence.
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives) for signature-based detection.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
