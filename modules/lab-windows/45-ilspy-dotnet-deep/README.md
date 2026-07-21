@@ -372,6 +372,53 @@ Sources:
 - Elastic Security Labs, *Unmasking .NET Malware: A Static Analysis Approach*, https://www.elastic.co/security-labs/unmasking-net-malware
 - CrowdStrike, *How to Analyze Malicious .NET Samples*, https://www.crowdstrike.com/blog/how-to-analyze-malicious-net-samples/
 
+
+### Essential Commands & Features
+
+Master these `ilspycmd` and `de4dot` flags to accelerate .NET reverse-engineering and evasion analysis:
+
+1. **Project Export (`-p`)**
+   Reconstruct a compilable Visual Studio project instead of loose files. Critical when analyzing obfuscated malware that relies on build-time transformations (e.g., **T1127.001: Trusted Developer Utilities Proxy Execution**).
+   ```bash
+   ilspycmd -p -o ./recovered_project malware.dll
+   ```
+
+2. **Tree View (`-t`)**
+   Display a hierarchical namespace/class/member tree. Ideal for quickly locating entry points in large assemblies (e.g., **T1622: Debugger Evasion**).
+   ```bash
+   ilspycmd -t malware.dll
+   ```
+
+3. **Output Directory (`-o`)**
+   Redirect decompiled output to a specific folder. Use with `-p` to organize multi-file projects.
+   ```bash
+   ilspycmd -o ./output_dir malware.dll
+   ```
+
+4. **Deobfuscation Controls**
+   Preserve original names with `--dont-rename` and retain encryption keys with `--ke` to analyze string decryption routines (e.g., **T1027.003: Steganography**).
+   ```bash
+   de4dot --dont-rename --ke malware_cleaned.dll
+   ```
+
+**Sources:**
+- [ILSpy Command-Line Documentation](https://github.com/icsharpcode/ILSpy/wiki/Command-Line-Interface)
+- [de4dot Usage Guide](https://github.com/de4dot/de4dot/blob/master/README.md)
+
+### Threat Hunting & Detection Engineering
+
+When adversaries use ILSpy to decompile .NET assemblies, they often leave traces in **Windows Event Logs** and **network telemetry**. Focus on **Event ID 4688** (Process Creation) with `NewProcessName` containing `ilspy.exe` or `ilspy.dll` loaded by unexpected parent processes (e.g., `wscript.exe`, `powershell.exe`). Pivot on **Event ID 7** (Image Load) for `mscorlib.dll` or `System.Reflection.Emit.dll`—common dependencies for dynamic code generation—when loaded by non-.NET applications.
+
+For network-based detection, monitor **Zeek’s `conn.log`** for unusual outbound connections from `ilspy.exe` (e.g., `service=HTTP` with `uri` containing `.dll` or `.exe` downloads). In **Suricata**, alert on **HTTP requests with `User-Agent: ILSpy`** or `Content-Type: application/x-msdownload` from non-developer IPs.
+
+**MITRE ATT&CK Techniques:**
+- **[T1003.001: OS Credential Dumping: LSASS Memory](https://attack.mitre.org/techniques/T1003/001/)** – ILSpy may be used to extract hardcoded credentials from decompiled .NET malware.
+- **[T1553.002: Subvert Trust Controls: Code Signing](https://attack.mitre.org/techniques/T1553/002/)** – Adversaries may use ILSpy to analyze signed binaries for vulnerabilities or tamper with signatures.
+
+**Sources:**
+- [CISA: Detecting Post-Exploitation with Windows Event Logs](https://www.cisa.gov/resources-tools/services/detecting-post-exploitation-activity-windows-event-logs)
+- [Mandiant: Hunting for .NET Tradecraft](https://www.mandiant.com/resources/blog/hunting-for-net-tradecraft)
+
 ## Sources
 **Claim → Source Mapping (All URLs are official tool docs, Microsoft Learn, MITRE ATT&CK, RFC editor, or recognized project docs):**
 
@@ -438,3 +485,11 @@ Sources:
 - https://www.crowdstrike.com/blog/how-to-analyze-malicious-net-samples/
 
 <!-- cyberlab-enriched: v3 -->
+- https://github.com/icsharpcode/ILSpy/wiki/Command-Line-Interface
+- https://github.com/de4dot/de4dot/blob/master/README.md
+- https://attack.mitre.org/techniques/T1003/001/
+- https://attack.mitre.org/techniques/T1553/002/
+- https://www.cisa.gov/resources-tools/services/detecting-post-exploitation-activity-windows-event-logs
+- https://www.mandiant.com/resources/blog/hunting-for-net-tradecraft
+
+<!-- cyberlab-enriched: v4 -->
