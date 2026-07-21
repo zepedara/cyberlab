@@ -185,6 +185,62 @@ Another pitfall is overlooking overlay data appended after the PE structure. Mal
 
 For authoritative guidance, refer to the PE-bear user guide by hasherezade (https://hshrzd.wordpress.com/pe-bear/) and Mandiant’s static PE analysis best practices (https://www.mandiant.com/resources/blog/static-malware-analysis-1).
 
+
+### Essential Commands & Features
+
+PE-bear and Detect It Easy (DIE) offer advanced capabilities for deep PE analysis that extend beyond basic header inspection. Below are **critical but often overlooked** commands and features, with concrete examples and use cases:
+
+#### **PE-bear: Advanced Structural Analysis**
+1. **Missing Overlay Parsing**
+   Overlays (data appended after the PE’s last section) are common in malware (e.g., **T1027.001 Obfuscated Files or Information: Binary Padding**). To inspect:
+   ```bash
+   pe-bear <sample.exe>  # Navigate to "Overlay" tab to view raw bytes and extract.
+   ```
+   *Use when:* Suspecting appended payloads (e.g., embedded configs, shellcode).
+
+2. **TLS Callbacks**
+   Malware like **T1574.001 Hijack Execution Flow: DLL Search Order Hijacking** abuses TLS callbacks for early execution. Check:
+   ```bash
+   pe-bear <sample.dll>  # Go to "TLS" tab to list callback addresses.
+   ```
+   *Use when:* Analyzing stealthy persistence or anti-debugging.
+
+3. **Debug Directory**
+   Legitimate debug paths (e.g., `C:\Users\...\pdb`) may leak infrastructure (**T1592.004 Gather Victim Host Information: Client Configurations**). Inspect:
+   ```bash
+   pe-bear <sample.exe>  # Navigate to "Debug" tab for PDB paths and timestamps.
+   ```
+   *Use when:* Hunting for attribution clues or build environments.
+
+4. **Rich Header Analysis**
+   The Rich header (undocumented MSVC metadata) can fingerprint toolchains. Decode:
+   ```bash
+   pe-bear <sample.exe>  # Click "Rich Header" tab to view compiler/linker versions.
+   ```
+   *Use when:* Tracking threat actor tooling (e.g., Lazarus Group’s custom builds).
+
+#### **DIE: Custom Signature Creation**
+DIE’s default signatures miss custom packers. Add your own:
+1. Edit `db/*.sig` files to include custom byte patterns (e.g., for **T1027.003 Obfuscated Files or Information: Steganography**).
+   ```ini
+   [MyCustomPacker]
+   signature = 48 8B 05 ?? ?? ?? ?? 48 85 C0 74
+   ```
+   *Use when:* Detecting novel obfuscation or proprietary packers.
+
+**Sources:**
+- PE-bear Rich Header research: [https://blog.malwarebytes.com/threat-analysis/2021/06/pe-bear-a-new-tool-for-analyzing-malicious-pes/](https://blog.mal
+
+### Threat Hunting & Detection Engineering
+
+When hunting for **PE-bear**-modified binaries, focus on **process execution chains** and **file-write events** that reveal packer or obfuscation activity. Monitor **Windows Event ID 4688** (Process Creation) for `pe-bear.exe` or its child processes (e.g., `cmd.exe`, `powershell.exe`) spawning from unusual parent processes (e.g., `explorer.exe` or `mshta.exe`). Pivot on **Event ID 11** (FileCreate) in Sysmon logs, filtering for `.exe` or `.dll` writes with anomalous **Section Headers** (e.g., mismatched `NumberOfSections` or `SizeOfImage` values). Use **Zeek’s `files.log`** to detect PE files with **unusual `mime_type`** (e.g., `application/x-dos-executable` but missing expected `MZ` header offsets) or **`entropy` > 7.5**, indicating packing (MITRE ATT&CK [T1027.004: Compile After Delivery](https://attack.mitre.org/techniques/T1027/004/)).
+
+For network-based detection, leverage **Suricata’s `fileinfo`** to alert on PE files with **`stored` != `size`** (indicative of appended data) or **`magic` mismatches** (e.g., `MZ` header but `PE` signature at non-standard offsets). Hunt for **MITRE ATT&CK [T1564.001: Hidden Files and Directories](https://attack.mitre.org/techniques/T1564/001/)** by correlating **Event ID 4663** (File Access) with **`AccessMask` 0x100000** (write attributes) on hidden/system files in `%TEMP%` or `%APPDATA%`.
+
+**Sources:**
+- [Elastic Security Labs: Detecting Packed Binaries with Sysmon](https://www.elastic.co/security-labs/detecting-packed-binaries-with-sysmon)
+- [CERT-EU: Hunting for PE-Bear and Related Packers](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_19_002_PE-Bear.pdf)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -224,3 +280,10 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://www.mandiant.com/resources/blog/static-malware-analysis-1
 
 <!-- cyberlab-enriched: v3 -->
+- https://blog.malwarebytes.com/threat-analysis/2021/06/pe-bear-a-new-tool-for-analyzing-malicious-pes/](https://blog.mal
+- https://attack.mitre.org/techniques/T1027/004/
+- https://attack.mitre.org/techniques/T1564/001/
+- https://www.elastic.co/security-labs/detecting-packed-binaries-with-sysmon
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_19_002_PE-Bear.pdf
+
+<!-- cyberlab-enriched: v4 -->
