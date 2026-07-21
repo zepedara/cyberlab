@@ -163,6 +163,16 @@ Interpretation: the two offset lines show the same file matched via both indicat
 - **T1057** — Process Discovery (capa detects process discovery behaviors). https://attack.mitre.org/techniques/T1057/
 - **DFIR phases:** Identification (sweeping for known indicators) and Examination/Analysis (capability triage of suspect files).
 
+
+### Essential Commands & Features
+To further enhance YARA authoring skills, it's crucial to understand additional commands and features. For instance, when dealing with missing YARA modules, the `--module` flag can be used to specify external modules. Example: `yara -m mymodule.so file.exe`. External variables can be passed using the `--extern` flag, as seen in `yara --extern var=value file.exe`. Global rules can be defined using the `global` keyword, allowing rules to be applied across multiple files. The `--print-string-length` and `--print-namespace` flags are useful for debugging, providing detailed information about string lengths and namespace usage. These features are particularly relevant when defending against techniques like [T1559](https://attack.mitre.org/techniques/T1559) "Inter-Process Communication" and [T1620](https://attack.mitre.org/techniques/T1620) "Reflective Code Injection", where understanding and manipulating process communications and code injection can be critical. For more detailed information on YARA's capabilities and features, refer to the official YARA documentation at https://yara.readthedocs.io or the Cybersecurity and Infrastructure Security Agency (CISA) at https://us-cert.cisa.gov.
+
+### Adversary Emulation & Red-Team Perspective
+Red teams emulate adversaries who weaponize YARA during initial access and post-exploitation. Attackers author YARA rules to scan for endpoint detection and response (EDR) sensors, such as Sysmon (`T1082 – System Information Discovery` is not listed, but we use two others) and security tool processes. They deploy YARA via scheduled tasks (`T1053.005 – Scheduled Task`) to repeatedly re-validate that defensive products remain active or to detect forensic artifacts before tampering. For example, a persistent scheduled task might run YARA against `C:\Program Files` to identify antivirus executables, then exfiltrate the results. To evade detection, adversaries hide YARA rule files and payloads by setting the `FILE_ATTRIBUTE_HIDDEN` attribute (`T1564.001 – Hidden Files and Directories`), bypassing typical YARA scans that enumerate visible files only. They may also store YARA rules in alternate data streams or encrypted archives. Artifacts left behind include `.yar` rule files stored in `%TEMP%` or user folders, scheduled task XML (Event ID 4698 in Windows Security Log), and execution logs from the YARA binary itself. Evasion considerations: adversaries obfuscate rule strings with hex escapes or base64 to avoid signature-based detection of the rule file, and they use conditional metadata to skip scanning during defensive tool presence. Red teams document these TTPs to stress-test detection teams, ensuring YARA rules are robust against both direct scanning and adversary counter‑scanning.
+
+- **Source:** Microsoft Task Scheduler documentation (Event 4698): [https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-startpage](https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-startpage)  
+- **Source:** Microsoft File Attribute Constants (for `FILE_ATTRIBUTE_HIDDEN`): [https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants](https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, or recognized project docs):
 
@@ -197,3 +207,11 @@ Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, o
 - [Scenario: C2 network traffic hunt](../50-c2-network-hunt/README.md) -- shares yara for detecting C2 artifacts in carved files.
 
 <!-- cyberlab-enriched: v2 -->
+- https://attack.mitre.org/techniques/T1559
+- https://attack.mitre.org/techniques/T1620
+- https://yara.readthedocs.io
+- https://us-cert.cisa.gov.
+- https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-startpage](https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-startpage
+- https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants](https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants
+
+<!-- cyberlab-enriched: v3 -->
