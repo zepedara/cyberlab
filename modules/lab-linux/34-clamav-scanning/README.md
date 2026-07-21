@@ -139,6 +139,26 @@ Produces `lab34_marker exercise/sample.txt` and, with `-s`, the matched offset a
 - T1566.001 — Phishing: Spearphishing Attachment (malicious file delivered via email). https://attack.mitre.org/techniques/T1566/001/
 - DFIR phase: **Identification / Examination** — triaging and classifying suspect files during incident response before deeper reverse engineering.
 
+
+### Essential Commands & Features
+
+ClamAV’s **`clamd`** daemon and **`clamdscan`** client enable real-time scanning, reducing resource overhead for large-scale deployments. Start the daemon with `clamd` (configure via `/etc/clamav/clamd.conf`), then scan files using `clamdscan /path/to/scan --fdpass` (the `--fdpass` flag passes file descriptors to `clamd` for efficient scanning). For alerts, use `--bell` to trigger an audible notification on detection (e.g., `clamdscan --bell /home/user`).
+
+To **quarantine malicious files**, use `--move=/quarantine/path` (e.g., `clamscan --move=/quarantine /downloads`). Exclude directories with `--exclude=PATTERN` (e.g., `--exclude=*.tmp`) or log results to a file with `--log=/var/log/clamav/scan.log`. The `--infected` flag returns only infected files, useful for scripting (e.g., `clamscan --infected /var/www`).
+
+For **YARA integration**, leverage external variables to dynamically match rules. Example:
+```bash
+clamscan -d custom.yar --yaravars="filename=malware.exe,size=1024" /suspicious/
+```
+This targets files named `malware.exe` with a 1KB size, addressing **T1037.005 (Boot or Logon Initialization Scripts)** and **T1546.008 (Accessibility Features)** by detecting persistence mechanisms.
+
+**Key Sources**:
+- [ClamAV Official: `clamd` and `clamdscan`](https://docs.clamav.net/manual/Usage/Scanning.html#clamd-and-clamdscan)
+- [YARA External Variables Guide](https://yara.readthedocs.io/en/stable/writingrules.html#external-variables)
+
+### Threat Hunting & Detection Engineering
+To enhance threat hunting and detection engineering capabilities when using ClamAV, focus on integrating its scanning capabilities with other security tools and log sources. For instance, monitor Windows Event ID 4688 (Process Creation) to detect potential malware execution, and then pivot on the `CommandLine` field to identify suspicious command-line arguments. This can help detect techniques like [T1559](https://attack.mitre.org/techniques/T1559) (Interfering with Security Monitoring Tools) and [T1497](https://attack.mitre.org/techniques/T1497) (Virtualization/Sandbox Evasion), where attackers may attempt to evade detection by manipulating security tools or sandbox environments. Analyze Zeek logs for unusual DNS queries or HTTP requests that could indicate malware communication. Threat hunters can also leverage ClamAV's scanning results to inform their hunts, looking for patterns of suspicious files or directories that may indicate an ongoing attack. For more information on enhancing detection capabilities, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites for guidance on threat hunting and detection engineering best practices.
+
 ## Sources
 Claim-to-source mapping (all URLs are official/authoritative):
 
@@ -177,3 +197,11 @@ Claim-to-source mapping (all URLs are official/authoritative):
 - [Scenario: C2 network traffic hunt](../50-c2-network-hunt/README.md) -- pairs file-carved YARA verdicts with the network pivots referenced in the SOC section.
 
 <!-- cyberlab-enriched: v2 -->
+- https://docs.clamav.net/manual/Usage/Scanning.html#clamd-and-clamdscan
+- https://yara.readthedocs.io/en/stable/writingrules.html#external-variables
+- https://attack.mitre.org/techniques/T1559
+- https://attack.mitre.org/techniques/T1497
+- https://www.cisa.gov/
+- https://www.nist.gov/
+
+<!-- cyberlab-enriched: v3 -->
