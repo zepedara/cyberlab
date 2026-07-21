@@ -144,6 +144,46 @@ Expected finding: a line such as `User-Agent: curl/8.5.0` (the exact agent recor
 - **T1573** — Encrypted Channel (attacker evasion of cleartext inspection). https://attack.mitre.org/techniques/T1573/
 - **DFIR phase:** Identification → Examination (network evidence triage and content reconstruction).
 
+
+### Essential Commands & Features
+
+To deepen network analysis, master these **undemonstrated** but critical `tshark` commands and features:
+
+#### **TCP Conversation Tracking (`-z conv,tcp`)**
+Use this to map **end-to-end TCP flows**, revealing lateral movement or C2 channels. Example:
+```bash
+tshark -r capture.pcap -q -z conv,tcp
+```
+**When to use it**:
+- Detect **T1095 (Non-Application Layer Protocol)** (e.g., raw TCP C2) or **T1021.001 (Remote Services: Remote Desktop Protocol)** by identifying unusual internal TCP connections.
+- Correlate with `follow tcp stream` for payload inspection.
+
+#### **Other Key Commands**
+1. **Extract HTTP Objects**:
+   ```bash
+   tshark -r capture.pcap --export-objects http,./output_dir
+   ```
+   *Use for*: Analyzing **T1105 (Ingress Tool Transfer)** (e.g., malware downloads).
+
+2. **Decrypt TLS Traffic** (with key log):
+   ```bash
+   tshark -r capture.pcap -o tls.keylog_file:keys.log
+   ```
+   *Use for*: Inspecting **T1573.002 (Encrypted Channel: Asymmetric Cryptography)**.
+
+3. **Filter by Time Delta** (e.g., beaconing):
+   ```bash
+   tshark -r capture.pcap -Y "tcp.time_delta > 5"
+   ```
+   *Use for*: Spotting **T1102 (Web Service)** callbacks.
+
+**Sources**:
+- [Wireshark’s `tshark` Man Page (Official)](https://www.wireshark.org/docs/man-pages/tshark.html)
+- [CERT-EU’s PCAP Analysis Guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002.pdf)
+
+### Threat Hunting & Detection Engineering
+To enhance threat hunting and detection engineering capabilities, focus on analyzing network capture (pcap) files for signs of adversary tactics, techniques, and procedures (TTPs). Monitor for techniques like [T1204](https://attack.mitre.org/techniques/T1204/) - "User Execution" and [T1210](https://attack.mitre.org/techniques/T1210/) - "Exploitation of Remote Services", which involve manipulating users into executing malicious code or exploiting vulnerabilities in remote services. Analyze Zeek logs for unusual DNS queries, HTTP requests, or SSH connections. Inspect Windows Event IDs related to process creation (4688) and network connections (5156-5158) for suspicious activity. Threat hunters can pivot on unusual network protocols, source/destination IP addresses, or user agents to uncover potential security incidents. By integrating these detection logic and threat-hunting pivots, security teams can improve their ability to identify and respond to advanced threats. For more information on threat hunting and detection engineering, visit [https://www.cyber.gov.au/publications/complex-cyber-campaigns-detection-and-disruption](https://www.cyber.gov.au/publications/complex-cyber-campaigns-detection-and-disruption) and [https://www.nist.gov/publications/detecting-and-responding-advanced-threats](https://www.nist.gov/publications/detecting-and-responding-advanced-threats).
+
 ## Sources
 Tooling and commands:
 - SANS SIFT Workstation: https://www.sans.org/tools/sift-workstation/
@@ -194,3 +234,10 @@ Sample-data provenance (documentation-only names/addresses):
 - [Memory forensics](../02-memory-forensics/README.md) -- same learning path (Foundations); recovers network connections and payloads from RAM.
 
 <!-- cyberlab-enriched: v2 -->
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002.pdf
+- https://attack.mitre.org/techniques/T1204/
+- https://attack.mitre.org/techniques/T1210/
+- https://www.cyber.gov.au/publications/complex-cyber-campaigns-detection-and-disruption](https://www.cyber.gov.au/publications/complex-cyber-campaigns-detection-and-disruption
+- https://www.nist.gov/publications/detecting-and-responding-advanced-threats](https://www.nist.gov/publications/detecting-and-responding-advanced-threats
+
+<!-- cyberlab-enriched: v3 -->
