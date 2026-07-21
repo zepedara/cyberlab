@@ -115,20 +115,24 @@ Tasks:
 ## SOC analyst perspective
 Behavioral analysis gives a SOC the concrete IOCs and TTPs needed to write and validate detections.
 
-- **Persistence detection (T1547.001 / T1053.005).** Procmon and Regshot reveal the exact registry value or scheduled task a sample creates. On endpoints, the equivalent live telemetry is **Sysmon Event ID 13 (RegistryValueSet)** for Run-key writes and **Event ID 12/14** for key create/rename, plus **Security 4698 (scheduled task created)**. Detection logic: alert on `RegistryValueSet` where TargetObject matches `\Software\Microsoft\Windows\CurrentVersion\Run\*` and the Image is not a known-good installer. Microsoft ATT&CK page T1547.001 lists Run-key locations; the Sysmon schema is documented on Microsoft Learn.
-- **C2 detection (T1071.001).** FakeNet-NG surfaces the C2 domain (`beacon.test.lab`) and any URIs/ports; feed these to Security Onion. Pivots: in **Zeek** `dns.log` filter `query == "beacon.test.lab"` and correlate to `conn.log`/`ssl.log`; write a **Suricata** rule matching the DNS query or TLS SNI; hunt the domain across Security Onion's **Alerts, Dashboards, and PCAP** views. Security Onion ships Suricata + Zeek + the Elastic stack for exactly this pivot. Source: securityonion.net docs.
-- **Injection detection (T1055).** Process Explorer exposes injected DLLs and RWX regions; the corresponding endpoint signal is **Sysmon Event ID 8 (CreateRemoteThread)** and **Event ID 10 (ProcessAccess)** with suspicious granted-access masks. Pivot from a Sysmon alert to the parent/child chain to scope containment.
+- **Registry Run-key persistence detection (T1547.001).** Procmon and Regshot reveal the exact registry value a sample creates. On endpoints, the equivalent live telemetry is **Sysmon Event ID 13 (RegistryValueSet)** for Run-key writes and **Event ID 12/14** for key create/rename. Detection logic (in prose): alert when a Sysmon EID 13 record has a `TargetObject` ending in `\Software\Microsoft\Windows\CurrentVersion\Run\` (or the machine-wide `HKLM\...\Run` / `RunOnce` equivalents) AND the writing `Image` is not a known-good installer/updater. Enrichment: correlate the `Details` field of that EID 13 (the value data — here the path to the dropped file) against the process that dropped it. Microsoft's ATT&CK page T1547.001 enumerates the Run/RunOnce key locations; the Sysmon schema/Event IDs are documented on Microsoft Learn.
+- **Scheduled Task persistence detection (T1053.005).** Where a sample persists via a task instead of a Run key, the endpoint signals are **Security Event ID 4698 (a scheduled task was created)** and the corresponding **Microsoft-Windows-TaskScheduler/Operational log Event ID 106 (task registered)**. Detection logic: alert on 4698/106 where the task's Actions command line points into `%TEMP%`, `%APPDATA%`, or `%PROGRAMDATA%`, or invokes a script host (`powershell.exe`, `wscript.exe`, `mshta.exe`). Source: Microsoft Learn (4698 event) and MITRE T1053.005.
+- **C2 detection (T1071.001).** FakeNet-NG surfaces the C2 domain (`beacon.test.lab`) and any URIs/ports; feed these to Security Onion. Pivots: in **Zeek** `dns.log` filter on the `query` field equal to `beacon.test.lab` and correlate the answer/`uid` to `conn.log` (fields `id.orig_h`, `id.resp_h`, `id.resp_p`, `duration`, `orig_bytes`); for TLS callbacks pivot to `ssl.log` and inspect the `server_name` (SNI) field. A **Suricata** signature can key on the `dns.query` buffer/keyword for the domain, or on the `tls.sni` keyword for the SNI — hunt the domain across Security Onion's **Alerts, Hunt, Dashboards, and PCAP** views. Security Onion ships Suricata + Zeek + the Elastic stack for exactly this pivot. Source: securityonion.net docs, docs.zeek.org, docs.suricata.io.
+- **Beaconing hunt (T1071.001).** Beyond the single IOC, hunt for periodicity: in Zeek `conn.log`, group by `id.resp_h`/`id.resp_p` and look for many short, regularly spaced connections with low, consistent `orig_bytes` — the signature of automated check-ins. This is a threat-hunting pivot that catches unknown C2 the FakeNet IOC list would miss.
+- **Injection detection (T1055 / T1055.001).** Process Explorer exposes injected DLLs and RWX regions; the corresponding endpoint signals are **Sysmon Event ID 8 (CreateRemoteThread)** and **Event ID 10 (ProcessAccess)** with suspicious `GrantedAccess` masks (e.g., `0x1F0FFF`/`0x1FFFFF` full access, or the `0x1438`/`0x143A` combinations seen with remote memory write). For DLL injection specifically (T1055.001), correlate a **Sysmon Event ID 7 (Image/Module Loaded)** where a module in `%TEMP%`/`%APPDATA%` loads into an unrelated host process and `Signed` is `false`. Pivot from any of these to the parent/child chain (Sysmon EID 1) to scope containment.
+- **Execution / dropper telemetry (T1204.002).** The user-initiated run of `benign_dropper.exe` maps to User Execution: Malicious File; the corresponding signal is **Sysmon Event ID 1 (ProcessCreate)** with `ParentImage` being a browser, mail client, or `explorer.exe`. Threat-hunting pivot: join EID 1 to the subsequent EID 11 (FileCreate) for the `%TEMP%` drop and EID 13 for the Run-key write to reconstruct the full dropper chain from one process GUID.
 
-Concrete IDs to detect on: **T1547.001**, **T1053.005**, **T1055**, **T1071.001**.
+Concrete IDs to detect on: **T1547.001**, **T1053.005**, **T1055**, **T1055.001**, **T1071.001**, **T1204.002**.
 
 ## Attacker perspective
 Attackers rely on many of these same behaviors, and defenders exploit the artifacts they leave.
 
-- **Registry Run-key persistence (T1547.001).** Writing `HKCU\...\CurrentVersion\Run\<name>` executes the payload at user logon. Artifacts: the Run value itself (visible in Autoruns/Regshot), a **Sysmon EID 13** record, and NTUSER.DAT hive changes. MITRE lists Run/RunOnce keys under T1547.001.
-- **Scheduled Task persistence (T1053.005).** Tasks leave XML in `C:\Windows\System32\Tasks\`, registry entries under `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree`, and **Security 4698** events — all enumerated by the Autoruns Scheduled Tasks tab.
-- **Staging (T1074 / dropped files).** Stagers commonly land in `%TEMP%` or `%APPDATA%` with predictable creation timestamps captured by Procmon `CreateFile`/`WriteFile` and by Regshot "Files added." Timestomping (T1070.006) may be used to blend in, but the MFT `$STANDARD_INFORMATION` vs `$FILE_NAME` discrepancy remains a tell.
-- **Process injection (T1055).** Foreign DLLs and RWX memory regions appear in Process Explorer's DLL/handle view and via Sysmon EID 8/10.
-- **Anti-analysis (T1497 / T1518.001).** Malware enumerates running processes and drivers looking for `procmon`, `procexp`, `Wireshark`, or FakeNet's redirected interface and may halt or change behavior — but the enumeration itself (process/handle queries in the Procmon trace) is a detectable artifact. MITRE documents Virtualization/Sandbox Evasion (T1497) and Security Software Discovery (T1518.001).
+- **Registry Run-key persistence (T1547.001).** Writing `HKCU\...\CurrentVersion\Run\<name>` executes the payload at user logon. Artifacts: the Run value itself (visible in Autoruns/Regshot), a **Sysmon EID 13** record, and NTUSER.DAT hive changes (the value survives in the user hive on disk). Evasion: attackers name the value to mimic a legitimate updater (e.g., `UpdateSvc`) and point it at a signed LOLBIN so the run-key value alone looks benign. MITRE lists Run/RunOnce keys under T1547.001.
+- **Scheduled Task persistence (T1053.005).** Tasks leave XML in `C:\Windows\System32\Tasks\`, registry entries under `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree` (and `\Tasks`), and **Security 4698** / **TaskScheduler/Operational 106** events — all enumerated by the Autoruns Scheduled Tasks tab. Evasion: hiding the task by deleting its `SD` (security descriptor) value under the TaskCache so it disappears from `schtasks`/Task Scheduler GUI while still firing — the TaskCache registry artifact is the forensic tell.
+- **Staging (T1074 / dropped files).** Stagers commonly land in `%TEMP%` or `%APPDATA%` with predictable creation timestamps captured by Procmon `CreateFile`/`WriteFile` and by Regshot "Files added." Timestomping (T1070.006) may be used to blend in, but the MFT `$STANDARD_INFORMATION` vs `$FILE_NAME` timestamp discrepancy remains a tell, as does a `$STANDARD_INFORMATION` created time that predates the parent directory.
+- **Process injection (T1055 / T1055.001).** Foreign DLLs and RWX memory regions appear in Process Explorer's DLL/handle view and via Sysmon EID 7/8/10. Evasion: allocating memory as RW then flipping to RX (avoiding a permanent RWX region), or module stomping over an already-loaded legitimate DLL to avoid a new EID 7 load event — Process Explorer's per-thread start-address view and unbacked-memory indicators still expose the anomaly.
+- **User Execution (T1204.002).** The initial dropper relies on a user double-clicking the file; the attacker's evasion is social (icon/name spoofing, double extensions), while the defensive artifact is the Sysmon EID 1 parent→child lineage.
+- **Anti-analysis (T1497 / T1518.001 / T1057).** Malware enumerates running processes and drivers looking for `procmon`, `procexp`, `Wireshark`, or FakeNet's redirected interface (Process Discovery, T1057) and may halt or change behavior — but the enumeration itself (process/handle queries visible in the Procmon trace, and `CreateToolhelp32Snapshot`/`Process32Next` API use) is a detectable artifact. FakeNet-specific evasion includes checking whether a hardcoded "fake" domain resolves (a sandbox that answers everything). MITRE documents Virtualization/Sandbox Evasion (T1497), Security Software Discovery (T1518.001), and Process Discovery (T1057).
 
 ## Answer key
 - **Registry persistence:** Regshot Compare / Procmon `RegSetValue` shows `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\UpdateSvc` = path to the dropped file.
@@ -150,11 +154,14 @@ Sample sha256: `c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b
 
 ## MITRE ATT&CK & DFIR phase
 - **T1547.001** — Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder (Regshot/Autoruns/Procmon; Sysmon EID 13). https://attack.mitre.org/techniques/T1547/001/
-- **T1053.005** — Scheduled Task/Job: Scheduled Task (Autoruns Scheduled Tasks tab; Security 4698). https://attack.mitre.org/techniques/T1053/005/
+- **T1053.005** — Scheduled Task/Job: Scheduled Task (Autoruns Scheduled Tasks tab; Security 4698, TaskScheduler/Operational 106). https://attack.mitre.org/techniques/T1053/005/
 - **T1055** — Process Injection (Process Explorer DLL/handle view; Sysmon EID 8/10). https://attack.mitre.org/techniques/T1055/
+- **T1055.001** — Process Injection: Dynamic-link Library Injection (foreign DLL loaded into a host process; Sysmon EID 7). https://attack.mitre.org/techniques/T1055/001/
 - **T1071.001** — Application Layer Protocol: Web Protocols (FakeNet-NG capture; Zeek/Suricata pivots). https://attack.mitre.org/techniques/T1071/001/
 - **T1074** — Data Staged (dropped stager in `%TEMP%`). https://attack.mitre.org/techniques/T1074/
 - **T1070.006** — Indicator Removal: Timestomp (staging evasion). https://attack.mitre.org/techniques/T1070/006/
+- **T1204.002** — User Execution: Malicious File (user-run dropper; Sysmon EID 1 lineage). https://attack.mitre.org/techniques/T1204/002/
+- **T1057** — Process Discovery (anti-analysis process enumeration visible in Procmon). https://attack.mitre.org/techniques/T1057/
 - **T1497** — Virtualization/Sandbox Evasion, and **T1518.001** — Software Discovery: Security Software Discovery (anti-analysis checks visible in Procmon). https://attack.mitre.org/techniques/T1497/ · https://attack.mitre.org/techniques/T1518/001/
 - **DFIR phase:** Examination / Analysis (dynamic behavioral triage), feeding Identification and Containment.
 
@@ -163,24 +170,28 @@ Tool behavior, flags, and expected output:
 - Microsoft Learn — Process Monitor (real-time file/Registry/process/network monitoring; command-line switches incl. /AcceptEula, /Minimized, /Quiet, /BackingFile): https://learn.microsoft.com/en-us/sysinternals/downloads/procmon
 - Microsoft Learn — Process Explorer (DLL/handle lower pane, image-signature verification, packed-image color coding): https://learn.microsoft.com/en-us/sysinternals/downloads/process-explorer
 - Microsoft Learn — Autoruns (broadest ASEP coverage; Compare, Hide Microsoft Entries, VirusTotal): https://learn.microsoft.com/en-us/sysinternals/downloads/autoruns
-- Microsoft Learn — Sysmon (Event IDs 8/10/12/13/14 used in detection logic): https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+- Microsoft Learn — Sysmon (Event IDs 1/7/8/10/11/12/13/14 used in detection logic): https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+- Microsoft Learn — Security Event 4698 (a scheduled task was created): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4698
 - Mandiant/FLARE — FakeNet-NG (traffic interception/redirection, service simulation, PCAP + logging, config): https://github.com/mandiant/flare-fakenet-ng
 - Mandiant — FLARE-VM (tool bundle/installer): https://github.com/mandiant/flare-vm
 - Regshot project (registry/filesystem before-after diff, Scan dir): https://sourceforge.net/projects/regshot/
 
 Detection, hunting, and platform pivots:
-- Security Onion documentation (Suricata + Zeek + Elastic; Alerts/Dashboards/PCAP): https://docs.securityonion.net/
-- Zeek documentation (dns.log, conn.log, ssl.log): https://docs.zeek.org/
-- Suricata documentation (rule writing for DNS/TLS SNI): https://docs.suricata.io/
+- Security Onion documentation (Suricata + Zeek + Elastic; Alerts/Hunt/Dashboards/PCAP): https://docs.securityonion.net/
+- Zeek documentation (dns.log `query`, conn.log `id.resp_h`/`id.resp_p`/`orig_bytes`, ssl.log `server_name`): https://docs.zeek.org/
+- Suricata documentation (rule keywords incl. `dns.query`, `tls.sni`): https://docs.suricata.io/
 - SANS FOR610 Reverse-Engineering Malware: https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
 
 MITRE ATT&CK technique pages:
 - T1547.001: https://attack.mitre.org/techniques/T1547/001/
 - T1053.005: https://attack.mitre.org/techniques/T1053/005/
 - T1055: https://attack.mitre.org/techniques/T1055/
+- T1055.001: https://attack.mitre.org/techniques/T1055/001/
 - T1071.001: https://attack.mitre.org/techniques/T1071/001/
 - T1074: https://attack.mitre.org/techniques/T1074/
 - T1070.006: https://attack.mitre.org/techniques/T1070/006/
+- T1204.002: https://attack.mitre.org/techniques/T1204/002/
+- T1057: https://attack.mitre.org/techniques/T1057/
 - T1497: https://attack.mitre.org/techniques/T1497/
 - T1518.001: https://attack.mitre.org/techniques/T1518/001/
 
@@ -190,4 +201,4 @@ MITRE ATT&CK technique pages:
 - [Dynamic debugging](../13-dynamic-debugging/README.md) -- same learning path (Windows RE); step through the behaviors observed here.
 - [.NET reverse engineering](../14-dotnet-re/README.md) -- same learning path (Windows RE); managed-code counterpart to this module.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
