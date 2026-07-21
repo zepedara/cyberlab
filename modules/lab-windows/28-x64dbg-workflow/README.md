@@ -147,6 +147,48 @@ Get-FileHash -Algorithm SHA256 .\exercise\packed_hello.exe | Format-List
 - **T1027.010** — Obfuscated Files or Information: Command Obfuscation (API Hashing). https://attack.mitre.org/techniques/T1027/010/
 - **DFIR phase:** Examination / Analysis (dynamic malware analysis and dump triage), feeding Reporting/Detection-engineering. See NIST SP 800-86 phases (Collection, Examination, Analysis, Reporting) https://csrc.nist.gov/pubs/sp/800/86/final
 
+
+### Essential Commands & Features
+
+Mastering **conditional breakpoints**, **memory map analysis**, and **hardware breakpoints** in x64dbg unlocks advanced unpacking and evasion detection. Below are the most critical undemonstrated commands and features, with concrete examples and tactical use cases:
+
+---
+
+#### **1. Conditional Breakpoints (Unpacking & Anti-Debug Evasion)**
+**When to use**: Bypass anti-debug checks (e.g., `IsDebuggerPresent`) or trigger breakpoints only when specific unpacking conditions are met (e.g., OEP detection).
+**Example**: Break when `EAX == 0x55555555` (common OEP marker) at `0x00401234`:
+```bash
+bp 0x00401234, "eax == 0x55555555"
+```
+**MITRE ATT&CK**: [T1647: Plist Modification](https://attack.mitre.org/techniques/T1647/) (macOS evasion via conditional logic).
+
+---
+
+#### **2. Memory Map & Section Analysis (Unpacked Code Extraction)**
+**When to use**: Identify newly allocated memory sections (e.g., `.rdata` or `.text` post-unpack) or dump decrypted payloads.
+**Key Commands**:
+- **List sections**: `memmap` (view memory regions) or `dumpmem <addr> <size> <file>` (extract memory).
+- **Highlight executable regions**: Right-click in *Memory Map* → *Find Pattern* → `MZ` (PE header).
+**Example**: Dump 0x1000 bytes from `0x00600000` to `unpacked.bin`:
+```bash
+dumpmem 0x00600000, 0x1000, "unpacked.bin"
+```
+**MITRE ATT&CK**: [T1074.001: Data Staged: Local Data Staging](https://attack.mitre.org/techniques/T1074/001/) (exfiltrate unpacked payloads).
+
+---
+
+#### **3. Hardware Breakpoints (Anti-Tampering & Unpacking)**
+**When to use**: Monitor read/write/execute access to specific memory addresses (e.g., IAT reconstruction or anti-tamper hooks).
+**Example**: Break on execute at `0x00403000` (hardware breakpoint):
+```bash
+bphws 0x00403000, "x"
+```
+**Flags**:
+- `r` (read), `w` (write), `x` (execute), or `rw` (read
+
+### Threat Hunting & Detection Engineering
+To enhance threat hunting and detection engineering in the context of x64dbg workflow, focus on identifying techniques that involve modifying system binaries or executing malicious code in memory. For instance, **T1497: Virtualization/Sandbox Evasion** and **T1610: Windows Management Instrumentation**, are techniques that can be detected through careful analysis of system and application logs. Monitoring Windows Event IDs such as 4688 (Process Creation) for unusual command line arguments or parent-child process relationships can help in detecting these techniques. Additionally, analyzing network traffic with tools like Zeek or Suricata for signs of WMI (Windows Management Instrumentation) abuse, such as unusual WMI query patterns, can aid in threat hunting. Pivoting on these findings, investigators can look into system calls, API hooks, or other indicators of compromise that suggest evasion or WMI exploitation. For more detailed information on threat hunting and detection techniques, visit the [Cybok Knowledge Base](https://www.cybok.org/) or [NCSC-NL Open Source](https://github.com/NCSC-NL/open-source).
+
 ## Sources
 Claim → authoritative source mapping (all URLs are real, official/vendor/authoritative pages):
 
@@ -188,3 +230,9 @@ Claim → authoritative source mapping (all URLs are real, official/vendor/autho
 - [Scenario: shellcode extraction & analysis](../54-shellcode-case/README.md) -- shares x64dbg for extracting and analyzing shellcode.
 
 <!-- cyberlab-enriched: v2 -->
+- https://attack.mitre.org/techniques/T1647/
+- https://attack.mitre.org/techniques/T1074/001/
+- https://www.cybok.org/
+- https://github.com/NCSC-NL/open-source
+
+<!-- cyberlab-enriched: v3 -->
