@@ -94,9 +94,11 @@ Static triage is the front door of the incident-response examination phase. When
 Concrete Security Onion pivots and detection logic:
 - **Zeek `files.log`** records extracted files with their `sha256`/`md5`, `mime_type`, `source`, and `fuid`; use the hash to pivot in Kibana/Elastic and to seed your ssdeep clustering. Zeek's File Analysis Framework (see Zeek docs in Sources) is what produces these fields.
 - **Suricata `fileinfo`/file-extraction** events (in Security Onion's Suricata configuration) can carve PE files off the wire; the resulting file hash correlates directly to the same object in `files.log`. (Security Onion docs; Suricata docs — Sources.)
-- **PE magic / MIME**: hunt on Zeek `files.log` where `mime_type == "application/x-dosexec"` crossing HTTP or SMB to spot Windows executables being delivered.
+- **PE magic / MIME**: hunt on Zeek `files.log` where `mime_type == "application/x-dosexec"` crossing HTTP or SMB to spot Windows executables being delivered. This maps to MITRE ATT&CK **T1105 Ingress Tool Transfer** when the source is external.
 - **Fuzzy clustering**: DIE flags packers/protectors — an early evasion indicator mapping to MITRE ATT&CK **T1027.002 (Software Packing)** and the parent **T1027 (Obfuscated Files or Information)**. pefile exposes suspicious imports (e.g. `VirtualAlloc`/`WriteProcessMemory` combinations tied to process injection tradecraft under **T1055**) and compile timestamps that become pivotable hunt terms. ssdeep clusters the sample against known-bad fuzzy hashes to attribute it to a family and sweep the fleet for near-duplicates.
 - **From one alert to a hunt**: correlate the `sha256` from `files.log` with your ssdeep-derived clusters in Elastic, turning a single detection into a fleet-wide retrospective hunt. Detection-in-depth here aligns with the triage-first workflow taught in SANS FOR610 (Sources).
+- **Detection Engineering Logic**: Use pefile-derived indicators to build proactive detection rules. For example, a high-entropy section (entropy > 7.0) combined with a suspicious import like `VirtualAllocEx` is a strong signal for **T1055 Process Injection**. In a SIEM, you could create a detection rule that triggers on Windows Event ID 4688 (process creation) where the process image has a high entropy value (calculated via a scripted field) and the command line contains suspicious API calls. Similarly, a PE file with a `TimeDateStamp` of `0x00000000` or a future date is a direct indicator of **T1070.006 Timestomp** and can be hunted via Sysmon Event ID 1 (process creation) with a field for PE compile time.
+- **Threat Hunting Pivots**: In Security Onion, start with a Suricata alert for a malicious file download (e.g., ET MALWARE Win32/Dridex). Extract the file hash and query the `files.log` for the `fuid`. Use the `fuid` to pivot to the `http.log` or `smb.log` to identify the source IP and destination. Then, use the file's ssdeep hash to search across all `files.log` entries for similar files (using the `ssdeep` command-line tool against stored hashes in your database). This can uncover lateral movement (**T1570 Lateral Tool Transfer**) or multiple infection stages.
 
 ## Attacker perspective
 Attackers know analysts will triage statically, so they deliberately defeat these tools using concrete TTPs:
@@ -105,8 +107,10 @@ Attackers know analysts will triage statically, so they deliberately defeat thes
 - **Timestamp forging / "timestomping" the PE header (T1070.006 style manipulation of time attributes)**: `FILE_HEADER.TimeDateStamp` is trivially zeroed or set to a decoy epoch. Artifact: an implausible or all-zero `TimeDateStamp`, or one that disagrees with Rich header / debug directory timestamps.
 - **Obfuscation more broadly (T1027)** and **deobfuscation at runtime (T1140)**: the packed stub decodes the real payload only when executed, which is why static entropy is high but dynamic analysis is still needed.
 - **Defeating ssdeep clustering**: authors inject junk/padding bytes, randomize resources, or recompile per-target so fuzzy scores drop. Evasion is imperfect — minor changes still leave residual similarity (a match score well below 100), which is precisely what CTPH is designed to catch.
+- **Additional TTPs**: Attackers may also use **T1218.011 (Signed Binary Proxy Execution: Rundll32)** to load malicious DLLs discovered via pefile's import table, or **T1547.001 (Registry Run Keys / Startup Folder)** for persistence, which can be hinted at by imports like `RegSetValueEx`. The presence of `WinExec` or `ShellExecute` imports may indicate **T1059.001 (PowerShell)** or other scripting for execution. Furthermore, to evade signature-based detection, attackers may employ **T1036.005 (Masquerading: Match Legitimate Name or Location)**, naming their binary after a system file but with anomalous PE characteristics.
+- **Artifact Evolution**: Modern malware families often use multi-stage loaders. The first stage (discovered via static triage) may have low entropy and benign imports, but it downloads a second stage with high entropy and no imports. This technique, **T1105 (Ingress Tool Transfer)**, leaves network artifacts in Zeek `http.log` or Suricata alerts. The defender's advantage is correlating the static file properties with the network behavior.
 
-Defender-visible artifacts across a campaign: PE header anomalies, packer signatures, mismatched section characteristics (e.g. writable+executable sections), truncated import tables, and consistent fuzzy-hash lineage. (MITRE ATT&CK T1027 / T1027.002 / T1140 / T1055 / T1070.006 pages — Sources.)
+Defender-visible artifacts across a campaign: PE header anomalies, packer signatures, mismatched section characteristics (e.g., writable+executable sections), truncated import tables, and consistent fuzzy-hash lineage. (MITRE ATT&CK T1027 / T1027.002 / T1140 / T1055 / T1070.006 / T1105 / T1218.011 / T1547.001 / T1059.001 / T1036.005 pages — Sources.)
 
 ## Answer key
 Expected findings and the exact commands that produce them:
@@ -135,6 +139,8 @@ sha256sum exercise/sample.exe
 - **T1140 — Deobfuscate/Decode Files or Information** (context for follow-on analysis). https://attack.mitre.org/techniques/T1140/
 - **T1055 — Process Injection** (context: suspicious import combinations flagged during pefile triage). https://attack.mitre.org/techniques/T1055/
 - **T1070.006 — Indicator Removal: Timestomp** (context: forged/zeroed PE `TimeDateStamp`). https://attack.mitre.org/techniques/T1070/006/
+- **T1105 — Ingress Tool Transfer** (context: PE files delivered over network, detected via Zeek/Suricata). https://attack.mitre.org/techniques/T1105/
+- **T1218.011 — Signed Binary Proxy Execution: Rundll32** (context: malicious DLLs identified via pefile import analysis). https://attack.mitre.org/techniques/T1218/011/
 - **DFIR phase:** Identification and Examination — static triage prioritizes samples before dynamic analysis.
 
 ## Sources
@@ -155,7 +161,13 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - MITRE ATT&CK T1140 Deobfuscate/Decode Files or Information: https://attack.mitre.org/techniques/T1140/
 - MITRE ATT&CK T1055 Process Injection: https://attack.mitre.org/techniques/T1055/
 - MITRE ATT&CK T1070.006 Indicator Removal: Timestomp: https://attack.mitre.org/techniques/T1070/006/
+- MITRE ATT&CK T1105 Ingress Tool Transfer: https://attack.mitre.org/techniques/T1105/
+- MITRE ATT&CK T1218.011 Signed Binary Proxy Execution: Rundll32: https://attack.mitre.org/techniques/T1218/011/
+- MITRE ATT&CK T1547.001 Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder: https://attack.mitre.org/techniques/T1547/001/
+- MITRE ATT&CK T1059.001 Command and Scripting Interpreter: PowerShell: https://attack.mitre.org/techniques/T1059/001/
+- MITRE ATT&CK T1036.005 Masquerading: Match Legitimate Name or Location: https://attack.mitre.org/techniques/T1036/005/
 - SANS FOR610 Reverse-Engineering Malware (static triage workflow): https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+- Windows Event ID 4688 (process creation) and Sysmon Event ID 1 (process creation) for detection logic — Microsoft Learn: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688 and Sysmon documentation: https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
 
 ## Related modules
 - [Malware static triage](../08-malware-static-triage/README.md) -- shares detect-it-easy for file identification/packing checks.
@@ -163,4 +175,4 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives); turns triage findings into detection rules.
 - [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives); disk-forensics companion to file triage.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
