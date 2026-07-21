@@ -184,6 +184,43 @@ Mastering `tshark`’s command-line capabilities accelerates analysis and enable
 ### Threat Hunting & Detection Engineering
 To effectively hunt and detect threats, security analysts must leverage various log sources and tools. For instance, analyzing Windows Event ID 4688 (Process Creation) can help identify suspicious process executions, which may indicate the use of [T1204](https://attack.mitre.org/techniques/T1204) - User Execution or [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution. By examining the `CommandLine` field in these event logs, analysts can detect potential malicious activity, such as unusual script executions or unexpected system calls. Additionally, threat hunters can pivot on suspicious network activity, like unusual DNS queries or HTTP requests, to uncover hidden threats. By integrating these detection techniques with tools like Wireshark, security teams can enhance their threat hunting capabilities and improve overall detection engineering. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
 
+
+### Essential Commands & Features
+
+#### **TShark: Advanced Filtering & File Operations**
+TShark’s command-line power shines with filters and file I/O. Use `-Y` (read filter) to isolate traffic *after* capture, e.g., detect **ARP Spoofing (T1557.002: Adversary-in-the-Middle: ARP Cache Poisoning)** by filtering for duplicate IPs:
+```bash
+tshark -r capture.pcap -Y "arp.duplicate-address-detected"
+```
+Save filtered traffic to a new PCAP with `-w` for later analysis (e.g., exfiltration via **T1048.001: Exfiltration Over Symmetric Encrypted Non-C2 Protocol**):
+```bash
+tshark -i eth0 -Y "dns.qry.type == 1 and ip.dst == 8.8.8.8" -w dns_exfil.pcap
+```
+Read and process existing PCAPs with `-r` to avoid live capture overhead:
+```bash
+tshark -r suspicious.pcap -Y "http.request.method == POST" -T fields -e http.file_data
+```
+
+#### **Wireshark: Profile & Column Customization**
+Tailor Wireshark’s UI to prioritize critical fields. Create a **C2 Detection Profile** to expose **T1071.004: Application Layer Protocol: DNS** anomalies:
+1. **Columns**: Right-click any packet field (e.g., `dns.qry.type`) → *Apply as Column*.
+2. **Profiles**: *Edit* → *Configuration Profiles* → *New* → Name it "C2-DNS". Add columns for `dns.resp.type`, `dns.resp.ttl`, and `ip.src`.
+3. **Color Rules**: Highlight unusual TTLs (e.g., `dns.resp.ttl < 10`) to spot fast-flux domains.
+
+**Sources**:
+- [TShark Man Page (Debian)](https://manpages.debian.org/bookworm/wireshark/tshark.1.en.html)
+- [Wireshark Customization Guide (SANS)](https://www.sans.org/blog/customizing-wireshark/)
+
+### Adversary Emulation & Red-Team Perspective
+
+Attackers leverage Wireshark’s deep-packet inspection capabilities to **reconnoiter networks, exfiltrate data, and evade detection**—often by abusing legitimate traffic analysis tools to blend in with normal operations. A common tactic involves **capturing and reconstructing sensitive data** (e.g., credentials, session tokens) from unencrypted protocols (e.g., HTTP, FTP, or legacy SMBv1) using Wireshark’s *Follow TCP Stream* feature. This aligns with **[T1040: Network Sniffing](https://attack.mitre.org/techniques/T1040/)**, where adversaries passively monitor traffic to harvest credentials or intellectual property. For example, red teams may deploy Wireshark on a compromised host (via [T1059.001: PowerShell](https://attack.mitre.org/techniques/T1059/001/)) to capture plaintext credentials during internal reconnaissance.
+
+To evade detection, attackers often **fragment or encrypt exfiltrated data** before transmission, leveraging techniques like **[T1568.002: Domain Generation Algorithms (DGA)](https://attack.mitre.org/techniques/T1568/002/)** to obscure C2 channels. Wireshark artifacts—such as `.pcap` files or temporary capture buffers—may reveal attacker activity if logs are retained (e.g., `%TEMP%\Wireshark\` on Windows). Defenders should monitor for unusual capture processes (e.g., `tshark.exe` spawned by non-admin users) or large `.pcap` files in atypical locations.
+
+**Sources:**
+- [MITRE ATT&CK: Network Sniffing (T1040)](https://attack.mitre.org/techniques/T1040/)
+- [FireEye: Red Team Techniques for Evasion](https://www.fireeye.com/blog/threat-research/2021/04/red-team-techniques-for-evasion.html)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -215,3 +252,10 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.nist.gov/
 
 <!-- cyberlab-enriched: v3 -->
+- https://manpages.debian.org/bookworm/wireshark/tshark.1.en.html
+- https://www.sans.org/blog/customizing-wireshark/
+- https://attack.mitre.org/techniques/T1059/001/
+- https://attack.mitre.org/techniques/T1568/002/
+- https://www.fireeye.com/blog/threat-research/2021/04/red-team-techniques-for-evasion.html
+
+<!-- cyberlab-enriched: v4 -->
