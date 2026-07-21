@@ -101,11 +101,22 @@ Detection logic and ATT&CK mapping:
 - FLOSS-recovered obfuscated strings map to **T1027 (Obfuscated Files or Information)** (https://attack.mitre.org/techniques/T1027/) and, where a decode routine is emulated, **T1140 (Deobfuscate/Decode Files or Information)** (https://attack.mitre.org/techniques/T1140/).
 - Recovered import tables and strings become IOCs you feed back into Security Onion and hunt across your fleet. Triaging a recovered artifact aligns with the SANS FOR610 static-analysis workflow (SANS FOR610: https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/).
 
+**Detection Engineering & Threat Hunting:**
+- **Detection Logic (EDR/SIEM):** A process creation event (Windows Event ID 4688 or Sysmon Event ID 1) where the `Image` (process path) has a high entropy value (e.g., >7.5) as calculated by a tool like DIE can be a strong indicator of packed malware. This can be correlated with a small number of static imports (e.g., `kernel32.dll` imports count < 10) visible in the PE header, which is a common packer artifact. A Sigma rule could detect this by checking `process_creation|image_entropy` and `pe_imports_count` fields if the EDR enriches process events with PE metadata (Sigma rule concept: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_malware_pe_characteristics.yml).
+- **Detection Logic (Network):** A Zeek `files.log` entry where the `mime_type` is `application/x-dosexec` (PE file) and the `analyzers` field includes `PE` and `ENTROPY` with a high value can trigger an alert. The `sha256` from this log is the pivot for all other host-based events (Zeek file analysis: https://docs.zeek.org/en/master/frameworks/file-analysis.html).
+- **Threat Hunting Pivot:** From a Suricata alert for a known malicious SHA256 (e.g., `ET MALWARE Win32/Packed Possible UPX`), extract the `community_id` and join with Zeek `conn.log` on `community_id` to find all internal hosts that initiated connections to the external IP during the file transfer, then search those hosts' EDR logs for processes with matching `ParentImage` or `CommandLine` containing the downloaded filename.
+- **Additional MITRE ATT&CK Techniques:** Static analysis of import tables can reveal capabilities for **T1059.001 (PowerShell)** (if `powershell.exe` is spawned or `System.Management.Automation` is referenced) and **T1105 (Ingress Tool Transfer)** (if `URLDownloadToFile`, `WinHttp` APIs, or network-related strings are found). Identifying `LoadLibrary` and `GetProcAddress` as primary imports strongly suggests **T1027 (Obfuscated Files or Information)** via dynamic API resolution (MITRE ATT&CK T1027: https://attack.mitre.org/techniques/T1027/; T1059.001: https://attack.mitre.org/techniques/T1059/001/; T1105: https://attack.mitre.org/techniques/T1105/).
+
 ## Attacker perspective
 Attackers know static analysts read the PE box, so they fight back at build time. Concrete TTPs:
 - **Packing/crypting (T1027.002, https://attack.mitre.org/techniques/T1027/002/):** UPX, Themida, or custom crypters compress/encrypt the real payload to raise section entropy and shrink the visible import table. *Artifacts left behind:* high per-section entropy (visible in DIE `-e`), tell-tale section names such as `UPX0`/`UPX1` or `.themida`, and a large gap between raw and virtual section sizes visible in PE-bear (UPX packer: https://github.com/upx/upx; section fields per Microsoft Learn *PE Format*: https://learn.microsoft.com/windows/win32/debug/pe-format).
 - **Dynamic import resolution (T1027, https://attack.mitre.org/techniques/T1027/):** building the import table at runtime via `LoadLibrary`/`GetProcAddress` hides capabilities from the static import view. *Artifact:* a suspiciously thin static import table alongside `LoadLibrary`/`GetProcAddress` in the imports (Microsoft Learn, *GetProcAddress*: https://learn.microsoft.com/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress).
 - **String obfuscation (T1140, https://attack.mitre.org/techniques/T1140/):** XOR- or stack-encoding strings so plain `strings` finds nothing — which is exactly why FLOSS's emulation of stack/tight/decoded strings is valuable and, when it runs, surfaces the very strings the attacker tried to conceal (mandiant/flare-floss: https://github.com/mandiant/flare-floss).
+
+**Advanced Evasion & Residual Evidence:**
+- **Section Name Spoofing (T1036.005 (Masquerading: Match Legitimate Name or Location)):** Attackers may rename packed sections to mimic legitimate ones (e.g., `.text`, `.data`) to bypass simple name-based detection. The artifact is a mismatch between the section name's expected characteristics and its actual entropy or permissions (e.g., a `.text` section with write permissions `IMAGE_SCN_MEM_WRITE` is anomalous) (MITRE ATT&CK T1036.005: https://attack.mitre.org/techniques/T1036/005/; PE section flags: https://learn.microsoft.com/windows/win32/debug/pe-format#section-flags).
+- **Time-stomping (T1070.006 (Indicator Removal: Timestomp)):** Attackers modify the PE header's `TimeDateStamp` field (a 32-bit value representing the linker timestamp) to blend in with legitimate system files. The artifact is a timestamp that is implausibly old (e.g., 1980), in the future, or mismatched with the file's on-disk `CreationTime` in `$STANDARD_INFORMATION` (MITRE ATT&CK T1070.006: https://attack.mitre.org/techniques/T1070/006/; PE `TimeDateStamp` field: https://learn.microsoft.com/windows/win32/debug/pe-format#optional-header-standard-fields-image-only).
+- **Overlay Data (T1027.001 (Obfuscated Files or Information: Binary Padding)):** Malware may append extra data (an overlay) after the PE sections, which is not mapped into memory by the loader but can be read by the malware at runtime. This data often contains configuration or secondary payloads. The artifact is a file size larger than the sum of section raw sizes plus headers, visible in PE-bear's "Overlay" field or by comparing `SizeOfImage` with actual file size (MITRE ATT&CK T1027.001: https://attack.mitre.org/techniques/T1027/001/; Overlay detection with PE-bear: https://github.com/hasherezade/pe-bear).
 
 Evasion vs. residual evidence: even sophisticated packing leaves abnormally high entropy, packer signatures DIE recognizes, anomalous section names, and raw/virtual size mismatches — the static-analysis "tells" that drive escalation.
 
@@ -135,7 +146,12 @@ Invariant validation marker string: `LAB-WINDOWS-BENIGN-MARKER-30`.
 
 ## MITRE ATT&CK & DFIR phase
 - **T1027 — Obfuscated Files or Information** (FLOSS surfaces obfuscated/encoded strings) — https://attack.mitre.org/techniques/T1027/
+- **T1027.001 — Binary Padding** (Overlay data detection via PE-bear) — https://attack.mitre.org/techniques/T1027/001/
 - **T1027.002 — Software Packing** (DIE entropy/packer detection) — https://attack.mitre.org/techniques/T1027/002/
+- **T1036.005 — Masquerading: Match Legitimate Name or Location** (Spoofed section names) — https://attack.mitre.org/techniques/T1036/005/
+- **T1059.001 — PowerShell** (Detection via import table or string analysis) — https://attack.mitre.org/techniques/T1059/001/
+- **T1070.006 — Timestomp** (Anomalous PE header TimeDateStamp) — https://attack.mitre.org/techniques/T1070/006/
+- **T1105 — Ingress Tool Transfer** (Network-related imports/strings) — https://attack.mitre.org/techniques/T1105/
 - **T1140 — Deobfuscate/Decode Files or Information** (FLOSS emulates decoding routines) — https://attack.mitre.org/techniques/T1140/
 - **T1518 — Software Discovery** (build fingerprinting via DIE compiler/linker identification, defensive context) — https://attack.mitre.org/techniques/T1518/
 - **DFIR phase:** Identification → Examination (static triage of a recovered artifact prior to dynamic analysis/reversing), consistent with the SANS FOR610 malware-analysis workflow (https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/).
@@ -143,18 +159,19 @@ Invariant validation marker string: `LAB-WINDOWS-BENIGN-MARKER-30`.
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn, MITRE ATT&CK, or Security Onion docs):
 
-- PE file layout, section raw/virtual size fields, section semantics → Microsoft Learn, *PE Format*: https://learn.microsoft.com/windows/win32/debug/pe-format
+- PE file layout, section raw/virtual size fields, section semantics, `TimeDateStamp` field, section flags → Microsoft Learn, *PE Format*: https://learn.microsoft.com/windows/win32/debug/pe-format
 - Tool distribution (PE-bear, DIE, FLOSS packaged via Chocolatey) → Mandiant FLARE-VM: https://github.com/mandiant/flare-vm
 - FLOSS behavior (static/stack/tight/decoded strings, emulation engine, `--version`, `--no-color`) → mandiant/flare-floss: https://github.com/mandiant/flare-floss and usage doc: https://github.com/mandiant/flare-floss/blob/master/doc/usage.md
 - DIE file-type/packer identification, `diec` console, entropy calculator (`-e`) → horsicq/Detect-It-Easy: https://github.com/horsicq/Detect-It-Easy and wiki: https://github.com/horsicq/DIE-engine/wiki
-- PE-bear GUI parsing (DOS/NT headers, sections, imports/exports, resources; parse-only) → hasherezade/pe-bear: https://github.com/hasherezade/pe-bear
+- PE-bear GUI parsing (DOS/NT headers, sections, imports/exports, resources, overlay detection; parse-only) → hasherezade/pe-bear: https://github.com/hasherezade/pe-bear
 - `Get-FileHash` (default/`-Algorithm SHA256`) → Microsoft Learn: https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/get-filehash
 - `cl.exe` flags `/Fe`, `/nologo` → Microsoft Learn MSVC options: https://learn.microsoft.com/cpp/build/reference/fe-name-exe-file and https://learn.microsoft.com/cpp/build/reference/nologo-suppress-startup-banner
-- Kernel32 APIs `GetStdHandle`, `WriteFile`, `GetProcAddress` → Microsoft Learn: https://learn.microsoft.com/windows/console/getstdhandle , https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-writefile , https://learn.microsoft.com/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
+- Kernel32 APIs `GetStdHandle`, `WriteFile`, `GetProcAddress`, `LoadLibrary` → Microsoft Learn: https://learn.microsoft.com/windows/console/getstdhandle , https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-writefile , https://learn.microsoft.com/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress , https://learn.microsoft.com/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya
 - UPX packer (section names, compression) → https://github.com/upx/upx
-- MITRE ATT&CK techniques → T1027: https://attack.mitre.org/techniques/T1027/ ; T1027.002: https://attack.mitre.org/techniques/T1027/002/ ; T1140: https://attack.mitre.org/techniques/T1140/ ; T1518: https://attack.mitre.org/techniques/T1518/
+- MITRE ATT&CK techniques → T1027: https://attack.mitre.org/techniques/T1027/ ; T1027.001: https://attack.mitre.org/techniques/T1027/001/ ; T1027.002: https://attack.mitre.org/techniques/T1027/002/ ; T1036.005: https://attack.mitre.org/techniques/T1036/005/ ; T1059.001: https://attack.mitre.org/techniques/T1059/001/ ; T1070.006: https://attack.mitre.org/techniques/T1070/006/ ; T1105: https://attack.mitre.org/techniques/T1105/ ; T1140: https://attack.mitre.org/techniques/T1140/ ; T1518: https://attack.mitre.org/techniques/T1518/
 - SANS FOR610 Reverse-Engineering Malware course → https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
-- Security Onion pivots (Suricata alerts, Zeek `files.log`) → https://docs.securityonion.net/ ; https://docs.securityonion.net/en/2.4/suricata.html ; https://docs.securityonion.net/en/2.4/zeek.html ; Zeek `files.log` fields: https://docs.zeek.org/en/master/logs/files.html
+- Security Onion pivots (Suricata alerts, Zeek `files.log`) → https://docs.securityonion.net/ ; https://docs.securityonion.net/en/2.4/suricata.html ; https://docs.securityonion.net/en/2.4/zeek.html ; Zeek `files.log` fields: https://docs.zeek.org/en/master/logs/files.html ; Zeek file analysis framework: https://docs.zeek.org/en/master/frameworks/file-analysis.html
+- Sigma rule concept for PE characteristics → https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_malware_pe_characteristics.yml
 
 ## Related modules
 - [Scenario: rapid static triage](../56-static-triage-case/README.md) -- shares detect-it-easy (die) for fast file-type/packer verdicts.
@@ -162,4 +179,4 @@ Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn
 - [Scenario: packed-malware unpacking workflow](../52-unpacking-case/README.md) -- shares floss and extends the entropy/packing signals covered here.
 - [FLOSS obfuscated-string extraction](../42-floss-strings/README.md) -- shares floss and drills into stack/tight/decoded string recovery.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
