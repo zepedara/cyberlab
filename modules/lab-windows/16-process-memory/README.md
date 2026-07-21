@@ -143,6 +143,53 @@ To validate findings, **correlate memory artifacts with behavioral indicators**.
 - [CERT-EU: Memory Forensics Pitfalls](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_Memory_Forensics.pdf)
 - [FireEye: Detecting Process Injection Techniques](https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html)
 
+
+### Essential Commands & Features
+
+Below are **critical but undemonstrated** commands, flags, and features for `pe-sieve` and `HollowsHunter` that enable deeper process-memory analysis and automation. Use these to refine detection, reduce noise, and integrate findings into broader workflows.
+
+#### **pe-sieve: Advanced Dumping & Output Control**
+- **`--dump-mode`**: Controls how detected artifacts are dumped. Use `2` (default) to dump full regions, or `1` to dump only modified pages (useful for minimizing output size when analyzing **Process Hollowing (T1055.012)** or **Process Injection (T1055)**).
+  ```cmd
+  pe-sieve.exe --pid 1234 --dump-mode 1
+  ```
+- **`--json`**: Outputs results in JSON format for parsing by SIEMs or scripts (e.g., Splunk, ELK). Critical for automating detection of **Reflective Code Loading (T1574.002)**.
+  ```cmd
+  pe-sieve.exe --pid 1234 --json > report.json
+  ```
+- **`--quiet`**: Suppresses console output (useful for scripting). Combine with `--json` for silent, machine-readable scans.
+  ```cmd
+  pe-sieve.exe --pid 1234 --quiet --json
+  ```
+
+#### **HollowsHunter: Filtering & Continuous Monitoring**
+- **`--output`**: Saves results to a specified directory (e.g., `C:\reports\`). Essential for forensics or sharing findings with teams.
+  ```cmd
+  HollowsHunter.exe --output C:\reports\
+  ```
+- **`--loop`**: Runs in continuous mode, rescanning processes at intervals (e.g., every 5 seconds). Ideal for detecting **Process Doppelgänging (T1055.013)** in real time.
+  ```cmd
+  HollowsHunter.exe --loop 5
+  ```
+- **`--pname`**: Filters scans to specific process names (e.g., `svchost.exe`). Reduces noise when hunting for **Masquerading (T1036)**.
+  ```cmd
+  HollowsHunter.exe --pname svchost.exe
+  ```
+
+**Sources**:
+- [PE-sieve/HollowsHunter GitHub Wiki (Advanced Usage)](https://github.com/hasherezade/pe-sieve/wiki/Advanced-usage)
+- [CERT-EU: Memory Forensics with PE-sieve (Technical Report)](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Memory_Forensics.pdf)
+
+### Threat Hunting & Detection Engineering
+
+Hunt for **process hollowing** (MITRE ATT&CK [T1055.012: Process Hollowing](https://attack.mitre.org/techniques/T1055/012/)) by correlating **Windows Event ID 4688** (Process Creation) with **Sysmon Event ID 10** (Process Access). Focus on `GrantedAccess` values `0x1FFFFF` (full access) or `0x1F3FFF` (suspicious rights), targeting `TargetImage` paths like `svchost.exe` or `explorer.exe` spawned by unusual parents (e.g., `powershell.exe`). Pivot on `SourceImage` hashes not seen in the past 30 days or lacking valid signatures (use `Authenticode` fields in Sysmon).
+
+For **reflective code loading** (MITRE ATT&CK [T1574.009: Reflective Code Loading](https://attack.mitre.org/techniques/T1574/009/)), monitor **Zeek’s `pe` logs** for DLLs with `section_count` > 5 or `entry_point` outside mapped sections. Cross-reference with **Sysmon Event ID 7** (Image Loaded) for unsigned DLLs loaded from `AppData\Local\Temp` or `C:\Windows\Tasks`. Hunt for `ImageLoad` events where `Image` ≠ `Process` (e.g., `rundll32.exe` loading a DLL not on disk).
+
+**Sources:**
+- [CISA Alert (AA22-152A) on Process Injection](https://www.cisa.gov/uscert/ncas/alerts/aa22-152a)
+- [Elastic Security Labs: Detecting Process Hollowing](https://www.elastic.co/security-labs/detecting-process-hollowing-with-elastic-security)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -178,3 +225,10 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html
 
 <!-- cyberlab-enriched: v3 -->
+- https://github.com/hasherezade/pe-sieve/wiki/Advanced-usage
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Memory_Forensics.pdf
+- https://attack.mitre.org/techniques/T1574/009/
+- https://www.cisa.gov/uscert/ncas/alerts/aa22-152a
+- https://www.elastic.co/security-labs/detecting-process-hollowing-with-elastic-security
+
+<!-- cyberlab-enriched: v4 -->
