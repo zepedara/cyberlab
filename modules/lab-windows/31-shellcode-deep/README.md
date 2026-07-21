@@ -135,6 +135,72 @@ Expected: the SHA256 equals `99bd3c262cfc8e3173548986f8dd786d59cc51d3f9e0929b85d
 - **T1036 – Masquerading** (renaming or disguising payloads as legitimate files) — https://attack.mitre.org/techniques/T1036/
 - **DFIR phase:** Examination / Analysis (malware code analysis of a carved artifact), feeding Identification (IOC extraction). Aligns with the NIST SP 800-86 forensic process (Collection → Examination → Analysis → Reporting). Source: NIST SP 800-86 (https://csrc.nist.gov/pubs/sp/800/86/final).
 
+
+### Essential Commands & Features
+
+The `scdbg` debugger offers powerful flags to analyze shellcode behavior beyond basic execution. Below are the most critical **undemonstrated** commands, their use cases, and runnable examples:
+
+- **`-fopen` (File I/O Emulation)**
+  *When to use*: Detect shellcode that reads/writes files (e.g., payload staging or persistence).
+  *Example*: Simulate a file read to trigger embedded logic:
+  ```bash
+  scdbg -fopen shellcode.bin -foff 0x100 -fsize 0x200
+  ```
+  *MITRE ATT&CK*: [T1005 - Data from Local System](https://attack.mitre.org/techniques/T1005/)
+
+- **`-break` (Breakpoint Control)**
+  *When to use*: Pause execution at critical offsets (e.g., API calls like `VirtualAlloc`).
+  *Example*: Break at offset `0x42` to inspect register state:
+  ```bash
+  scdbg -f shellcode.bin -break 0x42
+  ```
+
+- **`-i` (Interactive Mode)**
+  *When to use*: Step through shellcode manually to analyze obfuscation or anti-debugging tricks.
+  *Example*: Launch interactive mode with a breakpoint:
+  ```bash
+  scdbg -f shellcode.bin -i -break 0x10
+  ```
+
+- **`-d` (Dump Memory)**
+  *When to use*: Extract decrypted payloads or injected code from memory (e.g., process hollowing).
+  *Example*: Dump memory at runtime to `memdump.bin`:
+  ```bash
+  scdbg -f shellcode.bin -d memdump.bin
+  ```
+  *MITRE ATT&CK*: [T1055.012 - Process Hollowing](https://attack.mitre.org/techniques/T1055/012/)
+
+- **`-r` (Raw Output)**
+  *When to use*: Suppress ASCII art to parse output programmatically (e.g., for automated analysis).
+  *Example*: Log raw execution trace to a file:
+  ```bash
+  scdbg -f shellcode.bin -r > trace.log
+  ```
+
+**Sources**:
+- [SCDBG Official Documentation (Sandsprite)](http://sandsprite.com/blogs/index.php?uid=7&pid=152)
+- [FLARE Shellcode Analysis Guide (FireEye)](https://www.fireeye.com/blog/threat-research/2019/08/shellcode-analysis-using-flare-ida-and-scdbg.html)
+
+### Threat Hunting & Detection Engineering
+
+Shellcode execution often leaves subtle traces across endpoint and network logs. Focus on **T1056.001 Input Capture: Keylogging** and **T1559.002 Inter-Process Communication: Dynamic Data Exchange**—both techniques frequently leverage shellcode to inject or proxy malicious payloads.
+
+**Endpoint Detection:**
+- Hunt for **Event ID 10 (Process Access)** in Windows Security logs, filtering for `GrantedAccess` values `0x1010` (read/write) or `0x1438` (full control), which may indicate shellcode injection into `lsass.exe` or `explorer.exe`. Pivot on `SourceImage` paths outside `C:\Windows\System32` or `C:\Program Files`.
+- Monitor **Sysmon Event ID 8 (CreateRemoteThread)** targeting processes with anomalous parent-child relationships (e.g., `powershell.exe` spawning `svchost.exe`).
+
+**Network Detection:**
+- Use **Zeek’s `conn.log`** to identify beaconing patterns: filter for `service == "dce_rpc"` or `service == "smb"` with small, periodic payloads (`orig_bytes < 500 && resp_bytes < 500`). Shellcode often uses named pipes (e.g., `\pipe\atsvc`) for lateral movement.
+- In **Suricata**, hunt for `SMB2` or `DCE/RPC` protocol violations (e.g., malformed `Bind` requests) via `alert dcerpc` rules, as shellcode may exploit parser flaws.
+
+**Threat-Hunting Pivots:**
+- Correlate **Event ID 4688 (Process Creation)** with **Zeek’s `files.log`** to detect shellcode dropped via `certutil.exe` or `bitsadmin.exe` (e.g., `filename endswith ".bin"` and `mime_type == "application/octet-stream"`).
+- Search for **uncommon `ParentProcessId` values** in `Process` events where the child process loads `kernel32.dll` or `ntdll.dll` with unusual call stacks (e.g., `CreateThread` without `LoadLibrary`).
+
+**Sources:**
+- [CISA Alert AA22-152A: Detecting Post-Compromise Threat Activity](https://www.cisa.gov/uscert/ncas/alerts/aa22-152a)
+- [Elastic Security Labs: Detecting Shellcode via Event Tracing for Windows (ETW)](https://www.elastic.co/security-labs/detecting-shellcode-with-etw)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -162,3 +228,10 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [x64dbg unpacking & debugging workflow](../28-x64dbg-workflow/README.md) -- same Deep-dives learning path; the debugger you attach after BlobRunner pauses.
 
 <!-- cyberlab-enriched: v3 -->
+- https://attack.mitre.org/techniques/T1005/
+- https://attack.mitre.org/techniques/T1055/012/
+- https://www.fireeye.com/blog/threat-research/2019/08/shellcode-analysis-using-flare-ida-and-scdbg.html
+- https://www.cisa.gov/uscert/ncas/alerts/aa22-152a
+- https://www.elastic.co/security-labs/detecting-shellcode-with-etw
+
+<!-- cyberlab-enriched: v4 -->
