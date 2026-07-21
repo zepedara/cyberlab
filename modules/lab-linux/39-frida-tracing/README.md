@@ -223,6 +223,43 @@ Interceptor.attach(ObjC.classes[className][method].implementation, {
 ### Threat Hunting & Detection Engineering
 To detect and hunt threats using Frida tracing, focus on identifying suspicious behavior related to techniques such as [T1218](https://attack.mitre.org/techniques/T1218) - "Signed Binary Proxy Execution" and [T1484](https://attack.mitre.org/techniques/T1484) - "Domain Policy Modification". Monitor Windows Event IDs 4688 and 4703 for signs of executable file creation and modification, which could indicate an adversary attempting to proxy execute a binary. Analyze the `CommandLine` field in these logs to identify suspicious command-line arguments. Additionally, inspect DNS query logs for unusual domain name resolutions, which may indicate an attempt to modify domain policies. Threat hunters can pivot on these findings by examining network traffic captures using Zeek or Suricata, focusing on HTTP requests to unknown or newly registered domains. For more information on threat hunting and detection engineering, visit the [Cybersecurity and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/what-we-do/cybersecurity/) websites.
 
+
+### How It Works: Internals & Mechanics
+
+Frida’s tracing capabilities rely on **dynamic instrumentation**, where it injects a **custom agent script** into the target process to intercept and log function calls. At its core, Frida uses **Stalker**, a just-in-time (JIT) code tracing engine that dynamically recompiles executed instructions to insert hooks. Stalker operates by:
+1. **Thread-aware tracing**: It tracks execution per thread, using a **shadow stack** to manage call contexts and avoid race conditions in multi-threaded environments.
+2. **Dynamic recompilation**: When a function is called, Stalker recompiles its basic blocks (sequences of instructions) on-the-fly, inserting callbacks to the agent script. This allows granular tracing of **register states**, **memory accesses**, and **control flow** without static analysis.
+3. **Custom agent scripts**: These scripts define hooks (e.g., `Interceptor.attach()`) and leverage Frida’s **JavaScript runtime** to manipulate or log data. For example, an agent can trace **T1003.001 (OS Credential Dumping: LSASS Memory)** by hooking `NtReadVirtualMemory` and logging buffer contents, or **T1601.001 (Modify System Image: Patch System Image)** by intercepting `WriteProcessMemory` to detect unauthorized modifications.
+
+Frida’s flexibility stems from its **V8-based runtime**, enabling real-time interaction with traced processes. However, Stalker’s overhead can impact performance, particularly in CPU-bound or latency-sensitive applications. For advanced use cases, agents must explicitly handle **thread synchronization** (e.g., via `Mutex`) and **dynamic function resolution** (e.g., `Module.findExportByName`) to avoid crashes or missed events.
+
+**Sources**:
+- [Frida Stalker Internals (Official GitHub Wiki)](https://github.com/frida/frida-gum/wiki/Stalker)
+- [MITRE ATT&CK: T1003.001 & T1601.001 (MITRE Engenuity)](https://mitre-engenuity.org/)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, Frida is a powerful tool for dynamic instrumentation, enabling attackers to bypass security controls, extract sensitive data, or manipulate application behavior in real time. A common tactic is **process injection (T1055.002: Portable Executable Injection)**, where Frida is used to inject malicious scripts into running processes, evading detection by operating within legitimate memory spaces. Attackers may also leverage Frida to **hook cryptographic functions (T1600: Weaken Encryption)**, intercepting plaintext data before encryption or after decryption, such as session tokens or credentials.
+
+Concrete TTPs include:
+- **Runtime manipulation**: Altering function arguments or return values to bypass authentication checks (e.g., disabling SSL pinning in mobile apps).
+- **Memory scraping**: Dumping process memory to extract secrets, such as API keys or passwords, using Frida’s JavaScript API.
+- **Evasion**: Frida’s dynamic nature complicates static analysis, and attackers may obfuscate scripts or use **indirect command execution (T1105: Ingress Tool Transfer)** to fetch payloads at runtime.
+
+Artifacts left behind include:
+- Frida’s server process (`frida-server`) running on the target system.
+- Unusual network connections to Frida’s default port (27042) or custom ports.
+- Modified memory regions in injected processes, detectable via EDR/XDR tools.
+
+Evasion considerations:
+- Use Frida’s `--no-pause` flag to avoid detection by process monitoring tools.
+- Employ script obfuscation (e.g., via `frida-compile`) to evade signature-based detection.
+- Limit Frida’s runtime footprint by detaching after execution or using short-lived scripts.
+
+**Sources**:
+- [MITRE ATT&CK: T1055.002](https://attack.mitre.org/techniques/T1055/002/)
+- [Red Team Notes: Frida for Offensive Security](https://www.ired.team/offensive-security/code-injection-process-injection/injecting-dll-via-fridas-dynamic-instrumentation)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -266,3 +303,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.nsa.gov/what-we-do/cybersecurity/
 
 <!-- cyberlab-enriched: v3 -->
+- https://github.com/frida/frida-gum/wiki/Stalker
+- https://mitre-engenuity.org/
+- https://attack.mitre.org/techniques/T1055/002/
+- https://www.ired.team/offensive-security/code-injection-process-injection/injecting-dll-via-fridas-dynamic-instrumentation
+
+<!-- cyberlab-enriched: v4 -->
