@@ -164,6 +164,20 @@ sha256sum exercise/c2_hunt.pcap
 - **T1041 — Exfiltration Over C2 Channel** (https://attack.mitre.org/techniques/T1041/) (if data leaves via the same channel).
 - **DFIR phases:** Identification (spot beacon in traffic), Examination/Analysis (filter, export objects, YARA-confirm), Reporting (map to ATT&CK). These phases follow the SANS DFIR / FOR508 investigative workflow (https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/).
 
+
+### Threat Hunting & Detection Engineering
+
+Hunt for **Exfiltration Over Alternative Protocol (T1048)** by pivoting on rare, high-volume outbound connections to non-standard ports. Use Zeek’s `conn.log` to filter for `duration > 10s` and `orig_bytes > 10MB` where `service` is not `http`, `https`, `dns`, or `smtp`. Cross-reference with Windows Event ID **5156** (Windows Filtering Platform connection) to identify processes (e.g., `powershell.exe`, `certutil.exe`) initiating these flows. For **Data Encoding (T1132.001)**, inspect `dce_rpc.log` or `smb_files.log` for base64-encoded payloads in file transfers (e.g., `*.txt` or `*.dat` with entropy > 4.5).
+
+Leverage Suricata’s `fileinfo` keyword to detect **Non-Application Layer Protocol (T1095)** by alerting on raw TCP/UDP traffic to ports like `4444` or `8080` where `app_proto` is `failed` or `none`. Correlate with Zeek’s `notice.log` for `SSL::Invalid_Server_Cert` events, indicating covert channels. Hunt for **Process Injection (T1055.001)** by querying Windows Event ID **4688** for `CreateRemoteThread` calls from unusual parents (e.g., `wscript.exe` spawning `svchost.exe`).
+
+**Sources:**
+- [CISA: Detecting Post-Compromise Threat Activity in Microsoft Cloud Environments](https://www.cisa.gov/resources-tools/services/detecting-post-compromise-threat-activity-microsoft-cloud-environments)
+- [FireEye: Detecting and Responding to Advanced Threats with Network Traffic Analysis](https://www.fireeye.com/current-threats.html)
+
+### Adversary Emulation & Red-Team Perspective
+Adversaries may leverage the network hunting environment to their advantage by employing techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - User Execution, where they trick users into executing malicious commands or scripts, and [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution, which allows them to execute malicious code by proxying it through signed binaries. To achieve this, attackers may create malicious artifacts such as suspicious scripts, executable files, or modified system binaries. Network defenders should be aware of these tactics and monitor for signs of adversary emulation, such as unusual network activity or changes to system files. To evade detection, attackers may use code obfuscation or anti-debugging techniques, making it essential for defenders to employ robust detection and analysis tools. For more information on adversary emulation and red-team tactics, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/What-We-Do/Cybersecurity/) websites.
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -196,3 +210,11 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Malware static triage](../08-malware-static-triage/README.md) -- shares yara for authoring and running detection rules.
 
 <!-- cyberlab-enriched: v1 -->
+- https://www.cisa.gov/resources-tools/services/detecting-post-compromise-threat-activity-microsoft-cloud-environments
+- https://www.fireeye.com/current-threats.html
+- https://attack.mitre.org/techniques/T1204
+- https://attack.mitre.org/techniques/T1218
+- https://www.cisa.gov/
+- https://www.nsa.gov/What-We-Do/Cybersecurity/
+
+<!-- cyberlab-enriched: v2 -->
