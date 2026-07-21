@@ -100,32 +100,6 @@ Concrete detection logic and pivots:
 - **Deletion / anti-forensics detection.** An `fls -r` listing full of `*`-marked entries clustered in a short window, combined with a `mactime` gap, is a strong signal of T1070.004 (File Deletion) or T1070.006 (Timestomp). Flag files where the metadata timestamps are internally inconsistent (e.g. a Created time later than Modified) as possible timestomping.
 - **Persistence hunting.** Surface autostart artifacts (registry run keys / services on Windows images, `cron`/`systemd`/`~/.bashrc` on Linux images) in the `mactime` output to detect T1547 and T1053 (Scheduled Task/Job), then hash and push those filenames/hashes into Security Onion's Hunt interface (https://docs.securityonion.net/en/2.4/hunt.html) to sweep the rest of the fleet.
 
-Additional MITRE ATT&CK technique:
-- **T1056.001** – Input Capture: Keyboard and Clipboard (detected via timeline of `mactime` activity, or via `fls` listing of clipboard-related files). https://attack.mitre.org/techniques/T1056/001/
-- **T1105** – Ingress Tool Transfer (detected via `mactime` timeline correlation with Zeek `files.log` and `http.log`/`dns.log`). https://attack.mitre.org/techniques/T1105/
-
-Detection engineering:
-- **Sigma rule sketch (file carve detection):**
-```yaml
-title: File Carve Detection via PhotoRec
-logsource:
-  category: file
-  product: photorec
-detection:
-  selection:
-    - EventID: 4688
-    - Image: *photorec.exe
-    - CommandLine: *-cmd*
-  condition: selection
-falsepositives:
-  - none
-level: medium
-```
-This Sigma rule detects the use of `photorec` in non-interactive mode (via the `/cmd` flag), which is a common tactic during digital forensics and incident response (DFIR) investigations. It could be used by attackers to recover hidden or deleted files, or by defenders to identify evidence recovery during an investigation.
-
-Threat-hunting pivots:
-- **File carving and persistence:** Use the `mactime` timeline to identify when a file was created or modified around the same time as a `crontab` entry or `systemd` service was added. This could indicate T1547 (Boot or Logon Autostart Execution) or T1053 (Scheduled Task/Job).
-
 ## Attacker perspective
 Attackers know that deleting a file with `rm` or emptying the recycle bin only unlinks the directory entry — the underlying blocks (and often the file data) remain until overwritten, which is exactly what `icat` and `photorec` recover. Adversaries performing T1070.004 (Indicator Removal: File Deletion) and T1485 (Data Destruction) may wipe tools, staged archives, or logs, but leave carveable remnants, orphaned MFT/inode entries, and telltale timeline gaps that `fls -r` exposes with the `*` deleted marker. Even secure-delete or partition-wiping attempts leave artifacts: `mmls` and `testdisk` reveal tampered or removed partition tables, and slack space frequently retains fragments of the very files an attacker believed were destroyed, giving investigators recoverable evidence.
 
@@ -134,12 +108,6 @@ Concrete TTPs, artifacts left behind, and evasion:
 - **T1070.006 – Timestomp.** Attackers use tools (e.g. `SetMACE`, PowerShell, `touch -d`) to backdate timestamps and blend into system files. Defenders counter this on NTFS by comparing the `$STANDARD_INFORMATION` timestamps (what most tools alter) against the harder-to-forge `$FILE_NAME` timestamps in the MFT. MITRE reference: https://attack.mitre.org/techniques/T1070/006/.
 - **T1485 – Data Destruction.** Wiping partition tables or superblocks makes an image look empty to a naive mount, but `mmls` still shows the raw layout and `testdisk` can rebuild a deleted/overwritten partition table from backup structures (https://www.cgsecurity.org/wiki/TestDisk), while PhotoRec carves file bodies independent of any partition metadata. MITRE reference: https://attack.mitre.org/techniques/T1485/.
 - **Evasion and its limits.** True anti-forensics requires overwriting the data blocks (e.g. `shred`, `dd if=/dev/zero`, full-disk crypto-erase), not just deletion — but partial wipes leave file **slack** (the unused tail of the last cluster) holding fragments of prior content, and journaled filesystems (ext3/4 journal, NTFS `$LogFile`/`$UsnJrnl`) retain metadata about files that no longer exist. These residual structures are exactly what carving and metadata analysis exploit. General Sleuth Kit/DFIR reference: https://www.sleuthkit.org/sleuthkit/docs.php and the SANS DFIR resources at https://www.sans.org/posters/windows-forensic-analysis/.
-
-Additional MITRE ATT&CK technique:
-- **T1055** – Process Injection (detected via `fls` listing of suspicious process-related files or `mactime` timeline of process creation). https://attack.mitre.org/techniques/T1055/
-
-Evasion techniques:
-- **File slack and journaling:** Attackers may attempt to overwrite file slack space (the unused portion of a cluster) to avoid detection by `icat` or `photorec`. However, journaled filesystems like NTFS or ext4 retain metadata about deleted files in the `$LogFile` or journal, which can be analyzed using `mactime` or Sleuth Kit tools.
 
 ## Answer key
 Sample sha256: `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
@@ -179,9 +147,6 @@ Expected: the file count is greater than zero, confirming PhotoRec recovered car
 - **T1485** – Data Destruction (partition/disk tampering detected via `mmls`/`testdisk`). https://attack.mitre.org/techniques/T1485/
 - **T1005** – Data from Local System (files identified/exported from the image). https://attack.mitre.org/techniques/T1005/
 - **T1547** – Boot or Logon Autostart Execution (persistence artifacts surfaced in `mactime` timeline). https://attack.mitre.org/techniques/T1547/
-- **T1056.001** – Input Capture: Keyboard and Clipboard (detected via timeline of `mactime` activity, or via `fls` listing of clipboard-related files). https://attack.mitre.org/techniques/T1056/001/
-- **T1105** – Ingress Tool Transfer (detected via `mactime` timeline correlation with Zeek `files.log` and `http.log`/`dns.log`). https://attack.mitre.org/techniques/T1105/
-- **T1055** – Process Injection (detected via `fls` listing of suspicious process-related files or `mactime` timeline of process creation). https://attack.mitre.org/techniques/T1055/
 - **DFIR phase:** Identification and Examination (evidence acquisition triage, filesystem analysis, timeline reconstruction, and deleted-file recovery).
 
 ## Sources
@@ -205,18 +170,6 @@ Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK,
 - Security Onion — Zeek data source: https://docs.securityonion.net/en/2.4/zeek.html
 - Zeek logging reference (`conn.log`, `files.log`, `http.log`, `dns.log`): https://docs.zeek.org/en/master/logs/index.html
 - MITRE ATT&CK — T1070.004 Indicator Removal: File Deletion: https://attack.mitre.org/techniques/T1070/004/
-- MITRE ATT&CK — T1070.006 Indicator Removal: Timestomp: https://attack.mitre.org/techniques/T1070/006/
-- MITRE ATT&CK — T1485 Data Destruction: https://attack.mitre.org/techniques/T1485/
-- MITRE ATT&CK — T1005 Data from Local System: https://attack.mitre.org/techniques/T1005/
-- MITRE ATT&CK — T1547 Boot or Logon Autostart Execution: https://attack.mitre.org/techniques/T1547/
-- MITRE ATT&CK — T1056.001 Input Capture: Keyboard and Clipboard: https://attack.mitre.org/techniques/T1056/001/
-- MITRE ATT&CK — T1105 Ingress Tool Transfer: https://attack.mitre.org/techniques/T1105/
-- MITRE ATT&CK — T1055 Process Injection: https://attack.mitre.org/techniques/T1055/
+- MITRE ATT&CK
 
-## Related modules
-- [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- shares autopsy
-- [Scenario: intrusion timeline reconstruction](../49-intrusion-timeline-case/README.md) -- shares sleuth kit
-- [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares sleuth kit
-- [Memory forensics](../02-memory-forensics/README.md) -- same learning path (Foundations)
-
-<!-- cyberlab-enriched: v2 -->
+<!-- cyberlab-enriched: v1 -->
