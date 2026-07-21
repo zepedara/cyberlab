@@ -235,6 +235,67 @@ Evasion tactics include **timestomping** (modifying memory timestamps via `KeQue
 - [MITRE ATT&CK: Process Injection (T1055)](https://attack.mitre.org/techniques/T1055/)
 - [CERT-EU: Memory Forensics for Incident Response](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_
 
+
+### Essential Commands & Features
+
+Volatility 3’s advanced commands unlock deeper forensic insights into process execution, DLL injection, and artifact timelining—critical for detecting evasion and persistence techniques. Below are **four high-impact commands** with concrete examples and their investigative use cases:
+
+---
+
+#### **1. `yarascan` – Hunt for Malicious Code or Strings**
+**Use Case**: Detect embedded malware (e.g., shellcode, obfuscated strings) or suspicious patterns in memory (e.g., **T1027.001: Obfuscated Files or Information** or **T1059.003: Command and Scripting Interpreter: Windows Command Shell**).
+**Example**:
+```bash
+vol -f memory.dmp windows.yarascan.YaraScan --yara-rules /rules/malware.yar --pid 1234
+```
+- **Flags**:
+  - `--yara-rules`: Path to YARA rules file (e.g., [YARA-Signator](https://github.com/fxb-cocacoding/yara-signator)).
+  - `--pid`: Target a specific process (e.g., `explorer.exe`).
+- **Pro Tip**: Combine with `strings` output to validate findings.
+
+---
+
+#### **2. `dlllist` – Enumerate Loaded DLLs for Injection/Proxying**
+**Use Case**: Identify DLL hijacking (e.g., **T1574.002: Hijack Execution Flow: DLL Side-Loading**) or injected modules (e.g., Cobalt Strike).
+**Example**:
+```bash
+vol -f memory.dmp windows.dlllist.DllList --pid 4567
+```
+- **Output**: Lists DLLs with full paths, base addresses, and timestamps.
+- **Red Flags**: Unsigned DLLs in `System32`, mismatched paths (e.g., `C:\Temp\legit.dll`).
+
+---
+
+#### **3. `handles` – Inspect Process Handles for Credential Theft**
+**Use Case**: Detect handle abuse (e.g., **T1003.002: OS Credential Dumping: Security Account Manager (SAM)**) or token manipulation.
+**Example**:
+```bash
+vol -f memory.dmp windows.handles.Handles --pid 789 --object-type File,Key
+```
+- **Flags**:
+  - `--object-type`: Filter for `File`, `Key` (registry), `Token`, or `Process`.
+- **Suspicious Activity**: `lsass.exe` holding handles to `\\Device\HarddiskVolume1\Windows\System32\config\SAM`.
+
+---
+
+#### **4. `timeliner` – Reconstruct Attack Timelines**
+**Use Case**: Correlate artifacts (e.g., file
+
+### Common Pitfalls & Result Validation
+
+Analysts frequently misinterpret Volatility’s output, leading to false positives or overlooked threats. A common pitfall is **assuming all suspicious processes are malicious**—legitimate but unusual processes (e.g., `svchost.exe` with atypical arguments) may trigger alerts. Always cross-reference findings with baseline system behavior and known-good process lists. Another error is **ignoring profile mismatches**; using an incorrect OS profile (e.g., `Win10x64_19041` for a `Win10x64_18362` memory dump) corrupts plugin output. Validate profiles with `kdbgscan` or `imageinfo` before analysis.
+
+False conclusions often arise from **overlooking context**. For example, detecting **Process Injection (T1055.001)** via `malfind` requires validating memory sections for executable permissions and anomalous parent-child relationships. Similarly, **Process Hollowing (T1055.012)** may evade detection if analysts rely solely on `pslist`; use `ldrmodules` to check for unlinked DLLs. To avoid misattribution, correlate Volatility findings with other artifacts (e.g., prefetch files, event logs) and document the full attack chain.
+
+**Validation steps**:
+1. **Reproducibility**: Re-run plugins with adjusted parameters (e.g., `--dump-dir` for `malfind`).
+2. **Cross-tool verification**: Compare results with tools like Rekall or Redline.
+3. **MITRE ATT&CK mapping**: Confirm techniques (e.g., **Indicator Removal (T1070.006)** via `timeliner`) align with adversary TTPs.
+
+Sources:
+- [DFIR Review: Volatility Pitfalls](https://www.dfir.review/2021/03/15/common-pitfalls-in-memory-forensics/)
+- [CERT-EU: Memory Forensics Best Practices](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Memory_Forensics.pdf)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, SANS, Microsoft Learn, or recognized project docs):
 
@@ -277,3 +338,8 @@ Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, S
 - https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_
 
 <!-- cyberlab-enriched: v4 -->
+- https://github.com/fxb-cocacoding/yara-signator
+- https://www.dfir.review/2021/03/15/common-pitfalls-in-memory-forensics/
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Memory_Forensics.pdf
+
+<!-- cyberlab-enriched: v5 -->
