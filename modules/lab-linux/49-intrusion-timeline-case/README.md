@@ -109,6 +109,9 @@ Concrete detection logic and pivots:
 - **Registry persistence (T1547.001).** A Run-key value from RegRipper's `run` plugin, correlated with the `.exe` crtime and a subsequent outbound connection, confirms Registry Run Key/Startup Folder persistence ([ATT&CK T1547.001](https://attack.mitre.org/techniques/T1547/001/)). Microsoft's autoruns/registry references confirm the Run/RunOnce key locations ([Microsoft Learn: Run and RunOnce registry keys](https://learn.microsoft.com/en-us/windows/win32/setupapi/run-and-runonce-registry-keys)).
 - **Timestomp signal (T1070.006).** Watch for files where crtime is *later* than mtime, or where `$STANDARD_INFORMATION` and `$FILE_NAME` timestamps disagree — Plaso surfaces both via the NTFS `$MFT` parser, letting you flag manipulation ([ATT&CK T1070.006](https://attack.mitre.org/techniques/T1070/006/)).
 - **USB introduction (T1091).** RegRipper `usbstor` LastWrite times placed on the timeline show when a device was first connected, relevant to removable-media replication ([ATT&CK T1091](https://attack.mitre.org/techniques/T1091/)).
+- **PowerShell abuse (T1059.001).** Correlate file creation times of scripts executed via PowerShell (e.g., `evil.ps1`) with Windows Event ID 4104 (ScriptBlock Logging) in `Microsoft-Windows-PowerShell/Operational`. Look for `-EncodedCommand` or `-NoProfile -ExecutionPolicy Bypass` in `ScriptBlockText` field. Sysmon Event ID 1 (Process creation) with `Image` containing `powershell.exe` or `pwsh.exe` and `CommandLine` containing suspicious base64 strings can also be used ([ATT&CK T1059.001](https://attack.mitre.org/techniques/T1059/001/); [Microsoft Learn: ScriptBlock Logging](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_logging_windows)).
+- **Token manipulation (T1134.002).** On Windows, Event ID 4688 (Process Creation) with `TokenElevationType` = `%%1936` (full token) and parent process not expected for that child can indicate privilege escalation via token duplication. Correlate with Event ID 4672 (Special Privileges Assigned) for SeBackupPrivilege or SeDebugPrivilege usage. Sysmon Event ID 10 (Process Access) with `TargetImage` = `lsass.exe` and `GrantedAccess` = `0x1438` (full memory read/write) is a strong indicator ([ATT&CK T1134.002](https://attack.mitre.org/techniques/T1134/002/); [Sysmon documentation](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon)).
+- **Zeek HTTP beaconing.** In `http.log`, look for repeated `GET` requests to the same URI with small response sizes (<1KB) and consistent `user_agent` strings (e.g., `Mozilla/5.0 (Windows NT 6.1; WOW64)`). Pivot on `host` and `uri` columns to identify C2 patterns ([Zeek http.log reference](https://docs.zeek.org/en/master/logs/http.html)).
 
 Timelines also feed Security Onion case notes, help scope which hosts and time windows need containment, and provide a defensible chronology for reporting.
 
@@ -119,6 +122,10 @@ Concrete TTPs, artifacts, and evasion:
 - **Timestomping (T1070.006).** Adversaries modify file timestamps to blend malware in with existing files, often overwriting `$STANDARD_INFORMATION` (`$SI`) times to look old ([ATT&CK T1070.006](https://attack.mitre.org/techniques/T1070/006/)). The catch: on NTFS the `$FILE_NAME` (`$FN`) attribute and the `$UsnJrnl`/`$LogFile` often retain the true times, and `$SI` timestamps rewritten by user-mode tools frequently lose sub-second precision — both signals Sleuth Kit's `$MFT` handling and Plaso's NTFS parser can surface (see [SANS DFIR Windows Forensic Analysis poster](https://www.sans.org/posters/windows-forensic-analysis/) and [The Sleuth Kit docs](https://www.sleuthkit.org/sleuthkit/docs.php)).
 - **Registry Run-key persistence (T1547.001).** Writing to `HKCU\...\Run` or `HKLM\...\Run` leaves the payload path *and* updates the containing key's LastWrite time, an artifact RegRipper `run` reads directly ([ATT&CK T1547.001](https://attack.mitre.org/techniques/T1547/001/)).
 - **Clearing event logs (T1070.001).** Adversaries run `wevtutil cl` or use APIs to wipe `.evtx` logs to destroy the login/process trail ([ATT&CK T1070.001](https://attack.mitre.org/techniques/T1070/001/)). But this leaves its own tells (a `1102` "log cleared" record before the gap), and registry LastWrite times and filesystem `$MFT` metadata survive, giving investigators independent artifacts to rebuild the true sequence of events.
+- **PowerShell execution (T1059.001).** Attackers often run encoded PowerShell commands to download a second stage. This leaves Event ID 4104 entries with `ScriptBlockText` containing base64 strings, and Sysmon Event ID 1 with `powershell.exe -EncodedCommand`. The timeline will show `evil.ps1` script file creation just before the event logs occur ([ATT&CK T1059.001](https://attack.mitre.org/techniques/T1059/001/)).
+- **Service creation (T1543.003).** Malware may install itself as a service to survive reboots. This creates a `SYSTEM\CurrentControlSet\Services\[MalwareName]` registry key with a LastWrite time, and Windows Event ID 4697 (Service Installed) if logging is enabled. The service binary's file creation time can be cross-referenced ([ATT&CK T1543.003](https://attack.mitre.org/techniques/T1543/003/)).
+- **Scheduled task registration (T1053.005).** Attackers use `schtasks` or COM to create periodic tasks. This leaves artifacts in `%SystemRoot%\Tasks\` (XML files) and Event ID 4698 (Scheduled Task Created). The task XML's `Date` field and the file's `crtime` provide timing clues ([ATT&CK T1053.005](https://attack.mitre.org/techniques/T1053/005/)).
+- **Evasion: Alternate Data Streams (T1564.004).** Malware can hide inside NTFS ADS, making `fls` show the stream as `filename:stream`. Plaso's NTFS parser can detect these. The timeline will show the parent file modified but no visible child file ([ATT&CK T1564.004](https://attack.mitre.org/techniques/T1564/004/)).
 
 ## Answer key
 Expected findings from the sample (`exercise/intrusion_bodyfile.txt`):
@@ -138,28 +145,45 @@ Sample sha256: reproduce with the generator's `sha256sum intrusion_bodyfile.txt`
 - **T1070.006** — Indicator Removal: Timestomp (detected via MAC-time / `$SI` vs `$FN` inconsistencies) — https://attack.mitre.org/techniques/T1070/006/
 - **T1070.001** — Indicator Removal: Clear Windows Event Logs — https://attack.mitre.org/techniques/T1070/001/
 - **T1091** — Replication Through Removable Media / device history (RegRipper `usbstor`) — https://attack.mitre.org/techniques/T1091/
+- **T1059.001** — Command and Scripting Interpreter: PowerShell — https://attack.mitre.org/techniques/T1059/001/
+- **T1134.002** — Access Token Manipulation: Create Process with Token — https://attack.mitre.org/techniques/T1134/002/
+- **T1543.003** — Create or Modify System Process: Windows Service — https://attack.mitre.org/techniques/T1543/003/
+- **T1053.005** — Scheduled Task/Job: Scheduled Task — https://attack.mitre.org/techniques/T1053/005/
+- **T1564.004** — Hide Artifacts: NTFS Extended Attributes / Alternate Data Streams — https://attack.mitre.org/techniques/T1564/004/
 - **DFIR phase:** Examination and Analysis (timeline reconstruction / correlation) following Identification.
-
 
 ### Threat Hunting & Detection Engineering
 
-Once the 49-intrusion timeline is reconstructed, pivot to **proactive threat hunting** and **detection engineering** to identify similar adversary tradecraft. Focus on **T1059.001 (Command and Scripting Interpreter: PowerShell)** and **T1134.002 (Access Token Manipulation: Create Process with Token)**—two techniques frequently observed in post-exploitation phases.
+Once the 49-intrusion timeline is reconstructed, pivot to **proactive threat hunting** and **detection engineering** to identify similar adversary tradecraft. Focus on **T1059.001 (PowerShell)** and **T1134.002 (Token Manipulation)**—two techniques frequently observed in post-exploitation phases.
 
 **Detection Logic:**
-- **PowerShell Script Block Logging (Event ID 4104)** in Windows Event Logs (`Microsoft-Windows-PowerShell/Operational`) captures deobfuscated commands. Hunt for encoded commands (`-EncodedCommand`) or suspicious cmdlets like `Invoke-WebRequest -Uri <C2_URL>`. Pivot on `ScriptBlockText` fields containing base64 strings or unusual parameter combinations (e.g., `-NoProfile -ExecutionPolicy Bypass`).
-- **Process Creation Events (Event ID 4688)** with `TokenElevationType` set to `%%1936` (TokenElevationTypeFull) may indicate **T1134.002** if the parent process (e.g., `lsass.exe`) is unexpected. Correlate with **Event ID 4672** (Special Privileges Assigned) to identify token theft attempts.
+- **PowerShell Script Block Logging (Event ID 4104)** in Windows Event Logs (`Microsoft-Windows-PowerShell/Operational`) captures deobfuscated commands. Hunt for encoded commands (`-EncodedCommand`) or suspicious cmdlets like `Invoke-WebRequest -Uri <C2_URL>`. Pivot on `ScriptBlockText` fields containing base64 strings or unusual parameter combinations (e.g., `-NoProfile -ExecutionPolicy Bypass`). Also monitor **Event ID 4103** (Module Logging) for `Invoke-Expression` usage.
+- **Process Creation Events (Event ID 4688)** with `TokenElevationType` set to `%%1936` (TokenElevationTypeFull) may indicate **T1134.002** if the parent process (e.g., `lsass.exe`) is unexpected. Correlate with **Event ID 4672** (Special Privileges Assigned) to identify token theft attempts. **Sysmon Event ID 10** (Process Access) with `TargetImage` = `lsass.exe` and `GrantedAccess` = `0x1438` is a strong indicator.
 - **Zeek/Suricata:** Hunt for **HTTP requests to uncommon URIs** (e.g., `/admin/get.php`) with `user_agent` fields mimicking legitimate tools (e.g., `Mozilla/5.0 (Windows NT)`). Use Zeek’s `http.log` to pivot on `status_code=200` responses with small payloads (e.g., `<1KB`), a hallmark of C2 beaconing.
+- **Service Creation (T1543.003):** Query Windows Event ID 4697 (Service Installed) and cross-reference with file creation times from the timeline. Look for services with `ImagePath` pointing to `%TEMP%` or `%APPDATA%`.
+- **Scheduled Task (T1053.005):** Hunt for Event ID 4698 (Scheduled Task Created) and check the task XML for `Command` fields launching suspicious executables. Compare with file system timeline to see if the binary was created shortly before the task.
 
 **Threat-Hunting Pivots:**
-- **Sysmon Event ID 10 (Process Access)** targeting `lsass.exe` with `GrantedAccess` values like `0x1438` (read/write memory) or `0x1410` (query information).
-- **Suricata’s `fileinfo` log** for executables downloaded via HTTP with mismatched MIME types (e.g., `.jpg` extension but `PE32` magic bytes).
+- **Sysmon Event ID 10 (Process Access)** targeting `lsass.exe` with `GrantedAccess` values like `0x1438` (read/write memory) or `0x1410` (query information). Pivot on `CallTrace` to identify the calling process.
+- **Suricata’s `fileinfo` log** for executables downloaded via HTTP with mismatched MIME types (e.g., `.jpg` extension but `PE32` magic bytes). Correlate with Zeek `http.log` `uri` and `md5` fields.
+- **Zeek `ssl.log`** for self-signed certificates or unusual `ja3` fingerprints associated with known C2 frameworks.
 
 **Sources:**
 - [CISA Alert AA23-347A: Threat Hunting for PowerShell Abuse](https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a)
 - [MITRE ATT&CK: Access Token Manipulation (T1134)](https://attack.mitre.org/techniques/T1134/)
+- [Sysmon Documentation (Microsoft)](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon)
+- [Zeek HTTP log reference](https://docs.zeek.org/en/master/logs/http.html)
+- [Suricata File Extraction & fileinfo log](https://suricata.readthedocs.io/en/latest/output/log-files.html#fileinfo-log)
 
 ### Adversary Emulation & Red-Team Perspective
-To effectively emulate an adversary in the context of the 49-intrusion-timeline-case, consider the tactics, techniques, and procedures (TTPs) involved in exploiting system vulnerabilities. An attacker may utilize techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - "User Execution" to trick users into executing malicious code, or [T1550](https://attack.mitre.org/techniques/T1550) - "Use Alternate Authentication Material" to gain unauthorized access using alternate authentication materials. These techniques can leave behind artifacts such as suspicious login activity, unusual network traffic, or modified system files. To evade detection, attackers may employ evasion techniques like code obfuscation or anti-forensic tools to conceal their activities. Understanding these TTPs and the resulting artifacts is crucial for developing effective detection and response strategies. For more information on adversary emulation and red teaming, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) website or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) cybersecurity framework documentation.
+
+To effectively emulate an adversary in the context of the 49-intrusion-timeline-case, consider the tactics, techniques, and procedures (TTPs) involved in exploiting system vulnerabilities. An attacker may utilize techniques such as **T1204 (User Execution)** to trick users into executing malicious code via spearphishing attachments or drive-by downloads. The artifact left includes `.lnk` files in `%USERPROFILE%\Recent` or `%TEMP%\` with suspicious target paths, and event logs showing Office macros (Event ID 1003 for Excel). Alternatively, **T1550 (Use Alternate Authentication Material)** can be used for pass-the-hash (T1550.002) or pass-the-ticket (T1550.003). Artifacts include NTLM authentication events in the Security log (Event ID 4624 with LogonType = 9 or 3) and Kerberos ticket cache files in `%USERPROFILE%\AppData\Local\Microsoft\Windows\Caches`. Tools like Mimikatz create registry entries in `HKEY_LOCAL_MACHINE\SECURITY\Policy\Secrets` or traces in `%TEMP%\mimikatz.log`. To evade detection, adversaries may clear ARP cache (T1070.006), disable Windows Defender (T1562.001), or use process injection (T1055.001) to hide payloads within legitimate processes. The timeline reconstruction with Plaso and Sleuth Kit can capture all these artifact timestamps: file creation of injected dll, LastWrite of modified registry keys, and event log clearing events. Understanding these TTPs and the resulting artifacts is crucial for developing effective detection and response strategies.
+
+**Sources:**
+- [MITRE ATT&CK: User Execution (T1204)](https://attack.mitre.org/techniques/T1204/)
+- [MITRE ATT&CK: Use Alternate Authentication Material (T1550)](https://attack.mitre.org/techniques/T1550/)
+- [Microsoft Security Logging for Kerberos and NTLM](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/advanced-security-auditing)
+- [SANS Windows Forensic Analysis Poster (Timestamps & Artifacts)](https://www.sans.org/posters/windows-forensic-analysis/)
 
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
@@ -191,24 +215,38 @@ Claim → source mapping (all URLs are real, authoritative pages):
   - https://docs.securityonion.net/en/2.4/zeek.html
 - Zeek `conn.log` fields (network correlation):
   - https://docs.zeek.org/en/master/logs/conn.html
+- Zeek `http.log` fields:
+  - https://docs.zeek.org/en/master/logs/http.html
+- PowerShell ScriptBlock Logging and Event IDs 4104/4103:
+  - https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_logging_windows
+- Sysmon Event ID 1, 10 and usage:
+  - https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+- Windows Security Events 4688, 4672, 4697, 4698, 4624:
+  - https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/advanced-security-auditing
+- Suricata fileinfo log:
+  - https://suricata.readthedocs.io/en/latest/output/log-files.html#fileinfo-log
 - MITRE ATT&CK techniques:
   - T1547.001 — https://attack.mitre.org/techniques/T1547/001/
   - T1070.006 — https://attack.mitre.org/techniques/T1070/006/
   - T1070.001 — https://attack.mitre.org/techniques/T1070/001/
   - T1091 — https://attack.mitre.org/techniques/T1091/
+  - T1059.001 — https://attack.mitre.org/techniques/T1059/001/
+  - T1134.002 — https://attack.mitre.org/techniques/T1134/002/
+  - T1543.003 — https://attack.mitre.org/techniques/T1543/003/
+  - T1053.005 — https://attack.mitre.org/techniques/T1053/005/
+  - T1564.004 — https://attack.mitre.org/techniques/T1564/004/
+  - T1204 — https://attack.mitre.org/techniques/T1204/
+  - T1550 — https://attack.mitre.org/techniques/T1550/
+  - T1550.002 — https://attack.mitre.org/techniques/T1550/002/
+- CISA Alert AA23-347A:
+  - https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a
 
 ## Related modules
-- [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares Sleuth Kit for host-level filesystem triage.
-- [Disk & filesystem forensics](../01-disk-forensics/README.md) -- shares Sleuth Kit for volume/partition and file recovery work.
-- [Timeline / super-timelining](../03-timeline-analysis/README.md) -- shares Plaso for building and filtering super-timelines.
-- [Registry analysis](../04-registry-analysis/README.md) -- shares RegRipper for deeper hive parsing.
-
-<!-- cyberlab-enriched: v1 -->
-- https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a
-- https://attack.mitre.org/techniques/T1134/
-- https://attack.mitre.org/techniques/T1204
-- https://attack.mitre.org/techniques/T1550
-- https://www.cisa.gov/
-- https://www.nist.gov/
+- [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares sleuth kit
+- [Disk & filesystem forensics](../01-disk-forensics/README.md) -- shares sleuth kit
+- [Timeline / super-timelining](../03-timeline-analysis/README.md) -- shares plaso
+- [Registry analysis](../04-registry-analysis/README.md) -- shares regripper
 
 <!-- cyberlab-enriched: v2 -->
+
+<!-- cyberlab-enriched: v3 -->
