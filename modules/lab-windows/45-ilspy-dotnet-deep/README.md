@@ -327,6 +327,51 @@ The SHA256 digest printed by the generator’s `Get-FileHash` is the authoritati
   - **Identification:** Extracting IOCs (C2 URLs, mutex names, registry keys) for scoping.
   - **Collection:** Recovering embedded resources or secondary payloads from the assembly.
 
+
+### Essential Commands & Features
+
+Master these **undemonstrated** but critical `ilspycmd` and `de4dot` features to accelerate .NET reverse engineering and uncover adversary tradecraft.
+
+#### **Project Export (`-p`)**
+Use `-p` to generate a **compilable Visual Studio project** instead of loose files. Ideal for rebuilding obfuscated malware (e.g., **T1127.001: Trusted Developer Utilities Proxy Execution**) to analyze post-compilation behavior.
+```bash
+ilspycmd -p -o ./rebuilt_project malware.exe
+```
+
+#### **Single-File Decompilation (`-t`)**
+Force output into a **single `.cs` file** with `-t` to simplify grep-based analysis (e.g., **T1027.005: Obfuscated Files or Information: Indicator Removal from Tools**).
+```bash
+ilspycmd -t -o output.cs malware.exe
+```
+
+#### **Custom Output Directory (`-o`)**
+Redirect output to a **specific directory** with `-o` to avoid clutter when processing multiple samples.
+```bash
+ilspycmd -o ./decompiled malware.dll
+```
+
+#### **De4dot’s `--don` Flag**
+Strip **obfuscation attributes** (e.g., ConfuserEx, Dotfuscator) with `--don` to expose hidden strings/methods tied to **T1140: Deobfuscate/Decode Files or Information**.
+```bash
+de4dot --don malware_cleaned.exe
+```
+
+**Sources:**
+- [ILSpy GitHub: Command-Line Options](https://github.com/icsharpcode/ILSpy/wiki/Command-Line-Options)
+- [FireEye FLARE: Deobfuscating .NET with de4dot](https://www.fireeye.com/blog/threat-research/2018/03/deobfuscating-net-with-de4dot.html)
+
+### Common Pitfalls & Result Validation
+
+A common pitfall when using ILSpy for deep .NET analysis is treating decompiled code as a complete representation of the binary’s behavior. Malware frequently employs obfuscators (ConfuserEx, SmartAssembly) that produce unreadable control flow or empty method bodies. Analysts may mistakenly dismiss such methods as benign when they actually invoke `Assembly.Load(byte[])` at runtime to load embedded payloads via reflection. Another mistake is failing to check for masquerading: attackers rename assembly metadata (e.g., `System.Core` vs. `Syst3m.C0re`) to mimic legitimate libraries (MITRE T1036, Masquerading). Additionally, .NET droppers often inject into other processes using `CreateRemoteThread` or `NtCreateThreadEx` via P/Invoke (MITRE T1055, Process Injection). Scrutinizing only the managed code will entirely miss this capability.
+
+Validate findings by cross-referencing decompiled structures with dynamic analysis. Execute the sample in a sandbox, capture API calls (API Monitor, Process Monitor), and compare file, registry, and network activity to the decompiled logic. For suspected obfuscation, deobfuscate with tools like de4dot, then re-examine the cleaned code. Verify that any embedded resources (e.g., `.resources` in ILSpy) are extracted and analyzed separately, as they may contain additional payloads.
+
+To avoid false conclusions, never treat decompiled methods as equivalent to source-level evidence. If a method is obfuscated, empty, or references `unsafe` code, document the uncertainty and pursue alternative paths: runtime debugging with dnSpy, memory dumps, or behavioral analysis. Corroborate every attributed capability with at least two independent analysis methods (static + dynamic) before confirming.
+
+Sources:
+- Elastic Security Labs, *Unmasking .NET Malware: A Static Analysis Approach*, https://www.elastic.co/security-labs/unmasking-net-malware
+- CrowdStrike, *How to Analyze Malicious .NET Samples*, https://www.crowdstrike.com/blog/how-to-analyze-malicious-net-samples/
+
 ## Sources
 **Claim → Source Mapping (All URLs are official tool docs, Microsoft Learn, MITRE ATT&CK, RFC editor, or recognized project docs):**
 
@@ -387,3 +432,9 @@ The SHA256 digest printed by the generator’s `Get-FileHash` is the authoritati
 - [Ghidra decompiler & scripting deep-dive](../27-ghidra-scripting/README.md) -- same Deep-dives learning path for decompilation tooling, focusing on native code analysis.
 
 <!-- cyberlab-enriched: v2 -->
+- https://github.com/icsharpcode/ILSpy/wiki/Command-Line-Options
+- https://www.fireeye.com/blog/threat-research/2018/03/deobfuscating-net-with-de4dot.html
+- https://www.elastic.co/security-labs/unmasking-net-malware
+- https://www.crowdstrike.com/blog/how-to-analyze-malicious-net-samples/
+
+<!-- cyberlab-enriched: v3 -->
