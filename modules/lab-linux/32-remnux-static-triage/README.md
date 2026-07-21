@@ -234,6 +234,80 @@ Evasion considerations include:
 - [MITRE ATT&CK: T1027.001](https://attack.mitre.org/techniques/T1027/001/)
 - [FireEye: Red Team Techniques for Evasion](https://www.fireeye.com/blog/threat-research/2021/03/red-team-techniques-for-evasion.html)
 
+
+### Essential Commands & Features
+
+Below are **undocumented but critical** commands and features for **DIE** and **pefile** that extend static triage capabilities on REMnux. Use these to uncover obfuscated payloads, anomalous headers, and suspicious metadata tied to evasion and persistence techniques.
+
+#### **DIE (Detect It Easy)**
+- **Deep Scan (`-d`)** – Recursively unpacks nested packers (e.g., UPX → Themida) and detects obfuscation layers. Critical for analyzing **T1027.004 (Compile After Delivery)** or **T1027.006 (HTML Smuggling)**.
+  ```bash
+  diec -d suspicious.exe
+  ```
+- **All Info (`-a`)** – Extracts *every* detectable attribute (entropy, imports, sections, overlays). Useful for spotting **T1564.003 (Hidden Window)** via anomalous section names (e.g., `.rsrc` with high entropy).
+  ```bash
+  diec -a malware.dll
+  ```
+- **JSON Output** – Machine-readable output for automation (e.g., parsing with `jq`). Ideal for scripting detections of **T1553.004 (Install Root Certificate)** via anomalous digital signatures.
+  ```bash
+  diec -j infected.pdf | jq '.detects[].name'
+  ```
+
+#### **pefile (Python Library)**
+- **`dump_info()`** – Dumps *all* PE headers (DOS, NT, sections) in a structured format. Use to identify **T1542.002 (Pre-OS Boot: Component Firmware)** via unusual entry points or section alignments.
+  ```python
+  import pefile
+  pe = pefile.PE("bootkit.exe")
+  pe.dump_info()
+  ```
+- **Rich Header Parsing** – Extracts compiler/linker metadata (e.g., Visual Studio version, build timestamps). Detects **T1027.005 (Indicator Removal from Tools)** via mismatched timestamps or spoofed toolchains.
+  ```python
+  pe.parse_rich_header()
+  print(pe.RICH_HEADER)
+  ```
+
+**Sources:**
+- DIE Advanced Usage: [https://github.com/horsicq/DIE-engine/wiki/Command-Line-Options](https://github.com/horsicq/DIE-engine/wiki/Command-Line-Options)
+- pefile Documentation: [https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md](https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md)
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule Benign_Sample_Indicator {
+  meta:
+    description = "Detects a benign educational sample for static triage training"
+    author = "Training Module"
+    date = "2023-10-01"
+    reference = "https://attack.mitre.org/techniques/T1071/001/"
+  strings:
+    $s1 = "This program cannot be run in DOS mode" ascii
+    $s2 = "!This program cannot be run in DOS mode" wide
+  condition:
+    filesize < 1MB and all of them
+}
+```
+
+```yaml
+title: Benign Sample Static Triage Indicator
+logsource:
+  product: windows
+  category: file_event
+detection:
+  selection:
+    TargetFilename|contains: 'sample.exe'
+  condition: selection
+```
+
+**Reference artifacts / IOCs**
+| Indicator Type | Value |
+|----------------|-------|
+| SHA256 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| Filename | `sample.exe` |
+| Host Artifact | File path `C:\Users\Analyst\Desktop\sample.exe` |
+| Network Artifact | `hxxp://192.0.2.1/benign` |
+| MITRE ATT&CK | T1071.001 – Application Layer Protocol: Web Protocols |
+| Source URL | https://attack.mitre.org/techniques/T1071/001/ |
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -281,3 +355,9 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://www.fireeye.com/blog/threat-research/2021/03/red-team-techniques-for-evasion.html
 
 <!-- cyberlab-enriched: v4 -->
+- https://github.com/horsicq/DIE-engine/wiki/Command-Line-Options](https://github.com/horsicq/DIE-engine/wiki/Command-Line-Options
+- https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md](https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md
+- https://attack.mitre.org/techniques/T1071/001/"
+- https://attack.mitre.org/techniques/T1071/001/
+
+<!-- cyberlab-enriched: v5 -->
