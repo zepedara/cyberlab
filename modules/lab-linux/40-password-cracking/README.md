@@ -192,6 +192,42 @@ hashcat -m 100 -a 6 hashes.txt rockyou.txt ?d?d
 ### Threat Hunting & Detection Engineering
 To detect password cracking attempts, threat hunters can monitor Windows Event ID 4625 (Failed Logon) and analyze the `LogonType` field to identify potential brute-force attacks. Additionally, they can inspect Zeek's `http` log to identify suspicious HTTP requests with high failure rates, indicating potential password spraying attempts. These tactics are associated with [T1589](https://attack.mitre.org/techniques/T1589/) - "Verify Security Software" and [T1204](https://attack.mitre.org/techniques/T1204/) - "User Execution", where attackers may attempt to verify the security software configuration or execute malicious code to crack passwords. Threat hunters can pivot on these findings by analyzing network logs for unusual patterns, such as multiple failed login attempts from a single IP address, and inspecting system logs for signs of malicious code execution. For more information on threat hunting and detection engineering, visit the [Cybersecurity and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) website or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) Special Publication 800-53.
 
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, password cracking is a post-exploitation tactic used to escalate privileges, move laterally, or maintain persistence within a compromised environment. Attackers often target hashed credentials (e.g., NTLM, Kerberos, or cached domain credentials) obtained via techniques like **T1003.008 OS Credential Dumping: /etc/passwd and /etc/shadow** (Linux) or **T1555.003 Credentials from Password Stores: Credentials from Web Browsers** (Windows). Once acquired, these hashes are cracked offline using tools like Hashcat or John the Ripper, leveraging GPU acceleration to brute-force weak or common passwords.
+
+**Concrete TTPs:**
+- **Offline Cracking:** Attackers exfiltrate hashed credentials (e.g., `/etc/shadow`, `NTDS.dit`, or browser credential stores) and crack them in a controlled environment to avoid detection.
+- **Rule-Based Attacks:** Custom wordlists (e.g., `rockyou.txt`) are combined with mangling rules (e.g., `best64.rule`) to optimize cracking efficiency.
+- **Pass-the-Hash (PtH):** If plaintext passwords cannot be recovered, attackers may reuse NTLM hashes directly via **T1550.002 Use Alternate Authentication Material: Pass the Hash**.
+
+**Artifacts & Detection:**
+- **Logs:** Failed authentication attempts (Event ID 4625 on Windows), unusual process execution (e.g., `hashcat.exe` or `john`), or large file transfers (exfiltrated credential stores).
+- **Network:** Unusual outbound connections to command-and-control (C2) servers during exfiltration or tool downloads.
+- **Filesystem:** Temporary files (e.g., `.potfile` for Hashcat) or modified registry keys (e.g., `HKLM\SECURITY\Cache` for cached credentials).
+
+**Evasion Considerations:**
+- **Timing:** Cracking is performed offline to avoid triggering rate-limiting or account lockouts.
+- **Tool Obfuscation:** Attackers rename binaries (e.g., `hashcat.exe` → `svchost.exe`) or use living-off-the-land binaries (LOLBins) to blend in.
+- **Credential Dumping:** Techniques like **T1003.008** are often combined with **T1486 Data Encrypted for Impact** (ransomware) to distract defenders.
+
+**Sources:**
+- [MITRE ATT&CK: T1003.008](https://attack.mitre.org/techniques/T1003/008/)
+- [Cracking Passwords with Hashcat (SANS Internet Storm Center)](https
+
+### Common Pitfalls & Result Validation
+
+When performing password cracking, analysts often fall into avoidable traps that lead to false conclusions or wasted resources. A frequent mistake is **ignoring account lockout policies** (MITRE ATT&CK [T1110.004: Brute Force: Credential Stuffing](https://attack.mitre.org/techniques/T1110/004/)), which can trigger defensive responses like account lockouts or alerts, tipping off defenders. Always verify lockout thresholds before launching attacks, and use throttled or targeted approaches (e.g., wordlist-based attacks) to minimize noise.
+
+Another critical error is **failing to validate cracked credentials** in the target environment. For example, a hash cracked offline (e.g., from a dump) may not work due to **password rotation policies** or **multi-factor authentication (MFA)** requirements (MITRE ATT&CK [T1556.006: Modify Authentication Process: Multi-Factor Authentication](https://attack.mitre.org/techniques/T1556/006/)). Always test credentials in a controlled, non-disruptive manner—such as via a low-privilege service or API—to confirm their validity before assuming access.
+
+To avoid false positives, cross-reference cracked passwords with **known breach datasets** (e.g., Have I Been Pwned) or **password complexity requirements** of the target system. For instance, if a cracked password lacks required special characters, it may be a false match. Document your methodology, including tool versions (e.g., Hashcat), wordlists, and rule sets, to ensure reproducibility and peer review.
+
+**Sources:**
+- [OWASP Testing Guide: Password Cracking](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/04-Authentication_Testing/08-Testing_for_Weak_Password_Policy)
+- [CrackStation: Password Cracking Methodology](https://crackstation.net/cracking-passwords.htm)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -239,3 +275,10 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://www.nist.gov/
 
 <!-- cyberlab-enriched: v3 -->
+- https://attack.mitre.org/techniques/T1003/008/
+- https://attack.mitre.org/techniques/T1110/004/
+- https://attack.mitre.org/techniques/T1556/006/
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/04-Authentication_Testing/08-Testing_for_Weak_Password_Policy
+- https://crackstation.net/cracking-passwords.htm
+
+<!-- cyberlab-enriched: v4 -->
