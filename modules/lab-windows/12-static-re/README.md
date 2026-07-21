@@ -197,6 +197,61 @@ While Ghidra’s GUI is powerful, mastering its CLI and advanced features unlock
 ### Threat Hunting & Detection Engineering
 To detect and hunt threats in the realm of static reconnaissance, focus on monitoring system and network logs for signs of unauthorized access or information gathering. Specifically, look for Windows Event ID 4624 (An account was successfully logged on) with a Logon Type of 3 (Network), indicating a potential remote access attempt. Additionally, analyze Zeek logs for unusual DNS queries or Suricata alerts for suspicious HTTP requests, such as those using the `HEAD` method. These could be indicative of techniques like [T1588](https://attack.mitre.org/techniques/T1588) - Obtain Capabilities: Tool, where an adversary obtains or purchases tools that can be used to support their operations, or [T1590](https://attack.mitre.org/techniques/T1590) - Gather Technical Data: Network Configuration, where an adversary gathers information about the network configuration. Threat hunters can pivot on these findings by investigating related IP addresses, domains, or user accounts to uncover further malicious activity. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
 
+
+```markdown
+### Essential Commands & Features
+
+#### Ghidra
+1. **Auto-Analysis Toggle (`Analysis > Auto Analyze...`)**
+   Disable auto-analysis to inspect raw bytes before Ghidra applies heuristics—critical for evading **T1027.005 Obfuscated Files or Information: Indicator Removal from Tools**. Example:
+   ```bash
+   # Launch Ghidra headless to skip auto-analysis (e.g., for packed malware)
+   analyzeHeadless /path/to/project ProjectName -import /path/to/binary -noanalysis
+   ```
+
+2. **Function Graph (`Window > Function Graph`)**
+   Visualize control flow to identify **T1622 Debugger Evasion** (e.g., anti-sandbox checks). Right-click a function > *Graph Control Flow* to expose branching logic.
+
+3. **Patching (`Edit > Patch Program > Assemble`)**
+   Modify instructions to test hypotheses (e.g., bypassing **T1562.004 Impair Defenses: Disable or Modify System Firewall**). Example:
+   ```asm
+   ; Replace a JZ (0x74) with NOP (0x90) to force execution
+   00401000: 90 90 90 90
+   ```
+
+4. **Scripting (Python/Java)**
+   Automate analysis with Ghidra’s API. Example Python script to dump strings (mitigating **T1027.003 Obfuscated Files or Information: Steganography**):
+   ```python
+   from ghidra.app.util import Strings
+   strings = Strings(currentProgram).getStrings(5)  # Min length 5
+   for s in strings:
+       print(s)
+   ```
+
+#### FLOSS
+- **`--only-stacks`**: Extract stack strings (e.g., `floss --only-stacks malware.exe`) to uncover **T1218.011 Signed Binary Proxy Execution: Rundll32** payloads.
+- **`--only-tig`**: Target thread-information blocks (TIB) for **T1055.003 Process Injection: Thread Local Storage** artifacts.
+
+**Sources**:
+- Ghidra Scripting API: [https://ghidra.re/ghidra_docs/api/](https://ghidra.re/ghidra_docs/api/)
+- FLOSS Documentation: [https://github.com/mandiant/flare-floss/wiki](https://github.com/mandiant/flare-floss/wiki)
+```
+
+### Adversary Emulation & Red-Team Perspective
+
+From an attacker’s vantage point, static reverse-engineering (RE) is a critical reconnaissance step to identify vulnerabilities, hardcoded credentials, or logic flaws in compiled binaries. Adversaries often abuse static RE to **extract embedded secrets** (e.g., API keys, encryption keys) or **locate anti-analysis checks** for bypass. A common tactic is **T1552.001: Unsecured Credentials: Credentials In Files**, where attackers parse binaries for plaintext or obfuscated credentials using tools like `strings`, Ghidra, or custom scripts. For example, malware like **TrickBot** has been observed embedding C2 configurations in resource sections, which static RE can uncover.
+
+To evade detection, attackers may employ **T1132.001: Data Encoding: Standard Encoding**, such as Base64 or XOR, to obscure strings or payloads. Static RE can reveal these patterns, but adversaries counter by using **packers** (e.g., UPX) or **custom obfuscation** (e.g., control-flow flattening) to complicate analysis. Artifacts left behind include:
+- **Unusual string patterns** (e.g., encoded blobs, repeated XOR keys).
+- **Suspicious imports** (e.g., `CryptDecrypt`, `LoadResource`).
+- **Anomalous section names** (e.g., `.crt`, `.tls`).
+
+Red teams emulate these TTPs to test defenses, often combining static RE with dynamic analysis to validate findings. For evasion, attackers may split payloads across multiple binaries or use **environmental keying** (e.g., checking for VM artifacts) to hinder static inspection.
+
+**Sources:**
+- [MITRE ATT&CK: T1552.001](https://attack.mitre.org/techniques/T1552/001/)
+- [FireEye: TrickBot Malware Analysis (2021)](https://www.fireeye.com/blog/threat-research/2021/04/trickbot-malware-analysis.html)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative project or vendor pages):
 
@@ -232,3 +287,9 @@ Claim → source mapping (all URLs are official/authoritative project or vendor 
 - https://www.nist.gov/
 
 <!-- cyberlab-enriched: v3 -->
+- https://ghidra.re/ghidra_docs/api/](https://ghidra.re/ghidra_docs/api/
+- https://github.com/mandiant/flare-floss/wiki](https://github.com/mandiant/flare-floss/wiki
+- https://attack.mitre.org/techniques/T1552/001/
+- https://www.fireeye.com/blog/threat-research/2021/04/trickbot-malware-analysis.html
+
+<!-- cyberlab-enriched: v4 -->
