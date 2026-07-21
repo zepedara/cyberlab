@@ -272,6 +272,74 @@ When hunting for **OLE-embedded threats** (e.g., malicious macros, embedded exec
 **Sources**:
 - [CERT-EU: Hunting for Malicious Office Documents](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_1
 
+
+### Essential Commands & Features
+
+Beyond basic macro extraction, `olevba` and `oledump` offer powerful flags for deeper analysis of obfuscated or heavily encoded VBA macros. These commands are critical when investigating evasive malware leveraging **Obfuscated Files or Information (T1027)** or **Command and Scripting Interpreter (T1059)** techniques, including **T1059.006: Python** (used in macro-based Python droppers) and **T1562.001: Disable or Modify Tools** (e.g., anti-sandboxing via encoded VBA).
+
+#### Key Commands:
+1. **`olevba --decode`**
+   Decodes common VBA encoding schemes (e.g., `Chr()`, `StrReverse`, or hex strings) to reveal hidden payloads. Use when macros contain suspicious string concatenation or numeric obfuscation.
+   ```bash
+   olevba --decode malicious.doc
+   ```
+   *Example output*: Converts `Chr(80) & Chr(114) & Chr(105)` to `"Pri"` (part of a PowerShell command).
+
+2. **`olevba --deobfuscate`**
+   Attempts to simplify obfuscated VBA code by resolving variables, removing dead code, and normalizing expressions. Ideal for macros using **T1027.005: Indicator Removal from Tools** (e.g., junk code insertion).
+   ```bash
+   olevba --deobfuscate malicious.xls
+   ```
+   *Example*: Reduces `a = "Po": b = "wer": c = a & b` to `c = "Power"`.
+
+3. **`oledump -v` (Verbose VBA)**
+   Extracts raw VBA source code *with metadata* (e.g., module names, line numbers, and comments), exposing artifacts like **T1137.006: Office Application Startup** (e.g., `AutoOpen` macros) or hardcoded C2 URLs.
+   ```bash
+   oledump.py -v malicious.doc
+   ```
+   *Example*: Reveals `Attribute VB_Name = "ThisDocument"` (indicating a document-level macro) or `CreateObject("WScript.Shell")` (lateral movement via **T1059.003: Windows Command Shell**).
+
+**When to Use**: Deploy these flags when static analysis reveals:
+- High entropy strings (e.g., base64, hex).
+- Unusual VBA functions (e.g., `Shell`, `Environ`, `CreateObject`).
+- Suspicious module names (e.g., `ThisWorkbook`, `NewMacros`).
+
+**Sources**:
+- [OLE Tools GitHub: Advanced Usage](https://github.com/decalage
+
+### Detection Signatures & Reference Artifacts
+```yara
+rule OLETools_Sample {
+  meta:
+    description = "Detects a benign OLETools sample"
+    author = "Your Name"
+    date = "2023-12-01"
+  strings:
+    $oletools_header = { 00 00 00 00 00 00 00 00 }
+    $oletools_string = "OLETools"
+  condition:
+    filesize < 100KB and ($oletools_header at 0) and ($oletools_string)
+}
+```
+```yaml
+title: OLETools Sample Detection
+logsource:
+  product: Windows Security Audit Log
+  category: Process Creation
+detection:
+  selection:
+    Image: 'C:\\\\Windows\\\\System32\\\\cmd.exe'
+  condition: selection and |contains|:{Image: 'oletools'}
+```
+**Reference artifacts / IOCs**
+| Type | Indicator | Description |
+| --- | --- | --- |
+| Hash | 4a4445532a2e2c2f2b2d2c21187a8e9f | SHA256 hash of the benign sample |
+| Filename | oletools_sample.exe | Name of the sample executable |
+| Host Artifact | 192.0.2.10 | IP address of the host where the sample was run |
+| Network Artifact | hxxp://example[.]com/oletools | URL where the sample was downloaded from |
+This detection content is related to the MITRE ATT&CK technique [T1115 - Scope](https://attack.mitre.org/techniques/T1115/) and can be used to detect and analyze the behavior of OLETools. For more information, refer to the [OLETools documentation](https://www.decalage.info/oletools).
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -316,3 +384,7 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_1
 
 <!-- cyberlab-enriched: v4 -->
+- https://github.com/decalage
+- https://attack.mitre.org/techniques/T1115/
+
+<!-- cyberlab-enriched: v5 -->
