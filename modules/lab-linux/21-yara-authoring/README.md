@@ -94,9 +94,23 @@ Defenders use YARA as the backbone of file-based detection and threat hunting. A
 - **Rule design:** prefer high-specificity anchors (unique C2 strings, mutex names, distinctive byte sequences) combined in the `condition` with a filetype guard such as `uint16(0) == 0x5A4D` (the `MZ` PE magic) to cut false positives; the `uint16`/`uint32` accessors are documented in [YARA — Accessing data at a given position](https://yara.readthedocs.io/en/stable/writingrules.html#accessing-data-at-a-given-position).
 - **Strelka pivot:** filter Strelka's YARA-scan events in Kibana/SOC Hunt on the matched rule name to enumerate every carved file that hit a given signature, then pivot on the parent `file.hash` / connection UID back to the originating Zeek `conn.log` flow.
 - **Suricata pivot:** correlate the file-transfer alert (via Suricata's [`file-store`](https://docs.suricata.io/en/latest/file-extraction/file-extraction.html) / file-info events) against the Strelka YARA hit for the same transaction to tie network delivery to file content.
-- **Zeek pivot:** use `files.log` (mime type, `md5`/`sha256`, `seen_bytes`) and `http.log`/`smtp.log` to identify the delivery channel (T1071.001 web, T1566 phishing email).
+- **Zeek pivot:** use `files.log` (mime type, `md5`/`sha2线`, `seen_bytes`) and `http.log`/`smtp.log` to identify the delivery channel (T1071.001 web, T1566 phishing email).
 
 capa augments triage by translating a suspect binary into ATT&CK-mapped capabilities — for example C2 communication (**T1071**), data encryption for impact (**T1486**), or process injection (**T1055**) — so a Tier-1 analyst can prioritize without manual reversing (ATT&CK/MBC mapping per the [capa README](https://github.com/mandiant/capa#readme)). This maps to ATT&CK techniques such as **T1027** (Obfuscated Files or Information) and **T1204** (User Execution) during the DFIR Identification and Examination/Analysis phases.
+
+**Additional MITRE ATT&CK techniques:**
+- **T1055.001** — Dynamic-Link Library Injection (capa identifies process injection via `LoadLibrary`/`GetProcAddress`).
+- **T1070.006** — Timestomp (capa identifies file timestamp manipulation, often used in malware to evade detection).
+- **T1041** — Exfiltration Over C2 (capa detects C2 communication patterns, such as DNS or HTTP traffic).
+- **T1057** — Process Discovery (capa identifies behaviors like enumerating processes or using tools like `tasklist` or `ps`).
+
+**Detection logic examples:**
+- **YARA:** A rule detecting `LoadLibrary` followed by `GetProcAddress` with a `GetProcAddress` call to a suspicious API like `kernel32!CreateRemoteThread` would map to **T1055.001**.
+- **Zeek:** A rule in `files.log` that matches on `file_mime_type` "application/octet-stream" and `file_sha256` matching a known malicious hash would map to **T1027**.
+- **Suricata:** A rule matching on `http.uri` containing a base64-encoded string would map to **T1140**.
+- **capa:** A capability report showing "spawn a process" would map to **T1106**.
+- **YARA:** A rule detecting `CreateRemoteThread` in a PE file with a `MZ` header would map to **T1055.001**.
+- **Suricata:** A rule detecting DNS queries with a suspicious domain name (e.g., `malicious-domain.com`) would map to **T1071**.
 
 ## Attacker perspective
 Attackers know defenders write YARA rules, so they actively work to evade them. Concrete TTPs and the artifacts they leave:
@@ -105,6 +119,12 @@ Attackers know defenders write YARA rules, so they actively work to evade them. 
 - **Encoding of config/C2 (T1027, T1140):** XOR- or base64-encoded C2 URLs and configuration are decoded at runtime. Artifacts: decoder routines and post-decode plaintext in memory; capa flags "encode/decode data" and cryptography-reference capabilities. See [T1140 — Deobfuscate/Decode Files or Information](https://attack.mitre.org/techniques/T1140/).
 - **Polymorphic/generated strings:** strings assembled at runtime to defeat static byte signatures. Artifacts: stack-string construction patterns that capa can recognize.
 - **Adversary pre-testing:** red teamers run YARA and capa against their own tooling before delivery to confirm it stays below detection thresholds — the same tools defenders use.
+
+**Additional evasion techniques:**
+- **T1055.001** — Dynamic-Link Library Injection: Attackers inject malicious code into a legitimate process using `LoadLibrary` and `GetProcAddress` to avoid detection by file-based tools like YARA.
+- **T1070.006** — Timestomp: Attackers modify file timestamps to hide the time of infection or to mimic legitimate files, making detection via file metadata challenging.
+- **T1041** — Exfiltration Over C2: Attackers use C2 protocols (e.g., HTTP, DNS) to exfiltrate data, often using encryption or obfuscation to avoid detection.
+- **T1057** — Process Discovery: Attackers use tools or APIs to discover running processes, often to identify potential targets for injection or lateral movement.
 
 The key defensive insight: obfuscation is self-defeating. The very techniques used to dodge one rule create new, detectable patterns for another — high-entropy sections, packer stubs, unusual import sets, and capa-detectable behaviors like "spawn a process" (T1106) or "reference cryptography" — so evasion shifts, rather than eliminates, the detectable surface. Packing and obfuscation as an evasion family are documented at [T1027 — Obfuscated Files or Information](https://attack.mitre.org/techniques/T1027/).
 
@@ -137,6 +157,10 @@ Interpretation: the two offset lines show the same file matched via both indicat
 - **T1204** — User Execution (hunting delivered/executed files). https://attack.mitre.org/techniques/T1204/
 - **T1071** — Application Layer Protocol (capa-detected C2 capability). https://attack.mitre.org/techniques/T1071/
 - **T1486** — Data Encrypted for Impact (capa-detected encryption capability). https://attack.mitre.org/techniques/T1486/
+- **T1055.001** — Process Injection (capa detects injection via `LoadLibrary`/`GetProcAddress`). https://attack.mitre.org/techniques/T1055/001/
+- **T1070.006** — Timestomp (capa detects timestamp manipulation). https://attack.mitre.org/techniques/T1070/006/
+- **T1041** — Exfiltration Over C2 (capa detects C2 communication patterns). https://attack.mitre.org/techniques/T1041/
+- **T1057** — Process Discovery (capa detects process discovery behaviors). https://attack.mitre.org/techniques/T1057/
 - **DFIR phases:** Identification (sweeping for known indicators) and Examination/Analysis (capability triage of suspect files).
 
 ## Sources
@@ -160,6 +184,10 @@ Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, o
 - MITRE ATT&CK T1204 (User Execution) — https://attack.mitre.org/techniques/T1204/
 - MITRE ATT&CK T1071 (Application Layer Protocol) — https://attack.mitre.org/techniques/T1071/
 - MITRE ATT&CK T1486 (Data Encrypted for Impact) — https://attack.mitre.org/techniques/T1486/
+- MITRE ATT&CK T1055.001 (Dynamic-Link Library Injection) — https://attack.mitre.org/techniques/T1055/001/
+- MITRE ATT&CK T1070.006 (Timestomp) — https://attack.mitre.org/techniques/T1070/006/
+- MITRE ATT&CK T1041 (Exfiltration Over C2) — https://attack.mitre.org/techniques/T1041/
+- MITRE ATT&CK T1057 (Process Discovery) — https://attack.mitre.org/techniques/T1057/
 - EICAR test file (safe sample origin) — https://www.eicar.org/download-anti-malware-testfile/
 
 ## Related modules
@@ -168,4 +196,4 @@ Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, o
 - [Scenario: ransomware memory investigation](../47-ransomware-memory-case/README.md) -- shares yara for scanning memory-resident indicators.
 - [Scenario: C2 network traffic hunt](../50-c2-network-hunt/README.md) -- shares yara for detecting C2 artifacts in carved files.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
