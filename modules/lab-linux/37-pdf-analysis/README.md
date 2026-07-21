@@ -240,6 +240,87 @@ For further reading:
 - [CERT-EU: PDF Analysis for Malware Detection](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_pdf_v1_1.pdf)
 - [FireEye: PDF Exploits and Evasion Techniques](https://www.fireeye.com/blog/threat-research/2020/04/pdfs-weaponized.html)
 
+
+### Essential Commands & Features
+
+Beyond basic pdf-parser usage, five critical flags unlock deeper forensic analysis. Use `-f "/Filter"` to isolate objects using a specific compression or encoding filter (e.g., `/FlateDecode`, `/ASCIIHexDecode`) — essential for finding obfuscated or malicious payloads hidden in streams. Example: `pdf-parser -f "/FlateDecode" suspect.pdf`. Employ `-w` to display stream content in its raw, decompressed form without hex escaping, enabling direct inspection of embedded scripts or shellcode: `pdf-parser -w suspect.pdf`. The `-a` flag prints a statistical summary of object types (stream, dictionary, array) within the file, giving a quick overview of complexity: `pdf-parser -a suspect.pdf`. Redirect full analysis to a text file for later review using `-O output.txt`: `pdf-parser -O analysis.txt suspect.pdf`. Finally, `-d object_id` dumps the raw bytes of a specific object (by its internal ID) to stdout, perfect for carving out an embedded executable or JavaScript fragment: `pdf-parser -d 5 -w suspect.pdf | strings`. These flags directly support detection of techniques like **T1203 (Exploitation for Client Execution)** — common in PDF-driven attacks — and **T1071.001 (Web Protocols)**, seen when PDF actions initiate outbound connections to exfiltrate data.
+
+For official documentation: [Didier Stevens pdf-parser page](https://blog.didierstevens.com/programs/pdf-tools/)  
+For practical workflows: [REMnux PDF Analysis Guide](https://docs.remnux.org/analyze-malicious-documents/analyze-pdf-files)
+
+### Detection Signatures & Reference Artifacts
+
+Below are defensive detection signatures and reference artifacts for analyzing benign PDF samples in a lab environment.
+
+---
+
+#### **YARA Rule**
+```yara
+rule Lab_PDF_Benign_Sample {
+    meta:
+        description = "Detects benign lab PDF sample with embedded JavaScript (educational use only)"
+        author = "Defensive Lab Training"
+        reference = "https://example[.]com/lab-resources"
+        date = "2024-05-20"
+        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
+        mitre_attack = "T1059.007 Command and Scripting Interpreter: JavaScript"
+
+    strings:
+        $pdf_header = { 25 50 44 46 }  // "%PDF"
+        $js_marker = "/JavaScript" nocase
+        $js_code = "app.alert" nocase
+        $obj_ref = "/Type /Action" nocase
+        $stream_start = "stream" nocase
+        $stream_end = "endstream" nocase
+
+    condition:
+        uint32(0) == 0x46445025 and  // "%PDF" magic header
+        filesize < 5MB and
+        all of ($pdf_header, $js_marker) and
+        2 of ($js_code, $obj_ref, $stream_start, $stream_end)
+}
+```
+
+---
+
+#### **Sigma Rule**
+```yaml
+title: Benign PDF with Embedded JavaScript (Lab Sample)
+id: 1a2b3c4d-5e6f-7890-1234-567890abcdef
+status: experimental
+description: Detects benign lab PDF files containing embedded JavaScript (educational use only)
+author: Defensive Lab Training
+date: 2024/05/20
+references:
+    - https://example[.]com/lab-resources
+logsource:
+    product: windows
+    category: file_event
+detection:
+    selection:
+        TargetFilename|endswith: '.pdf'
+        Hashes|contains: 'SHA256=a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef'
+    condition: selection
+falsepositives:
+    - Legitimate PDFs with embedded JavaScript (e.g., forms)
+level: informational
+tags:
+    - attack.t1059.007  # Command and Scripting Interpreter: JavaScript
+```
+
+---
+
+#### **Reference Artifacts / IOCs**
+
+| **Indicator Type**       | **Value**                                                                 |
+|--------------------------|---------------------------------------------------------------------------|
+| **SHA256 Hash**          | `a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef`        |
+| **Filename**             | `Lab_Sample_Benign_JS.pdf`                                                |
+| **Host Artifact**        | `C:\Users\Public\Downloads\Lab_Sample_Benign_JS.pdf`                      |
+| **Network Artifact**     | `hxxp://192.0.2.100/lab-resources/Lab_Sample_Benign_JS.pdf` (documentation IP) |
+| **MITRE ATT&CK Technique** | [T1059.007 Command and Scripting Interpreter: JavaScript](https://attack.mitre.org/techniques/T1059/007/) |
+| **Authoritative Source** | [Adobe PDF Reference (ISO 32000-1)](https://www.adobe.com/content/dam/acom/en/devnet/pdf/pdfs/PDF32000_1.pdf) |
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -284,3 +365,9 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - https://www.fireeye.com/blog/threat-research/2020/04/pdfs-weaponized.html
 
 <!-- cyberlab-enriched: v4 -->
+- https://docs.remnux.org/analyze-malicious-documents/analyze-pdf-files
+- https://example[.]com/lab-resources"
+- https://example[.]com/lab-resources
+- https://www.adobe.com/content/dam/acom/en/devnet/pdf/pdfs/PDF32000_1.pdf
+
+<!-- cyberlab-enriched: v5 -->
