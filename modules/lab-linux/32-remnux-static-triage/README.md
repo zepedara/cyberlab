@@ -188,6 +188,52 @@ REMnux’s static triage tools offer deeper analysis with targeted flags and met
 ### Threat Hunting & Detection Engineering
 To enhance threat hunting and detection engineering in the context of 32-bit Remnux static triage, focus on analyzing Windows Event Logs for signs of adversary activity. Specifically, monitor Event ID 4688 (Process Creation) for unusual process executions, and Event ID 4624 (Logon) for suspicious login attempts. These events can indicate techniques like [T1550](https://attack.mitre.org/techniques/T1550) - "Use Alternate Authentication Material" and [T1497](https://attack.mitre.org/techniques/T1497) - "Virtualization/Sandbox Evasion". For network traffic analysis, utilize Zeek's `http` log to inspect HTTP requests for potential command and control (C2) communications. Threat hunters can pivot on fields like `username`, `domain`, and `dst_ip` to identify related events. Additionally, analyzing Suricata's `files` log for suspicious file downloads can reveal potential malware activity. For more information on Windows Event Logs and network traffic analysis, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/What-We-Do/Cybersecurity/) websites.
 
+
+### Essential Commands & Features
+
+While basic triage with **DIE** and **pefile** is covered, these advanced commands unlock deeper static analysis capabilities for detecting obfuscation, packing, and malicious PE artifacts.
+
+#### **DIE (Detect It Easy)**
+- **Deep Scan (`-d`)** – Recursively unpacks nested layers (e.g., UPX → custom packer). Critical for analyzing samples using **T1027.007 (Dynamic API Resolution)** or **T1562.001 (Disable or Modify Tools)**.
+  ```bash
+  diec -d suspicious.exe
+  ```
+- **All Info (`-a`)** – Extracts *all* detectable signatures (compilers, packers, protections) and entropy values. Use when investigating **T1127 (Trusted Developer Utilities Proxy Execution)**.
+  ```bash
+  diec -a suspicious.dll
+  ```
+- **Entropy Calculation** – High entropy (>7.5) suggests compression/encryption (e.g., **T1027.003 (Steganography)**). DIE displays this in the `-a` output; cross-reference with `pefile` for section-level granularity.
+
+#### **pefile (Python PE Parser)**
+- **Full PE Summary (`dump_info()`)** – Dumps headers, imports, exports, and section details in a structured format. Essential for identifying anomalous sections (e.g., `.crt` masquerading as **T1036.003 (Rename System Utilities)**).
+  ```python
+  import pefile
+  pe = pefile.PE("malware.exe")
+  pe.dump_info()  # Outputs to console; redirect to file with > pe_info.txt
+  ```
+
+**When to Use**: Combine DIE’s `-d` with `pefile.dump_info()` to validate unpacked samples before dynamic analysis. Prioritize `-a` for samples with anti-forensic techniques (e.g., **T1218.005 (Mshta)**).
+
+**Sources**:
+- DIE Deep Scan Docs: [https://github.com/horsicq/Detect-It-Easy/blob/master/docs/CLI.md](https://github.com/horsicq/Detect-It-Easy/blob/master/docs/CLI.md)
+- pefile Advanced Usage: [https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md#dump_info](https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md#dump_info)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, static triage tools like those in **REMnux** are both a threat and an opportunity. Attackers leverage similar techniques to analyze their own malware, ensuring it evades detection before deployment. For example, they may use **Obfuscated Files or Information (T1027)** variants not listed (e.g., **T1027.001: Binary Padding**) to inflate file sizes and bypass signature-based detection, leaving behind artifacts like anomalous section headers or unusually large `.rsrc` segments. Another common tactic is **Process Injection (T1055.001: Dynamic-link Library Injection)**, where malicious code is injected into legitimate processes (e.g., `explorer.exe`) to blend in with normal activity. This leaves traces such as unexpected memory allocations or suspicious thread creation events in tools like **Process Hacker**.
+
+Evasion considerations include:
+- **Timing-based delays** (e.g., **T1499.003: Application Exhaustion Flood**) to frustrate automated analysis.
+- **Environmental keying** (e.g., **T1608.001: Upload Malware**) to ensure payloads only execute in targeted environments, avoiding sandboxed triage tools like REMnux.
+
+**Key Artifacts Left Behind**:
+- Unusual import tables (e.g., `VirtualAlloc` + `CreateRemoteThread` chains).
+- Modified registry keys (e.g., `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options`).
+
+**Sources**:
+- [MITRE ATT&CK: T1027.001](https://attack.mitre.org/techniques/T1027/001/)
+- [FireEye: Red Team Techniques for Evasion](https://www.fireeye.com/blog/threat-research/2021/03/red-team-techniques-for-evasion.html)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -229,3 +275,9 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://www.nsa.gov/What-We-Do/Cybersecurity/
 
 <!-- cyberlab-enriched: v3 -->
+- https://github.com/horsicq/Detect-It-Easy/blob/master/docs/CLI.md](https://github.com/horsicq/Detect-It-Easy/blob/master/docs/CLI.md
+- https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md#dump_info](https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md#dump_info
+- https://attack.mitre.org/techniques/T1027/001/
+- https://www.fireeye.com/blog/threat-research/2021/03/red-team-techniques-for-evasion.html
+
+<!-- cyberlab-enriched: v4 -->
