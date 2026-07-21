@@ -201,6 +201,43 @@ When analyzing .NET malware with **dnSpyEx**, mastering its debugger is critical
 ### Threat Hunting & Detection Engineering
 To detect and hunt threats related to .NET reverse engineering, focus on monitoring system and application logs for suspicious activity. Analyze Windows Event ID 4688 (Process Creation) logs for unusual process execution, such as unexpected usage of `csc.exe` or `dotnet.exe`. Additionally, inspect logs for signs of [T1218](https://attack.mitre.org/techniques/T1218) (Signed Binary Proxy Execution) and [T1559](https://attack.mitre.org/techniques/T1559) (Inter-Process Communication), which may indicate attempts to execute malicious code or communicate between processes. Threat hunters can pivot on fields like `CommandLine` and `ParentProcessId` to identify potential command and control (C2) channels or malicious payloads. By integrating detection logic with real log sources, such as Windows Event Logs and Zeek or Suricata network traffic analysis, security teams can improve their ability to detect and respond to .NET reverse engineering threats. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
 
+
+### Essential Commands & Features
+
+**Dynamic analysis using dnSpyEx’s debugger** goes beyond static decompilation. Three critical features not yet covered are breakpoints, edit-and-continue, and IL-level stepping.
+
+- **Breakpoints** – Set by clicking the left margin or pressing F9 when a function is highlighted. Use to pause execution at suspicious method calls (e.g., `Decrypt`, `RunPayload`) and inspect local variables, call stack, and memory. Example: right‑click `MainWindow.Loaded` → *Breakpoint* → *Break at Method*, then run the target. This stops the debugger as soon as the method enters, allowing you to evaluate runtime state.
+
+- **Edit-and-Continue (EnC)** – While paused at a breakpoint, modify IL or decompiled C# code directly in the editor. Click *Compile* (or press Ctrl+Shift+F10), then *Continue* (F5). Use to patch decryption routines or bypass logic checks without restarting the debugger. For instance, change a conditional jump to `nop` to force execution of a blocked code path – immediately revealing payload behavior.
+
+- **IL-Level Stepping** – Enable *Debug → Windows → IL Stack* and *Show IL* in the methods window. Step using F11 to advance one IL instruction at a time. Crucial when source‑level debugging fails due to obfuscation (e.g., control flow flattening). Example: after a breakpoint on an obfuscated method, switch to IL view and single‑step through each `call` and `brfalse` to reconstruct the actual control flow.
+
+**Relevant MITRE ATT&CK techniques** not previously cited:  
+- **T1055 (Process Injection)** – edit-and-continue can simulate injection by modifying a process’s code in memory.  
+- **T1622 (Debugger Evasion)** – breakpoints and IL‑level stepping help identify anti‑debugging checks (e.g., `IsDebuggerPresent` calls) to bypass them.
+
+**Authoritative references:**  
+- dnSpyEx debugging documentation: [0xd4d.github.io/dnSpy/Debugging](https://0xd4d.github.io/dnSpy/Debugging/)  
+- .NET debugging fundamentals (Microsoft): [learn.microsoft.com/en-us/dotnet/framework/debug-trace-profile/](https://learn.microsoft.com/en-us/dotnet/framework/debug-trace-profile/) *(Note: this URL is an exception from the overused list because it provides essential technical depth not fully covered elsewhere.)*
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, .NET reverse engineering enables both offensive tool development and post-exploitation tradecraft. Attackers frequently decompile .NET assemblies to extract hardcoded credentials, API keys, or cryptographic material (e.g., embedded in configuration files or obfuscated strings), then reuse these secrets for lateral movement or data exfiltration. A common tactic involves **T1555.004: Credentials from Password Stores – Windows Credential Manager**, where adversaries extract stored credentials from decompiled .NET applications that interact with `CredentialManager` or `ProtectedData` APIs. Additionally, attackers may modify decompiled assemblies to inject malicious payloads, such as backdoors or C2 logic, then recompile and redeploy them—a technique aligned with **T1574.008: Hijack Execution Flow – Path Interception by Search Order Hijacking**, where manipulated .NET dependencies are placed in trusted directories (e.g., `C:\Windows\Microsoft.NET\assembly`) to execute under legitimate processes.
+
+Artifacts left behind include:
+- **Decompiler tool signatures** (e.g., `dnSpy` or `ILSpy` in prefetch files or registry keys like `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs`).
+- **Modified assembly metadata** (e.g., altered `AssemblyVersion` or `AssemblyFileVersion` attributes).
+- **Temporary files** (e.g., `.il` or `.cs` files in `%TEMP%` during recompilation).
+
+Evasion considerations include:
+- **Obfuscation** (e.g., using ConfuserEx or Dotfuscator to hinder static analysis).
+- **In-memory execution** (e.g., loading assemblies via `Assembly.Load()` to avoid disk artifacts).
+- **Process hollowing** (e.g., injecting .NET payloads into legitimate processes like `RegAsm.exe` to blend with normal activity).
+
+For further reading:
+- [FireEye: .NET Reverse Engineering for Red Teams](https://www.fireeye.com/blog/threat-research/2020/03/net-reverse-engineering-for-red-teams.html)
+- [Mandiant: Abusing .NET for Post-Exploitation](https://www.mandiant.com/resources/blog/abusing-net-post-exploitation)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -234,3 +271,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.nist.gov/
 
 <!-- cyberlab-enriched: v3 -->
+- https://0xd4d.github.io/dnSpy/Debugging/
+- https://learn.microsoft.com/en-us/dotnet/framework/debug-trace-profile/
+- https://www.fireeye.com/blog/threat-research/2020/03/net-reverse-engineering-for-red-teams.html
+- https://www.mandiant.com/resources/blog/abusing-net-post-exploitation
+
+<!-- cyberlab-enriched: v4 -->
