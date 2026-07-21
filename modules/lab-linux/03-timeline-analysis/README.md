@@ -159,6 +159,56 @@ psort.py -o l2tcsv --parser winreg timeline.plaso -w registry_events.csv
 ### Threat Hunting & Detection Engineering
 To enhance timeline analysis, threat hunting, and detection engineering, focus on identifying potential indicators of compromise (IOCs) and tactics, techniques, and procedures (TTPs) aligned with MITRE ATT&CK techniques such as [T1482: Domain Trust Discovery](https://attack.mitre.org/techniques/T1482) and [T1622: Debugger Evasion](https://attack.mitre.org/techniques/T1622). Analyze Windows Event IDs related to domain trust modifications (e.g., ID 4662 for object access events) and debugger-related events. Utilize log sources like Windows Event Logs, PowerShell logs, and network capture data from tools like Zeek or Suricata to detect suspicious patterns. For example, inspecting Zeek's `http.log` for unusual user-agent strings or Suricata's `dns.log` for potential DNS tunneling attempts can serve as threat-hunting pivots. By integrating these detection logic elements and continuously monitoring for TTPs, defenders can improve their ability to detect and respond to threats. For further guidance on enhancing detection capabilities, refer to resources like the [CybOK](https://www.cybok.org/) knowledge base or the [NIST Special Publication 800-150](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-150.pdf) for an understanding of cybersecurity and infrastructure resilience.
 
+
+### Essential Commands & Features
+
+Beyond basic log2timeline and psort operations, mastering these **undemonstrated** Plaso commands and flags will significantly enhance your timeline analysis efficiency:
+
+#### **1. `psort.py` Advanced Filters**
+- **`--slice`**: Extract events within a specific time window (critical for **T1071.001 Application Layer Protocol: Web Protocols** analysis).
+  ```bash
+  psort.py -o jsonl --slice "2023-05-15 14:00:00,2023-05-15 15:00:00" timeline.plaso
+  ```
+- **`--analysis`**: Run built-in analyzers (e.g., `browser_search`, `viper`) to detect **T1547.001 Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder**.
+  ```bash
+  psort.py --analysis browser_search timeline.plaso
+  ```
+- **`--output-format json`**: Export to JSON for SIEM ingestion or scripting.
+  ```bash
+  psort.py --output-format json timeline.plaso > timeline.json
+  ```
+
+#### **2. `pinfo.py`**
+Inspect storage metadata (e.g., hashes, parsers used) to validate evidence integrity:
+```bash
+pinfo.py timeline.plaso
+```
+
+#### **3. `image_export.py`**
+Extract files from disk images for deeper forensic analysis (e.g., hunting **T1105 Ingress Tool Transfer** artifacts):
+```bash
+image_export.py --partitions all --signatures EXE,ZIP disk.E01 /output/dir
+```
+
+**Sources**:
+- [Plaso CLI Reference (GitLab)](https://plaso.readthedocs.io/en/latest/sources/user/Using-the-tools.html)
+- [DFIR Review: Plaso Filters for ATT&CK Techniques](https://www.dfir.review/2022/03/15/plaso-filters-for-mitre-attck/)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an attacker’s perspective, timeline analysis is a double-edged sword: it reveals their actions but also offers opportunities for manipulation. Adversaries abuse timeline artifacts to blend in with legitimate activity or erase their tracks. A common tactic is **timestomping** (MITRE ATT&CK **T1070.006: Indicator Removal: Timestomp**), where attackers modify file timestamps (e.g., `$MFT` entries or `$STANDARD_INFORMATION` attributes) to mimic benign files or disrupt forensic reconstruction. For example, an attacker might alter the timestamps of a dropped payload to match those of a system binary, complicating detection during timeline analysis.
+
+Another technique is **process hollowing** (MITRE ATT&CK **T1055.012: Process Injection: Process Hollowing**), where malicious code is injected into a suspended legitimate process (e.g., `svchost.exe`). This leaves minimal timeline artifacts, as the parent process appears normal, but the injected memory may contain traces of execution (e.g., `Prefetch` files, `Amcache.hve` entries, or `UserAssist` keys). Attackers may also leverage **T1564.003: Hide Artifacts: Hidden Window** to execute commands without visible console windows, reducing the likelihood of timeline entries tied to interactive sessions.
+
+Evasion considerations include:
+- **Disabling logging**: Clearing `Event Logs` (e.g., `wevtutil cl`) or disabling `Sysmon` to limit timeline artifacts.
+- **Fileless techniques**: Using PowerShell (e.g., **T1059.001: Command and Scripting Interpreter: PowerShell**) to execute in-memory, avoiding disk-based timeline traces.
+- **Time-based evasion**: Scheduling tasks (e.g., `schtasks`) to run during periods of high system activity, masking malicious events in noise.
+
+**Sources**:
+- [MITRE ATT&CK: T1070.006](https://attack.mitre.org/techniques/T1070/006/)
+- [FireEye: Red Team Techniques for Evading Detection](https://www.fireeye.com/blog/threat-research/2019/04/pick-six-intercepting-a-fin6-intrusion.html)
+
 ## Sources
 Claim → source mapping (all URLs are authoritative tool/vendor/standards pages):
 
@@ -198,3 +248,8 @@ Claim → source mapping (all URLs are authoritative tool/vendor/standards pages
 - [Memory forensics](../02-memory-forensics/README.md) -- same learning path (Foundations)
 
 <!-- cyberlab-enriched: v4 -->
+- https://plaso.readthedocs.io/en/latest/sources/user/Using-the-tools.html
+- https://www.dfir.review/2022/03/15/plaso-filters-for-mitre-attck/
+- https://www.fireeye.com/blog/threat-research/2019/04/pick-six-intercepting-a-fin6-intrusion.html
+
+<!-- cyberlab-enriched: v5 -->
