@@ -45,7 +45,7 @@ Expected observable output: one or more lines such as `Found XOR 5A position 001
 base64dump.py exercise/encoded_payload.bin
 base64dump.py -s 1 -d exercise/encoded_payload.bin | head -c 200
 ```
-Expected observable output: a table of blobs (ID, size/length, encoding, MD5); the `-s 1 -d` selects blob ID 1 (`-s`) and dumps its decoded bytes (`-d`) to stdout. Nuance: a "valid Base64" blob is not proof of real content — random high-entropy data can accidentally look Base64-ish, so confirm the decoded bytes are meaningful (readable strings, a PE `MZ` header, a URL) before treating them as an IOC. Flag reference: `base64dump.py` uses `-s` to select a stream/blob and `-d` to dump the decoded content ([blog.didierstevens.com/2015/06/12/base64dump-py/](https://blog.didierstevens.com/2015/06/12/base64dump-py/)).
+Expected observable output: a table of blobs (ID, size/length, encoding, MD5); the `-s 1 -d` selects blob ID 1 (`-s`) and dumps its decoded content (`-d`) to stdout. Nuance: a "valid Base64" blob is not proof of real content — random high-entropy data can accidentally look Base64-ish, so confirm the decoded bytes are meaningful (readable strings, a PE `MZ` header, a URL) before treating them as an IOC. Flag reference: `base64dump.py` uses `-s` to select a stream/blob and `-d` to dump the decoded content ([blog.didierstevens.com/2015/06/12/base64dump-py/](https://blog.didierstevens.com/2015/06/12/base64dump-py/)).
 
 3. `xortool` — estimates the most likely XOR key length and the key itself for multi-byte (repeating-key) XOR. WHY: single-byte XOR is a special case (key length 1); xortool's frequency/entropy analysis confirms whether the data is single- or multi-byte XOR and recovers the repeating key. The `-c` option tells xortool the most frequent byte in the *plaintext* (commonly `20`, ASCII space, for text) so it can align the key.
 ```bash
@@ -84,6 +84,20 @@ Concrete detection and pivot logic:
 
 MITRE mapping: recovering the plaintext is the examination step for **T1027 – Obfuscated Files or Information** ([attack.mitre.org/techniques/T1027/](https://attack.mitre.org/techniques/T1027/)) and its command-based analog **T1140 – Deobfuscate/Decode Files or Information** ([attack.mitre.org/techniques/T1140/](https://attack.mitre.org/techniques/T1140/)); encoded-payload command lines frequently overlap with **T1059.001 – PowerShell** ([attack.mitre.org/techniques/T1059/001/](https://attack.mitre.org/techniques/T1059/001/)). Turning an opaque sample into an IOC produces actionable detection content and hunting hypotheses across the fleet.
 
+**Additional MITRE ATT&CK technique IDs:**
+- **T1046 – Data Encoding** — used to encode payloads in memory or on disk ([attack.mitre.org/techniques/T1046/](https://attack.mitre.org/techniques/T1046/)).
+- **T1567 – Process Injection** — obfuscation is often used to evade detection when injecting code into a process ([attack.mitre.org/techniques/T1567/](https://attack.mitre.org/techniques/T1567/)).
+
+**Detection logic examples:**
+- In **Zeek logs**, look for high-entropy strings in `http.body` or `file_data` that match Base64 patterns (e.g., `^[A-Za-z0-9+/]+={0,2}$`) or XOR-encoded artifacts.
+- In **Suricata**, use a rule like `alert http any any -> any any (content:"base64"; sid:1000001; msg:"Base64-encoded payload detected";)` to flag Base64 strings in HTTP payloads.
+- In **Windows Event Logs**, search for Event ID 4104 with `ScriptBlockText` containing long high-entropy strings or Base64 patterns.
+
+**Threat-hunting pivots:**
+- Correlate decoded URLs with **SIEM alerts** for suspicious network traffic (e.g., outbound HTTP requests to the decoded domain).
+- Use **endpoint detection tools** to hunt for PowerShell scripts with `EncodedCommand` arguments or process memory containing XOR-encoded strings.
+- Investigate **file hashes** of decoded payloads in the **SIEM or endpoint logs** to identify potential malicious file activity.
+
 ## Attacker perspective
 Attackers XOR- or Base64-encode strings so static AV, YARA rules, and casual analysts miss embedded URLs, credentials, and shellcode (**T1027 – Obfuscated Files or Information**, [attack.mitre.org/techniques/T1027/](https://attack.mitre.org/techniques/T1027/)). Single-byte XOR is cheap and defeats naive `strings`; multi-byte/repeating-key XOR and stacked encodings (Base64-then-XOR, or gzip-then-Base64) raise the bar further, and CyberChef-style "recipes" are shared to templatize the obfuscation. Command-line delivery frequently uses PowerShell `-EncodedCommand` (base64 UTF-16LE), mapping to **T1059.001** ([attack.mitre.org/techniques/T1059/001/](https://attack.mitre.org/techniques/T1059/001/)) and the encoded-file sub-technique **T1027.013 – Encrypted/Encoded File** ([attack.mitre.org/techniques/T1027/013/](https://attack.mitre.org/techniques/T1027/013/)).
 
@@ -93,6 +107,15 @@ Artifacts the technique leaves for the defender:
 - Recognizable Base64 alphabets and long `=`-padded strings in scripts, and the tell-tale `powershell -enc <base64>` pattern in process telemetry.
 
 Evasion refinements attackers add: rotating/multi-byte keys, custom Base64 alphabets, splitting the blob across multiple variables, and computing the key at runtime — each raises analyst effort but leaves the same class of fingerprints (entropy, a decode stub, an eventual plaintext in memory). These fingerprints let XORSearch/xortool brute-force the key and let entropy tooling flag the encoded region — so obfuscation delays but does not prevent recovery of the underlying IOCs.
+
+**Additional TTPs:**
+- **T1046 – Data Encoding** — attackers may encode payloads in memory or on disk to avoid detection.
+- **T1567 – Process Injection** — obfuscation is often used to evade detection when injecting code into a process.
+
+**Evasion techniques:**
+- **Custom Base64 alphabets** — attackers may use non-standard alphabets to avoid detection by pattern-based tools.
+- **Key computation at runtime** — attackers may compute the XOR key dynamically using a hash or other algorithm, making brute-force recovery more difficult.
+- **Splitting encoded data** — attackers may split the encoded payload into multiple variables or parts to avoid detection by string-based tools.
 
 ## Answer key
 - XOR key byte: **0x5A**
@@ -119,6 +142,8 @@ base64dump.py -s 1 -d exercise/encoded_payload.bin
 - **T1027.013 – Encrypted/Encoded File** (XOR/Base64 layering) — [attack.mitre.org/techniques/T1027/013/](https://attack.mitre.org/techniques/T1027/013/).
 - **T1140 – Deobfuscate/Decode Files or Information** (the analyst action performed here) — [attack.mitre.org/techniques/T1140/](https://attack.mitre.org/techniques/T1140/).
 - **T1059.001 – Command and Scripting Interpreter: PowerShell** (common carrier of Base64-encoded payloads defenders will deobfuscate) — [attack.mitre.org/techniques/T1059/001/](https://attack.mitre.org/techniques/T1059/001/).
+- **T1046 – Data Encoding** (used to encode payloads in memory or on disk) — [attack.mitre.org/techniques/T1046/](https://attack.mitre.org/techniques/T1046/).
+- **T1567 – Process Injection** (obfuscation is often used to evade detection when injecting code into a process) — [attack.mitre.org/techniques/T1567/](https://attack.mitre.org/techniques/T1567/).
 - **DFIR phase:** Examination / Analysis (extracting and decoding artifacts to derive IOCs after identification).
 
 ## Sources
@@ -133,6 +158,8 @@ Claim → source mapping:
 - MITRE ATT&CK T1027.013 – Encrypted/Encoded File: https://attack.mitre.org/techniques/T1027/013/
 - MITRE ATT&CK T1140 – Deobfuscate/Decode Files or Information: https://attack.mitre.org/techniques/T1140/
 - MITRE ATT&CK T1059.001 – PowerShell: https://attack.mitre.org/techniques/T1059/001/
+- MITRE ATT&CK T1046 – Data Encoding: https://attack.mitre.org/techniques/T1046/
+- MITRE ATT&CK T1567 – Process Injection: https://attack.mitre.org/techniques/T1567/
 - RFC 5737 (198.51.100.0/24 documentation range, safe non-routable IPs): https://datatracker.ietf.org/doc/html/rfc5737
 - Security Onion documentation (alert-to-log pivots, Zeek/Suricata/Elastic): https://docs.securityonion.net/
 - Zeek log reference (conn.log, http.log): https://docs.zeek.org/en/master/logs/index.html
@@ -148,4 +175,4 @@ Claim → source mapping:
 - [Disk & filesystem forensics](../01-disk-forensics/README.md) -- same Foundations learning path; recover the on-disk artifacts that carry encoded payloads.
 - [Memory forensics](../02-memory-forensics/README.md) -- same Foundations learning path; find decoded plaintext and keys in process memory.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
