@@ -254,6 +254,62 @@ detection:
 | network | URL artifact | hxxp://example[.]com/radare2/download |
 This detection is related to the MITRE ATT&CK technique [T1113 - Screen Capture](https://attack.mitre.org/techniques/T1113/). For more information, visit the [MITRE ATT&CK](https://attack.mitre.org/) website: https://attack.mitre.org/
 
+
+### Essential Commands & Features
+
+Mastering these **radare2** and **Cutter** commands will accelerate your reverse-engineering workflow. Each example assumes you’ve already loaded a binary (e.g., `r2 -AAA ./malware.exe` or via Cutter’s GUI).
+
+1. **`pd N` – Disassemble *N* Instructions**
+   Use when analyzing function prologues or small code blocks (e.g., anti-analysis checks).
+   *Example*: `pd 10 @ main` disassembles 10 instructions at `main`.
+   *Relevance*: Critical for inspecting **T1027.009 Obfuscated Files or Information: Embedded Payloads** (e.g., XOR-encoded shellcode).
+
+2. **`px W @ addr` – Hexdump *W* Bytes**
+   Inspect raw data (e.g., embedded strings, config blobs).
+   *Example*: `px 64 @ 0x00401000` dumps 64 bytes at `0x00401000`.
+   *Relevance*: Helps detect **T1553.002 Subvert Trust Controls: Code Signing** (e.g., malformed certificates in binaries).
+
+3. **`s addr` – Seek to Address**
+   Navigate to a specific offset (e.g., after `afl` lists functions).
+   *Example*: `s sym.imp.CreateProcessA` jumps to the import.
+   *Tip*: Use `s-`/`s+` to move backward/forward.
+
+4. **`V` – Visual Mode**
+   Interactive disassembly/hexdump with keyboard shortcuts (e.g., `p`/`P` to cycle views).
+   *Use Case*: Quickly trace execution flow or patch bytes (press `i` to insert).
+
+5. **Cutter’s Scripting (`scripti`)**
+   Automate analysis with Python (e.g., batch renaming functions).
+   *Example*:
+   ```python
+   for f in cutter.cmdj("aflj"):
+       if "sub_" in f["name"]:
+           cutter.cmd(f"afn interesting_{f['offset']} @ {f['offset']}")
+   ```
+   *Relevance*: Speeds up triage of **T1562.004 Impair Defenses: Disable or Modify System Firewall** (e.g., identifying firewall rule modifications).
+
+**Sources**:
+- [Radare2 Book: Visual Mode](https://book.rada.re/visual_mode/visual_mode.html)
+- [Cutter Scripting Docs](https://cutter.re/docs/scripting.html)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, **radare2** is a powerful offensive tool for reverse engineering, binary exploitation, and post-exploitation activities. Attackers leverage radare2 to analyze target binaries, identify vulnerabilities (e.g., buffer overflows, use-after-free), and craft custom exploits. A common tactic is **T1055.002 Process Injection: Portable Executable Injection**, where radare2 helps dissect legitimate processes to inject malicious shellcode while evading detection by blending with expected memory structures.
+
+Red teams also abuse radare2 for **T1622 Debugger Evasion**, manipulating debug symbols or stripping metadata to hinder forensic analysis. For example, attackers may use radare2’s `rabin2` to inspect and modify binary headers (e.g., `PE`/`ELF` sections) to disguise malware as benign software. Artifacts left behind include:
+- Temporary disassembly files (e.g., `.r2` project files).
+- Modified binary timestamps or section hashes.
+- Unusual process memory mappings (e.g., `rwx` regions in injected code).
+
+Evasion considerations include:
+- **Obfuscating radare2 usage** by renaming binaries (e.g., `r2` → `syslogd`).
+- **Avoiding persistent project files** by using in-memory analysis (`-n` flag).
+- **Leveraging radare2’s scripting** (`r2pipe`) to automate stealthy operations.
+
+**Sources:**
+- [MITRE ATT&CK: T1055.002](https://attack.mitre.org/techniques/T1055/002/)
+- [FireEye: Red Team Techniques for Evasion](https://www.fireeye.com/blog/threat-research/2021/04/red-team-techniques-for-evasion.html)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -294,3 +350,9 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://attack.mitre.org/
 
 <!-- cyberlab-enriched: v5 -->
+- https://book.rada.re/visual_mode/visual_mode.html
+- https://cutter.re/docs/scripting.html
+- https://attack.mitre.org/techniques/T1055/002/
+- https://www.fireeye.com/blog/threat-research/2021/04/red-team-techniques-for-evasion.html
+
+<!-- cyberlab-enriched: v6 -->
