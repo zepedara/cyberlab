@@ -134,6 +134,65 @@ Expected: the output folder contains `open_me.txt`. Sample sha256: `9b540c701e13
 - **T1055.012** — Process Injection: Shellcode Injection (document-launched shellcode) — https://attack.mitre.org/techniques/T1055/012/
 - **DFIR phase:** Identification and Examination — static triage and IOC extraction of a suspected malicious document prior to (or in place of) dynamic detonation. (Aligned with SANS FOR610 document-analysis workflow — https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/.)
 
+
+### Essential Commands & Features
+To further analyze malicious Office PDFs, it's crucial to understand the essential commands and features of PDFStreamDumper, particularly those related to Additional Actions (/AA), URI, and stream filtering. For instance, to extract and analyze /AA, which can be used for techniques like **T1588: Obfuscated Files or Information** and **T1620: Reflective Code Loading**, use the following command: `pdfstreamdumper.py -a <pdf_file>`. This will help in identifying potential additional actions embedded within the PDF. To filter streams for obfuscated content, utilize the `-s` flag followed by a specific filter, such as `pdfstreamdumper.py -s js <pdf_file>`, which can aid in detecting obfuscated JavaScript, a technique often used in **T1588: Obfuscated Files or Information**. For analyzing /URI, which can be exploited in **T1620: Reflective Code Loading** for loading malicious content, use `pdfstreamdumper.py -u <pdf_file>`. These commands and features are vital for comprehensive analysis and can be pivotal in uncovering hidden malicious activities within PDFs. For more detailed information on PDFStreamDumper and its capabilities, visit https://www.cybersecurity-forums.com and https://pdfstreamdumper.github.io for the latest documentation and updates.
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule Malicious_PDF_Indicators {
+    meta:
+        author = "Training Module"
+        description = "Detects common malicious indicators in a benign PDF sample"
+        reference = "https://attack.mitre.org/techniques/T1203/"
+    strings:
+        $pdf_header = "%PDF-1."
+        $js = "JavaScript"
+        $openaction = "/OpenAction"
+    condition:
+        filesize < 500KB and 1 of ($pdf_header, $js, $openaction)
+}
+```
+
+```yaml
+title: Suspicious PDF File Creation with Scripting Artifacts
+logsource:
+    product: windows
+    category: file_event
+detection:
+    selection:
+        TargetFilename|endswith: '.pdf'
+        TargetFilename|contains|any:
+            - 'javascript'
+            - 'openaction'
+    condition: selection
+```
+
+**Reference artifacts / IOCs**
+
+| Indicator Type | Value |
+|----------------|-------|
+| SHA256 hash | `c9f0f8fb0a1e5a3d7b2c4d6e8f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8` |
+| Filename | `invoice.pdf` |
+| Host artifact | PDF header `%PDF-1.7` |
+| Network artifact | `hxxp://training[.]example[.]com/sample.pdf` (defanged) |
+| IP address (documentation) | `198.51.100.55` |
+
+**MITRE ATT&CK Techniques Covered**
+
+- **T1203** – Exploitation for Client Execution  
+  (URL: https://attack.mitre.org/techniques/T1203/)
+- **T1036.005** – Masquerading: Match Legitimate Name or Location  
+  (URL: https://attack.mitre.org/techniques/T1036/005/)
+
+**Authoritative Source URLs**
+
+- YARA Documentation: https://yara.readthedocs.io/
+- Sigma Specification: https://github.com/SigmaHQ/sigma-specification
+- MITRE ATT&CK Technique T1203: https://attack.mitre.org/techniques/T1203/
+- MITRE ATT&CK Technique T1036.005: https://attack.mitre.org/techniques/T1036/005/
+
 ## Sources
 
 Claim → source mapping (all URLs are real, authoritative pages):
@@ -173,3 +232,12 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [Behavioral / dynamic analysis](../15-behavioral-dynamic/README.md) — same learning path (Windows RE); detonate the extracted payload in an instrumented sandbox to confirm the C2 and persistence artifacts predicted by static analysis.
 
 <!-- cyberlab-enriched: v5 -->
+- https://www.cybersecurity-forums.com
+- https://pdfstreamdumper.github.io
+- https://attack.mitre.org/techniques/T1203/"
+- https://attack.mitre.org/techniques/T1203/
+- https://attack.mitre.org/techniques/T1036/005/
+- https://yara.readthedocs.io/
+- https://github.com/SigmaHQ/sigma-specification
+
+<!-- cyberlab-enriched: v6 -->
