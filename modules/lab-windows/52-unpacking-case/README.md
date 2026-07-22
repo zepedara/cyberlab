@@ -383,6 +383,39 @@ level: low
 **Authoritative Source:**
 - [MITRE ATT&CK - T1027](https://attack.mitre.org/techniques/T1027/)
 
+
+### Essential Commands & Features
+
+Dynamic unpacking in x64dbg demands precise control over execution—features not yet covered in this module. Three critical capabilities for breakpoint management and code tracing are `SetBPX`, conditional breakpoints, and the `Trace` commands.
+
+**`SetBPX` (Set Breakpoint by Expression)**  
+While GUI breakpoints are convenient, scripted unpacking requires the `SetBPX` command. After unpacking a packed binary, you might want to break immediately at the original entry point (OEP) once the unpacking stub transfers control. Example:  
+`SetBPX 0x401000` – sets a breakpoint at address 0x401000.  
+Use this when you have identified the OEP address from a previous run, allowing automated re-attachment without manual GUI clicks.
+
+**Conditional Breakpoints**  
+Malware often employs anti-debug tricks (e.g., checking `BeingDebugged` – MITRE T1497 **Virtualization/Sandbox Evasion**). Override these with conditional breakpoints that break only when specific conditions are met—not on every hit. Example:  
+Set a breakpoint on `GetProcAddress`. Right-click the breakpoint, select "Set Condition," and enter `[arg1]==0x12345678` to break only when the first argument equals the desired function hash. This thwarts packers that repeatedly call the same API to confuse analysts (aligns with T1562.001 **Impair Defenses: Disable or Modify Tools**, as packers may attempt to disable debugger setups).
+
+**`Trace` Commands**  
+For fine-grained control over unpacking loops, use `TraceInto` (TI) to step into calls (e.g., `ti`), or `TraceOver` (TO) to step over them. When a loop unpacks multiple layers, `Trace` allows you to skip tedious single-stepping: `TraceInto condition eax==0` will run until `eax` becomes zero, exactly where the unpacking finishes.
+
+These commands let you dynamically steer the unpacked payload precisely – a skill essential for mapping packed malware’s behavior.
+
+*Authoritative references:*  
+- Hexacorn blog on conditional breakpoints in x64dbg (https://www.hexacorn.com/blog/2017/04/21/conditional-breakpoints-in-x64dbg/)  
+- Infosec Institute guide on unpacking with x64dbg (https://resources.infosecinstitute.com/topic/unpacking-malware-using-x64dbg/)
+
+### Common Pitfalls & Result Validation
+
+When unpacking malware samples, analysts often fall into traps that lead to incomplete or misleading conclusions. A frequent mistake is **assuming a single unpacking pass is sufficient**—many modern packers (e.g., VMProtect, Themida) use multi-layered obfuscation, requiring iterative unpacking. Another pitfall is **ignoring memory artifacts** during dynamic analysis; static unpacking alone may miss runtime behaviors like process injection (MITRE ATT&CK [T1055.012: Process Hollowing](https://attack.mitre.org/techniques/T1055/012/)) or reflective DLL loading ([T1621: Reflective Code Loading](https://attack.mitre.org/techniques/T1621/)).
+
+To validate findings, cross-reference unpacked code with **behavioral indicators** (e.g., API calls, network traffic) and **memory forensics** (e.g., Volatility’s `malfind` plugin). False positives often arise from misinterpreting benign packers (e.g., UPX) as malicious—verify with entropy analysis and section hashes. Avoid false negatives by checking for **anti-analysis tricks**, such as timing delays or debugger detection, which may suppress malicious payloads during analysis.
+
+**Sources:**
+- [FireEye: Unpacking Malware Series (Part 3)](https://www.fireeye.com/blog/threat-research/2020/03/unpacking-malware-series-part-three.html)
+- [CERT-EU: Malware Unpacking Techniques](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_Malware_Unpacking_Techniques.pdf)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -429,3 +462,11 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://example[.]com/lab-samples/unpacking-case-52"
 
 <!-- cyberlab-enriched: v5 -->
+- https://www.hexacorn.com/blog/2017/04/21/conditional-breakpoints-in-x64dbg/
+- https://resources.infosecinstitute.com/topic/unpacking-malware-using-x64dbg/
+- https://attack.mitre.org/techniques/T1055/012/
+- https://attack.mitre.org/techniques/T1621/
+- https://www.fireeye.com/blog/threat-research/2020/03/unpacking-malware-series-part-three.html
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_Malware_Unpacking_Techniques.pdf
+
+<!-- cyberlab-enriched: v6 -->
