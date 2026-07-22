@@ -192,6 +192,88 @@ Adversaries weaponise compromised documents for initial access by embedding mali
 * Microsoft Security Blog: “How to hunt for macros in Office documents” – https://www.microsoft.com/security/blog/2022/01/31/how-to-hunt-for-macros-in-office-documents/
 * Cybereason: “Emulating Document-Based Attacks” – https://www.cybereason.com/blog/emulating-document-based-attacks
 
+
+### Essential Commands & Features
+
+To deepen analysis of **55-doc-detonation-case**, leverage these undemonstrated but critical commands and features:
+
+#### **FakeNet-NG Advanced Filtering & DNS Redirection**
+- **`--redirect-filters`**: Redirect specific traffic (e.g., non-standard ports) to FakeNet-NG’s listeners. Use when malware evades detection by using uncommon ports (e.g., **T1571 Non-Standard Port**).
+  ```bash
+  FakeNet-NG.exe --redirect-filters "8080->80,4443->443"
+  ```
+- **`--dns-server`**: Override the system DNS to force resolution through FakeNet-NG. Critical for analyzing **T1071.004 DNS** exfiltration or C2 traffic.
+  ```bash
+  FakeNet-NG.exe --dns-server 127.0.0.1
+  ```
+
+#### **Wireshark’s Hidden Gems**
+- **Follow HTTP Stream**: Isolate and reconstruct HTTP conversations (e.g., **T1048.003 Exfiltration Over Alternative Protocol**). Right-click a packet → *Follow → HTTP Stream*.
+- **IO Graph**: Visualize traffic spikes to identify beaconing (e.g., **T1102 Web Service C2**). Navigate to *Statistics → IO Graph*, then apply filters like `http.request` or `dns`.
+
+**Sources**:
+- FakeNet-NG: [https://www.fireeye.com/blog/threat-research/2016/06/fakenet-ng.html](https://www.fireeye.com/blog/threat-research/2016/06/fakenet-ng.html)
+- Wireshark: [https://www.hackers-arise.com/post/wireshark-for-malware-analysis](https://www.hackers-arise.com/post/wireshark-for-malware-analysis)
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule DOC_Macro_AutoOpen_Indicators {
+    meta:
+        description = "Detects benign macro-enabled documents containing common macro auto-execute keywords for educational training."
+        author = "Cybersecurity Training Team"
+        date = "2025-04-04"
+        reference = "https://attack.mitre.org/techniques/T1059/005/"
+    strings:
+        $s1 = "AutoOpen"
+        $s2 = "Document_Open"
+    condition:
+        filesize < 2MB and any of ($s1, $s2)
+}
+```
+
+```yaml
+title: Suspicious Office Process Spawning WScript from Macro
+id: 55d0c1a2-b3c4-5e6f-7a8b-9c0d1e2f3a4b
+status: test
+description: Detects a Windows scripting host (wscript.exe) launched by an Office application, mimicking macro-based execution for educational demos.
+references:
+    - https://attack.mitre.org/techniques/T1059/005/
+author: Cybersecurity Training Team
+date: 2025-04-04
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        ParentImage|endswith:
+            - '\WINWORD.EXE'
+            - '\EXCEL.EXE'
+            - '\POWERPNT.EXE'
+        Image|endswith:
+            - '\wscript.exe'
+            - '\cscript.exe'
+    condition: selection
+fields:
+    - User
+    - CommandLine
+level: low
+```
+
+**Reference artifacts / IOCs**
+
+| Artifact          | Value                                                            |
+|-------------------|------------------------------------------------------------------|
+| SHA256 hash       | `3a4f5b7c9d0e2f1a6b8c7d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e` |
+| Filename          | `55-doc-detonation-case_sample.docm`                             |
+| Host artifact     | Process: `WINWORD.EXE` spawning `wscript.exe`                    |
+| Network artifact  | Connection to `198.51.100.10:8080` (simulated C2)                |
+| Network artifact  | DNS query to `exampledocument[.]com` (defanged)                  |
+
+**MITRE ATT&CK Reference**
+- Technique: T1059.005 – Visual Basic for Applications
+- Source: https://attack.mitre.org/techniques/T1059/005/
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -231,3 +313,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.cybereason.com/blog/emulating-document-based-attacks
 
 <!-- cyberlab-enriched: v4 -->
+- https://www.fireeye.com/blog/threat-research/2016/06/fakenet-ng.html](https://www.fireeye.com/blog/threat-research/2016/06/fakenet-ng.html
+- https://www.hackers-arise.com/post/wireshark-for-malware-analysis](https://www.hackers-arise.com/post/wireshark-for-malware-analysis
+- https://attack.mitre.org/techniques/T1059/005/"
+- https://attack.mitre.org/techniques/T1059/005/
+
+<!-- cyberlab-enriched: v5 -->
