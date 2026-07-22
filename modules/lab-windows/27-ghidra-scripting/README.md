@@ -330,6 +330,55 @@ tags:
 **Authoritative Source:**
 - [Ghidra Official Documentation](https://ghidra-sre.org/)
 
+
+### Essential Commands & Features
+
+#### Ghidra Headless Batch Mode (`-process`)
+Use Ghidra’s headless analyzer to automate script execution without launching the GUI. The `-process` flag processes a single binary, ideal for CI/CD pipelines or bulk analysis. Example:
+```bash
+analyzeHeadless /path/to/project ProjectName -process malware.exe -scriptPath /scripts -postScript FindStrings.py
+```
+This is particularly useful for detecting **T1059.005 Command-Line Interface** or **T1546.008 Event Triggered Execution: Accessibility Features**, where batch processing can flag suspicious strings or hooks.
+
+#### Python API (`currentScript`)
+Access Ghidra’s current script context via `currentScript` to interact with the program database. Example:
+```python
+from ghidra.app.script import GhidraScript
+currentScript = getState().getScript()
+func = currentScript.getFunctionContaining(currentAddress)
+print(f"Function: {func.getName()}")
+```
+Use this to automate **T1574.009 Hijack Execution Flow: Path Interception by PATH Environment Variable** by enumerating imported functions or DLLs.
+
+#### Capa’s `-v` (Verbose) and `-j` (JSON) Flags
+Enhance capa’s output with `-v` for detailed rule matches or `-j` for machine-readable JSON. Example:
+```bash
+capa -v malware.exe  # Verbose output for manual review
+capa -j malware.exe  # JSON for automated parsing
+```
+These flags help identify **T1562.006 Indicator Removal: Timestomp** or **T1070.006 Indicator Removal: File Deletion** by surfacing evasion techniques in structured formats.
+
+**Sources:**
+- [Ghidra Headless Documentation (NSA GitHub)](https://github.com/NationalSecurityAgency/ghidra/blob/master/GhidraDocs/GhidraClass/HeadlessAnalysis.md)
+- [FireEye Capa Rules & Usage](https://github.com/fireeye/capa-rules/blob/master/doc/usage.md)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, Ghidra scripting is a powerful post-exploitation tool for **automated binary analysis, payload customization, and evasion**. Attackers leverage Ghidra scripts to rapidly identify vulnerable functions (e.g., unsafe deserialization, buffer overflows) or hardcoded credentials in compiled binaries, accelerating **exploitation development** (MITRE ATT&CK [T1588.002: Obtain Capabilities - Exploits](https://attack.mitre.org/techniques/T1588/002/)). For example, a script could parse a target binary to locate cryptographic functions, then dynamically patch them to weaken encryption (e.g., replacing AES with XOR) for **data exfiltration** (MITRE ATT&CK [T1041: Exfiltration Over C2 Channel](https://attack.mitre.org/techniques/T1041/)).
+
+**Concrete TTPs**:
+- **Automated Backdoor Insertion**: Scripts can inject malicious hooks (e.g., `CreateRemoteThread` calls) into legitimate binaries, blending with trusted processes (e.g., `svchost.exe`).
+- **Evasion via Obfuscation**: Attackers use Ghidra’s decompiler to identify and modify strings/imports, then recompile binaries to bypass signature-based detection (e.g., altering `VirtualAlloc` to `NtAllocateVirtualMemory`).
+- **Artifact Generation**: Scripts may leave traces in Ghidra’s project files (e.g., `.rep`/`.gpr` metadata) or temporary directories (e.g., `%TEMP%\ghidra_*`).
+
+**Evasion Considerations**:
+- **Anti-Forensics**: Delete Ghidra project files post-analysis and use memory-only scripting (e.g., Python `exec()`) to avoid disk artifacts.
+- **Living-off-the-Land**: Prefer Ghidra’s headless mode (`analyzeHeadless`) to avoid GUI telemetry, and obfuscate script logic (e.g., string encryption) to evade EDR behavioral analysis.
+
+**Sources**:
+- [MITRE ATT&CK: Exploitation for Client Execution (T1203)](https://attack.mitre.org/techniques/T1203/)
+- [FireEye: Ghidra Scripting for Malware Analysis (2021)](https://www.fireeye.com/blog/threat-research/2021/03/ghidra-scripting-for-malware-analysis.html)
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -369,3 +418,11 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - https://ghidra-sre.org/"
 
 <!-- cyberlab-enriched: v5 -->
+- https://github.com/NationalSecurityAgency/ghidra/blob/master/GhidraDocs/GhidraClass/HeadlessAnalysis.md
+- https://github.com/fireeye/capa-rules/blob/master/doc/usage.md
+- https://attack.mitre.org/techniques/T1588/002/
+- https://attack.mitre.org/techniques/T1041/
+- https://attack.mitre.org/techniques/T1203/
+- https://www.fireeye.com/blog/threat-research/2021/03/ghidra-scripting-for-malware-analysis.html
+
+<!-- cyberlab-enriched: v6 -->
