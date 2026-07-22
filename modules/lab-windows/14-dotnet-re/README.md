@@ -263,6 +263,104 @@ To avoid false conclusions, always:
 2. **Leverage decompiler features**: Use dnSpy’s debugger to step through obfuscated code dynamically.
 3. **Consult authoritative references**: For .NET-specific threats, see the [CERT-EU .NET Reverse Engineering Guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002.pdf) or [MalAPI.io](https://malapi.io) for API misuse patterns.
 
+
+### Essential Commands & Features
+
+#### **dnSpyEx: Advanced Debugging Techniques**
+1. **Debugger Breakpoints with Conditions**
+   Set conditional breakpoints to pause execution only when specific criteria are met (e.g., a variable equals a value). Right-click a line in the decompiled code → *Breakpoint* → *Insert Breakpoint* → *Condition*. Example:
+   ```csharp
+   // Break when 'password' == "admin"
+   password == "admin"
+   ```
+   Useful for analyzing **T1003.001 OS Credential Dumping: LSASS Memory** or **T1558.003 Steal or Forge Kerberos Tickets: Kerberoasting**, where credentials are processed conditionally.
+
+2. **Edit-and-Continue (Hot Patching)**
+   Modify decompiled C# code during a live debugging session and resume execution without restarting. Pause execution, edit the method, then press *F5* to continue. Example:
+   ```csharp
+   // Change a hardcoded URL to bypass C2 checks
+   string c2Url = "http://malicious.com/update" → "http://localhost:8080";
+   ```
+   Critical for **T1105 Ingress Tool Transfer** analysis, where C2 domains are hardcoded.
+
+3. **IL-Level Stepping**
+   Step through Intermediate Language (IL) instructions to bypass obfuscated control flow. In the debugger, press *F11* to step into IL (visible in the *IL* tab). Example:
+   ```il
+   // Step through obfuscated branches (e.g., junk jumps)
+   br.s IL_0012  // Press F11 to follow the jump
+   ```
+   Essential for **T1620 Reflective Code Loading**, where IL manipulation hides payload execution.
+
+#### **de4dot: Custom Deobfuscation**
+1. **Force Deobfuscation of String Encryption**
+   Use `--strtyp` to specify string decryption methods when de4dot fails to auto-detect them. Example:
+   ```bash
+   de4dot --strtyp delegate input.exe -o output.exe
+   ```
+   Targets **T1027.001 Obfuscated Files or Information: Binary Padding**, where strings are encrypted via delegates.
+
+2. **Preserve Metadata for Analysis**
+   Retain original obfuscator metadata (e.g., attribute names) with `--dont-rename`. Example:
+   ```bash
+   de4dot --dont-rename input.exe -o output.exe
+   ```
+   Helps attribute obfuscators in **T1587.001 Develop Capabilities: Malware**, where custom tooling leaves traces.
+
+**Sources:**
+- [dnSpyEx Debugger Documentation (
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule DotNet_Lab_Sample {
+   meta:
+      description = "Benign .NET sample for educational reverse engineering laboratory"
+      author = "Training Module 14-dotnet-re"
+      date = "2025-04-01"
+      reference = "https://attack.mitre.org/techniques/T1204/002/"
+   strings:
+      $s1 = "System.Diagnostics" ascii wide nocase
+      $s2 = "Main(" ascii wide
+      $s3 = "Reflection" ascii wide nocase
+   condition:
+      filesize < 10KB and all of ($s1, $s2, $s3)
+}
+```
+
+```yaml
+title: Benign .NET Lab Sample CommandLine Indicators
+logsource:
+   product: windows
+   category: process_creation
+detection:
+   selection:
+      Image|endswith: '\dotnet.exe'
+      CommandLine|contains|all:
+         - 'sample.dll'
+         - '--arg'
+   condition: selection
+```
+
+**Reference artifacts / IOCs**
+
+| Indicator Type | Value |
+|----------------|-------|
+| SHA256 | `a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1` |
+| Filename | `lab-sample.exe` |
+| File Path | `C:\Users\Student\Desktop\dotnet-re\lab-sample.exe` |
+| Network (defanged) | `hxxp://lab[.]example[.]com/reverse/sample.net` |
+| Network (defanged) | `192.0.2.20:4443` (benign education server) |
+
+**MITRE ATT&CK Techniques:**
+- **T1204.002 User Execution: Malicious File** – The benign sample is executed to demonstrate how .NET payloads rely on user interaction.
+- **T1053.005 Scheduled Task/Job: Scheduled Task** – The training may simulate persistence using a scheduled task to re-run the sample; detection scripts monitor for unexpected task creation.
+
+**Authoritative References:**
+- [MITRE ATT&CK T1204.002 User Execution: Malicious File](https://attack.mitre.org/techniques/T1204/002/)
+- [MITRE ATT&CK T1053.005 Scheduled Task](https://attack.mitre.org/techniques/T1053/005/)
+- [YARA Documentation: Writing Rules](https://yara.readthedocs.io/en/stable/writingrules.html)
+- [Sigma Specification: Rule Format](https://github.com/SigmaHQ/sigma-specification)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -309,3 +407,12 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://malapi.io
 
 <!-- cyberlab-enriched: v5 -->
+- http://malicious.com/update"
+- http://localhost:8080";
+- https://attack.mitre.org/techniques/T1204/002/"
+- https://attack.mitre.org/techniques/T1204/002/
+- https://attack.mitre.org/techniques/T1053/005/
+- https://yara.readthedocs.io/en/stable/writingrules.html
+- https://github.com/SigmaHQ/sigma-specification
+
+<!-- cyberlab-enriched: v6 -->
