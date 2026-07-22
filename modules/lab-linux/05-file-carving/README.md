@@ -286,6 +286,115 @@ Avoid false conclusions by combining carving with other techniques (e.g., memory
 - [DFIR Review: File Carving Pitfalls and Best Practices](https://www.dfir.review/file-carving-pitfalls/)
 - [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://csrc.nist.gov/publications/detail/sp/800-86/final)
 
+
+### Essential Commands & Features
+
+Below are **critical but often overlooked** commands and flags for `foremost` and `scalpel` that extend file-carving precision and forensic utility.
+
+#### **Foremost**
+- **`-t <types>`**: Restrict carving to specific file types (e.g., `-t jpg,pdf`). Use when targeting known artifacts (e.g., exfiltrated documents or images).
+  ```bash
+  foremost -t jpg,pdf -i evidence.dd -o /output/
+  ```
+  *Relevance*: Mitigates noise during analysis of [T1036.005 "Match Legitimate Name or Location"](https://attack.mitre.org/techniques/T1036/005/) or [T1553.002 "Code Signing"](https://attack.mitre.org/techniques/T1553/002/), where adversaries disguise files.
+
+- **`-T`**: Append timestamps to output directories for chain-of-custody tracking.
+  ```bash
+  foremost -T -i evidence.dd -o /output/
+  ```
+- **`-d`**: Enable carving of indirect blocks (e.g., NTFS resident files). Critical for fragmented or non-contiguous data.
+  ```bash
+  foremost -d -i evidence.dd -o /output/
+  ```
+
+#### **Scalpel**
+- **`-b`**: Carve at the block level (default: byte-level). Essential for recovering files from damaged filesystems or carved slack space.
+  ```bash
+  scalpel -b -o /output/ evidence.dd
+  ```
+
+**Sources**:
+- [Foremost Man Page (Official)](https://foremost.sourceforge.net/foremost.html)
+- [Scalpel GitHub Wiki (DFIR Review)](https://github.com/sleuthkit/scalpel/wiki)
+
+### Detection Signatures & Reference Artifacts
+
+Below are defensive detection signatures and reference artifacts for identifying benign file carving activities in a lab environment.
+
+---
+
+```yara
+rule Lab_Benign_FileCarving_Signature {
+    meta:
+        description = "Detects benign file carving activity in lab samples (e.g., carved PNG headers)"
+        author = "Defensive Training Module"
+        reference = "https://github.com/VirusTotal/yara"
+        date = "2024-05-20"
+        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
+
+    strings:
+        $png_header = { 89 50 4E 47 0D 0A 1A 0A }  // PNG file signature
+        $jpeg_soi = { FF D8 FF }                  // JPEG Start of Image
+        $zip_header = "PK\x03\x04"                // ZIP file signature
+        $carve_marker = "CARVED_BY_LAB_TOOL"      // Benign carving tool marker
+        $tool_name = "LabCarver v1.0"             // Benign tool identifier
+        $output_dir = "C:\\Lab\\CarvedFiles"      // Expected output directory
+
+    condition:
+        filesize < 10MB and (
+            $png_header or $jpeg_soi or $zip_header or
+            $carve_marker or $tool_name or $output_dir
+        )
+}
+```
+
+---
+
+```yaml
+title: Benign File Carving Activity Detected
+id: 1a2b3c4d-5e6f-7890-1234-56789abcdef0
+status: experimental
+description: Detects benign file carving activity in a lab environment (e.g., carved files or tool usage)
+author: Defensive Training Module
+date: 2024/05/20
+logsource:
+    product: windows
+    category: file_event
+detection:
+    selection:
+        TargetFilename|endswith:
+            - '.png'
+            - '.jpg'
+            - '.jpeg'
+            - '.zip'
+            - '\\Lab\\CarvedFiles\\'  # Expected output directory
+        Image|endswith:
+            - '\\LabCarver.exe'       # Benign carving tool
+    condition: selection
+falsepositives:
+    - Legitimate file recovery tools
+level: informational
+```
+
+---
+
+**Reference artifacts / IOCs**
+
+| **Indicator Type**       | **Value**                                                                 | **Description**                                  |
+|--------------------------|---------------------------------------------------------------------------|--------------------------------------------------|
+| SHA256 Hash              | `a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef`       | Benign lab sample (carved PNG file)              |
+| Filename                 | `LabCarver.exe`                                                           | Benign file carving tool                         |
+| Host Artifact            | `C:\Lab\CarvedFiles\recovered_1.png`                                      | Expected output path for carved files            |
+| Network Artifact (Defanged)| `hxxp://192[.]0[.]2[.]10/labcarver/download`                              | Benign tool download URL (documentation IP)      |
+
+**MITRE ATT&CK Techniques Covered:**
+- [T1005 - Data from Local System](https://attack.mitre.org/techniques/T1005/)
+- [T1560 - Archive Collected Data](https://attack.mitre.org/techniques/T1560/)
+
+**Authoritative Sources:**
+- [MITRE ATT&CK: T1005 - Data from Local System](https://attack.mitre.org/techniques/T1005/)
+- [Sigma Rule Documentation](https://github.com/SigmaHQ/sigma)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -345,3 +454,11 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://csrc.nist.gov/publications/detail/sp/800-86/final
 
 <!-- cyberlab-enriched: v5 -->
+- https://attack.mitre.org/techniques/T1036/005/
+- https://attack.mitre.org/techniques/T1553/002/
+- https://foremost.sourceforge.net/foremost.html
+- https://github.com/VirusTotal/yara"
+- https://attack.mitre.org/techniques/T1560/
+- https://github.com/SigmaHQ/sigma
+
+<!-- cyberlab-enriched: v6 -->
