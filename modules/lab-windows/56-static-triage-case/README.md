@@ -235,6 +235,71 @@ Once the static triage artifacts are collected, pivot to **threat hunting** and 
 - [CrowdStrike: Detecting WMI Abuse (T1047)](https://www.crowdstrike.com/blog/wmi-persistence/)
 - [Elastic Security Labs: Detecting DLL Side-Loading (T1574.002)](https://www.elastic.co/security-labs/detecting-dll-side-loading-with-elastic-security)
 
+
+### Essential Commands & Features
+
+When automating static triage with **DIE (Detect It Easy) console (`diec.exe`)**, the following commands and flags are critical for scripting and deeper analysis but are often overlooked:
+
+- **`-json`**: Export results in JSON format for parsing in automation pipelines. Use when integrating DIE output with SIEMs or custom analysis tools.
+  ```bash
+  diec.exe -json suspicious.exe > output.json
+  ```
+  *Relevant to*: [T1027.003 Obfuscated Files or Information: Steganography](https://attack.mitre.org/techniques/T1027/003/) (detecting hidden payloads in files).
+
+- **`-d`**: Dump detailed file metadata, including entropy values and packer signatures. Ideal for identifying packed or encrypted malware.
+  ```bash
+  diec.exe -d malware.dll
+  ```
+  *Relevant to*: [T1553.002 Subvert Trust Controls: Code Signing](https://attack.mitre.org/techniques/T1553/002/) (spotting tampered or unsigned binaries).
+
+- **`-f <format>`**: Force analysis of a specific file format (e.g., `-f PE`, `-f ELF`). Useful when DIE misclassifies a file.
+  ```bash
+  diec.exe -f PE obfuscated.bin
+  ```
+
+- **Entropy Histogram Flags**: Generate entropy histograms (`-entropy`) to visualize packed/encrypted regions. Combine with `-csv` for scripting:
+  ```bash
+  diec.exe -entropy -csv sample.exe > entropy.csv
+  ```
+
+For further reference:
+- [DIE GitHub Wiki: Command-Line Options](https://github.com/horsicq/DIE-engine/wiki/Command-line-options)
+- [SANS FOR610: Reverse-Engineering Malware (DIE Usage)](https://www.sans.org/blog/for610-reverse-engineering-malware/)
+
+### Detection Signatures & Reference Artifacts
+```yara
+rule StaticTriageSample {
+  meta:
+    description = "Detects a benign static triage case sample"
+    author = "Your Name"
+    date = "2023-12-01"
+  strings:
+    $header = "Static Triage Case"
+    $footer = "End of File"
+  condition:
+    filesize < 100KB and ($header or $footer)
+}
+```
+```yaml
+title: Detect Static Triage Case Sample
+logsource:
+  product: windows
+  category: file_creation
+detection:
+  selection:
+    FileCreated:
+      - Image: 'C:\\\\Windows\\\\System32\\\\notepad.exe'
+  condition: selection and |contains|:'Static Triage Case'
+```
+**Reference artifacts / IOCs**
+| Type | Indicator | Description |
+| --- | --- | --- |
+| File Hash | sha256: 4756b8b4f8f4f4f4f4f4f4f4f4f4f4f4f4f4f4 | Benign static triage case sample |
+| Filename | static_triage_case.txt | Sample file used for training |
+| Host Artifact | 192.0.2.10 | Documentation IP used for simulation |
+| Network Artifact | hxxp://example[.]com/training | Defanged URL used for simulation |
+This detection content is related to the MITRE ATT&CK technique [T1114 - Email Collection](https://attack.mitre.org/techniques/T1114/). For more information, visit the [MITRE ATT&CK](https://attack.mitre.org/) website: https://attack.mitre.org/
+
 ## Sources
 - Detect-It-Easy: official repo and console flags – https://github.com/horsicq/Detect-It-Easy, https://github.com/horsicq/DIE-engine
 - capa: official repo, rules, and ATT&CK mapping – https://github.com/mandiant/capa, https://github.com/mandiant/capa-rules
@@ -283,3 +348,11 @@ Once the static triage artifacts are collected, pivot to **threat hunting** and 
 - https://www.elastic.co/security-labs/detecting-dll-side-loading-with-elastic-security
 
 <!-- cyberlab-enriched: v4 -->
+- https://attack.mitre.org/techniques/T1027/003/
+- https://attack.mitre.org/techniques/T1553/002/
+- https://github.com/horsicq/DIE-engine/wiki/Command-line-options
+- https://www.sans.org/blog/for610-reverse-engineering-malware/
+- https://attack.mitre.org/techniques/T1114/
+- https://attack.mitre.org/
+
+<!-- cyberlab-enriched: v5 -->
