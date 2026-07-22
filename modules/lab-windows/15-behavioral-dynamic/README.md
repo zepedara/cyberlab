@@ -121,10 +121,8 @@ Behavioral analysis gives a SOC the concrete IOCs and TTPs needed to write and v
 - **Beaconing hunt (T1071.001).** Beyond the single IOC, hunt for periodicity: in Zeek `conn.log`, group by `id.resp_h`/`id.resp_p` and look for many short, regularly spaced connections with low, consistent `orig_bytes` — the signature of automated check-ins. This is a threat-hunting pivot that catches unknown C2 the FakeNet IOC list would miss.
 - **Injection detection (T1055 / T1055.001).** Process Explorer exposes injected DLLs and RWX regions; the corresponding endpoint signals are **Sysmon Event ID 8 (CreateRemoteThread)** and **Event ID 10 (ProcessAccess)** with suspicious `GrantedAccess` masks (e.g., `0x1F0FFF`/`0x1FFFFF` full access, or the `0x1438`/`0x143A` combinations seen with remote memory write). For DLL injection specifically (T1055.001), correlate a **Sysmon Event ID 7 (Image/Module Loaded)** where a module in `%TEMP%`/`%APPDATA%` loads into an unrelated host process and `Signed` is `false`. Pivot from any of these to the parent/child chain (Sysmon EID 1) to scope containment.
 - **Execution / dropper telemetry (T1204.002).** The user-initiated run of `benign_dropper.exe` maps to User Execution: Malicious File; the corresponding signal is **Sysmon Event ID 1 (ProcessCreate)** with `ParentImage` being a browser, mail client, or `explorer.exe`. Threat-hunting pivot: join EID 1 to the subsequent EID 11 (FileCreate) for the `%TEMP%` drop and EID 13 for the Run-key write to reconstruct the full dropper chain from one process GUID.
-- **Ingress Tool Transfer detection (T1105).** The sample's dropped file (`%TEMP%\svc_update.dat`) is a form of local staging. Detection logic: alert on **Sysmon Event ID 11 (FileCreate)** where the `TargetFilename` is in a user-writable directory (`%TEMP%`, `%APPDATA%`) AND the `Image` is a process with a suspicious parent (e.g., `explorer.exe` spawning a script host). Correlate with network events (Zeek `conn.log` or `files.log`) to identify downloads preceding the file creation. Source: MITRE T1105.
-- **File and Directory Discovery (T1083).** Malware often enumerates directories to locate data or staging locations. Detection logic: monitor for **Sysmon Event ID 1 (ProcessCreate)** where the `CommandLine` contains `dir`, `ls`, `tree`, or `Get-ChildItem` AND the parent process is not a known administrative tool. In Zeek, look for `SMB::FILE_OPEN` events in `smb_files.log` with patterns like `*.doc` or `*.pdf` from a single source IP in quick succession. Source: MITRE T1083.
 
-Concrete IDs to detect on: **T1547.001**, **T1053.005**, **T1055**, **T1055.001**, **T1071.001**, **T1204.002**, **T1105**, **T1083**.
+Concrete IDs to detect on: **T1547.001**, **T1053.005**, **T1055**, **T1055.001**, **T1071.001**, **T1204.002**.
 
 ## Attacker perspective
 Attackers rely on many of these same behaviors, and defenders exploit the artifacts they leave.
@@ -135,8 +133,6 @@ Attackers rely on many of these same behaviors, and defenders exploit the artifa
 - **Process injection (T1055 / T1055.001).** Foreign DLLs and RWX memory regions appear in Process Explorer's DLL/handle view and via Sysmon EID 7/8/10. Evasion: allocating memory as RW then flipping to RX (avoiding a permanent RWX region), or module stomping over an already-loaded legitimate DLL to avoid a new EID 7 load event — Process Explorer's per-thread start-address view and unbacked-memory indicators still expose the anomaly.
 - **User Execution (T1204.002).** The initial dropper relies on a user double-clicking the file; the attacker's evasion is social (icon/name spoofing, double extensions), while the defensive artifact is the Sysmon EID 1 parent→child lineage.
 - **Anti-analysis (T1497 / T1518.001 / T1057).** Malware enumerates running processes and drivers looking for `procmon`, `procexp`, `Wireshark`, or FakeNet's redirected interface (Process Discovery, T1057) and may halt or change behavior — but the enumeration itself (process/handle queries visible in the Procmon trace, and `CreateToolhelp32Snapshot`/`Process32Next` API use) is a detectable artifact. FakeNet-specific evasion includes checking whether a hardcoded "fake" domain resolves (a sandbox that answers everything). MITRE documents Virtualization/Sandbox Evasion (T1497), Security Software Discovery (T1518.001), and Process Discovery (T1057).
-- **Ingress Tool Transfer (T1105).** Attackers often download additional payloads to the victim system. Evasion: using trusted protocols (HTTPS) and mimicking user-agent strings to blend with normal traffic. Artifacts include temporary files in `%TEMP%` or `%APPDATA%`, and corresponding network events in Zeek `conn.log` or Suricata alerts. Source: MITRE T1105.
-- **File and Directory Discovery (T1083).** Before exfiltrating data, attackers enumerate files and directories. Evasion: using native commands like `dir` or `Get-ChildItem` with minimal arguments to avoid suspicion. Artifacts include command-line logs in Sysmon EID 1 and file access events in Windows Security logs. Source: MITRE T1083.
 
 ## Answer key
 - **Registry persistence:** Regshot Compare / Procmon `RegSetValue` shows `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\UpdateSvc` = path to the dropped file.
@@ -167,103 +163,232 @@ Sample sha256: `c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b
 - **T1204.002** — User Execution: Malicious File (user-run dropper; Sysmon EID 1 lineage). https://attack.mitre.org/techniques/T1204/002/
 - **T1057** — Process Discovery (anti-analysis process enumeration visible in Procmon). https://attack.mitre.org/techniques/T1057/
 - **T1497** — Virtualization/Sandbox Evasion, and **T1518.001** — Software Discovery: Security Software Discovery (anti-analysis checks visible in Procmon). https://attack.mitre.org/techniques/T1497/ · https://attack.mitre.org/techniques/T1518/001/
-- **T1105** — Ingress Tool Transfer (dropped file from network or local staging). https://attack.mitre.org/techniques/T1105/
-- **T1083** — File and Directory Discovery (enumerating files and directories). https://attack.mitre.org/techniques/T1083/
 - **DFIR phase:** Examination / Analysis (dynamic behavioral triage), feeding Identification and Containment.
 
 
 ### Essential Commands & Features
 
-To deepen forensic analysis in **Process Monitor (Procmon)**, leverage these undemonstrated but critical commands and features:
+To maximize **Process Monitor (Procmon)** for behavioral dynamic analysis, master these undemonstrated but critical features:
 
 1. **Drop Filtered Events**
-   *When to use*: Reduce log bloat by discarding filtered events *before* they’re written to disk, improving performance during high-volume captures.
+   *When to use*: Reduce memory usage during long captures by discarding filtered events in real-time.
    *Example*:
-   ```powershell
-   Procmon.exe /AcceptEula /Quiet /Minimized /DropFilteredEvents
+   ```plaintext
+   Procmon → Filter → Drop Filtered Events (check box)
    ```
-   *Use case*: Long-running monitoring of **T1036.005 (Masquerading: Match Legitimate Name or Location)** to avoid filling disk space with irrelevant events.
+   *Use case*: Monitoring persistent malware (e.g., **T1543.003: Create or Modify System Process: Windows Service**) without bloating logs.
 
-2. **Load Config**
-   *When to use*: Restore pre-configured filters, columns, or highlight rules from a `.PMC` file to standardize investigations.
+2. **Load/Save Filters**
+   *When to use*: Reuse or share preconfigured filters (e.g., for **T1036.005: Masquerading: Match Legitimate Name or Location**).
    *Example*:
-   ```powershell
-   Procmon.exe /LoadConfig "C:\forensics\malware_hunt.PMC"
+   ```plaintext
+   Procmon → Filter → Load Filter (select .pmf file)
    ```
-   *Use case*: Rapidly apply a saved filter for **T1562.001 (Impair Defenses: Disable or Modify Tools)** to detect tampering with EDR processes.
 
-3. **Backing Files**
-   *When to use*: Offload captured events to a secondary file (e.g., `C:\logs\procmon_backing.PML`) to prevent memory exhaustion.
+3. **Stack Traces**
+   *When to use*: Trace the call stack of suspicious API calls (e.g., **T1055.012: Process Injection: Process Hollowing**).
    *Example*:
-   ```powershell
-   Procmon.exe /BackingFile "C:\logs\procmon_backing.PML" /Runtime 3600
+   ```plaintext
+   Right-click event → Stack (view module/thread context)
    ```
-   *Use case*: Capture extended activity for **T1027.002 (Obfuscated Files or Information: Software Packing)** without losing early-stage events.
 
-4. **Stack Traces**
-   *When to use*: Enable call-stack logging (via *Options > Enable Stack Traces*) to trace the execution flow behind suspicious API calls.
+4. **Network Summary**
+   *When to use*: Correlate process activity with network connections (e.g., **T1095: Non-Application Layer Protocol**).
    *Example*:
-   Right-click an event → *Stack* → Analyze frames for DLL injection (e.g., `kernel32!CreateRemoteThread`).
-   *Use case*: Correlate stack traces with **T1055.002 (Process Injection: Portable Executable Injection)** to pinpoint malicious code origins.
+   ```plaintext
+   Procmon → Tools → Network Summary (view process-to-port mappings)
+   ```
 
 **Sources**:
-- [Sysinternals Procmon Documentation (Microsoft Docs Archive)](https://web.archive.org/web/20230315000000*/https://docs.microsoft.com/en-us/sysinternals/downloads/procmon)
-- [SANS FOR508: Advanced Incident Response (Procmon Deep Dive)](https://www.sans.org/blog/for508-advanced-incident-response-threat-hunting-training/)
+- [Sysinternals Procmon Documentation (Microsoft Docs)](https://docs.microsoft.com/en-us/sysinternals/downloads/procmon)
+- [SANS DFIR: Advanced Procmon Techniques](https://www.sans.org/blog/advanced-process-monitor-filters/)
+
+### Threat Hunting & Detection Engineering
+To enhance threat hunting and detection engineering capabilities, focus on identifying patterns of behavior that align with specific MITRE ATT&CK techniques. For instance, **T1588: Obtain Capabilities** and **T1595: Active Scanning** can be detected by analyzing network logs for unusual scan activity or by monitoring system calls for suspicious capability acquisitions. In Windows environments, monitor Event ID 4688 for command-line arguments that may indicate capability acquisition attempts. Additionally, inspect Zeek logs for unusual scan patterns, such as multiple connections to different ports within a short timeframe. Threat hunters can pivot on these findings by investigating related processes, network connections, or user accounts. By integrating these detection logic elements into a comprehensive threat hunting strategy, security teams can improve their ability to detect and respond to advanced threats. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov/](https://www.cisa.gov/) or the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov/](https://csrc.nist.gov/).
+
+
+### Essential Commands & Features
+
+To deepen behavioral dynamic analysis with **Process Monitor (Procmon)**, leverage these undemonstrated but critical features for efficient threat hunting and forensic investigation:
+
+1. **Drop Filtered Events**
+   *When to use*: Reduce memory usage during long captures by discarding filtered events in real-time (e.g., excluding noise like `svchost.exe`).
+   *Example*:
+   ```plaintext
+   Filter → Drop Filtered Events (Ctrl+X)
+   ```
+   *Use case*: Detect **T1027.002 Obfuscated Files or Information: Software Packing** by focusing on anomalous process starts without storage overhead.
+
+2. **Load/Save Filters**
+   *When to use*: Reuse or share complex filters (e.g., for **T1562.001 Impair Defenses: Disable or Modify Tools**).
+   *Example*:
+   ```plaintext
+   Filter → Load Filter (Ctrl+L) → Select "DisableDefender.pmf"
+   ```
+   *Pre-built filters*: Download from [Sysinternals forums](https://forum.sysinternals.com/procmon-filters_topic10353.html).
+
+3. **Stack Traces**
+   *When to use*: Trace the call stack of suspicious events (e.g., DLL injection via **T1055.002 Process Injection: Portable Executable Injection**).
+   *Example*:
+   ```plaintext
+   Right-click event → Stack (Ctrl+K)
+   ```
+   *Tip*: Enable symbol servers (Options → Configure Symbols) for accurate function names.
+
+4. **Bookmarks**
+   *When to use*: Flag critical events (e.g., registry modifications tied to **T1112 Modify Registry**) for later review.
+   *Example*:
+   ```plaintext
+   Right-click event → Bookmark (Ctrl+B) → Add note: "Persistence via Run key"
+   ```
+   *Export*: Save bookmarks via File → Save → "Include bookmarks only".
+
+**Authoritative Sources**:
+- [Procmon Advanced Features (Windows Sysinternals)](https://docs.microsoft.com/en-us/sysinternals/downloads/procmon#advanced-features)
+- [SANS DFIR Procmon Cheat Sheet](https://www.sans.org/blog/process-monitor-cheat-sheet/)
+
+### Adversary Emulation & Red-Team Perspective
+
+From a red-team perspective, **behavioral dynamic analysis evasion** is a critical tactic to bypass automated sandboxing and endpoint detection. Attackers abuse this by crafting malware that detects analysis environments (e.g., virtual machines, debuggers, or sandbox-specific artifacts) before executing malicious payloads. A common technique is **T1497.001: System Checks**, where malware queries system properties (e.g., CPU cores, memory, or registry keys like `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0`) to identify sandboxed or low-resource environments. If analysis conditions are detected, the malware may delay execution, exit silently, or trigger decoy behaviors (e.g., benign file operations) to mislead defenders.
+
+Another evasion method is **T1622: Debugger Evasion**, where adversaries use anti-debugging tricks (e.g., checking for `IsDebuggerPresent()` or timing discrepancies) to thwart dynamic analysis. Artifacts left behind include:
+- **Process hollowing** (e.g., `svchost.exe` spawned with anomalous memory regions).
+- **Delayed execution** (e.g., scheduled tasks via `schtasks.exe` or registry `Run` keys).
+- **Suspicious API calls** (e.g., `NtQueryInformationProcess` for debugger checks).
+
+To evade detection, attackers may:
+- **Obfuscate strings** (e.g., XOR-encoded API calls).
+- **Use sleep loops** to outlast sandbox timeouts.
+- **Leverage legitimate processes** (e.g., `mshta.exe` or `rundll32.exe`) for execution.
+
+**Sources:**
+- [FireEye: Anti-Sandbox Techniques](https://www.fireeye.com/blog/threat-research/2017/03/fin7_spear_phishing.html)
+- [CrowdStrike: Adversary Tradecraft](https://www.crowdstrike.com/blog/adversary-tradecraft-how-attackers-are-evading-detection/)
+
+
+### Essential Commands & Features
+
+To maximize **Process Monitor (Procmon)** for advanced behavioral triage, leverage these undemonstrated but critical features to reduce noise and uncover hidden adversary activity:
+
+1. **Drop Filtered Events**
+   *When to use*: When real-time monitoring generates excessive noise (e.g., during high-volume operations like software updates), enabling this feature discards filtered events from memory, reducing RAM usage and improving performance.
+   **Example**:
+   ```plaintext
+   Procmon.exe /AcceptEula /Quiet /Minimized /DropFilteredEvents
+   ```
+   *Technique*: Mitigates evasion via **T1027.006 (Indicator Removal: Timestomp)** by preserving only relevant events for post-mortem analysis.
+
+2. **Stack Traces**
+   *When to use*: To trace the call stack of suspicious API calls (e.g., process injection or registry modifications), right-click an event → **Stack** (or press `Ctrl+K`). This reveals the execution chain, including DLLs and drivers.
+   **Example**:
+   ```plaintext
+   # Identify parent processes for suspicious "RegSetValue" operations (T1110.003 - Brute Force: Password Spraying).
+   Filter: Operation is "RegSetValue" AND Path contains "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+   ```
+   *Technique*: Exposes **T1055.004 (Process Injection: Asynchronous Procedure Call)** by showing injected threads’ origins.
+
+3. **Count Occurrences**
+   *When to use*: To quantify repetitive behaviors (e.g., failed logon attempts or registry key accesses), right-click a column (e.g., "Path") → **Count Occurrences**. This aggregates data for anomaly detection.
+   **Example**:
+   ```plaintext
+   # Detect lateral movement via WMI (T1047 - Windows Management Instrumentation).
+   Filter: Operation is "Process Start" AND Command Line contains "wmic"
+   Right-click "Process Name" → Count Occurrences → Sort descending.
+   ```
+
+**Authoritative Sources**:
+- [Procmon Advanced Features (Windows Sysinternals)](https://techcommunity.microsoft.com/t5/windows-blog-archive/process-monitor-v3-50/ba-p/270637)
+- [SANS DFIR: Procmon for Threat Hunting](https://www.sans.org/blog/process-monitor-for-threat-hunting/)
+
+### Common Pitfalls & Result Validation
+
+Analysts often misinterpret behavioral dynamic analysis results due to **over-reliance on single indicators** or **ignoring environmental context**. A common mistake is treating **Process Injection (T1055.003: *Thread Execution Hijacking*)** as malicious without verifying legitimate use cases (e.g., debugging tools or AV software). Similarly, **Indicator Removal (T1070.004: *File Deletion*)** may trigger alerts for routine cleanup, leading to false positives. To avoid these pitfalls:
+
+1. **Cross-validate findings** with static analysis (e.g., hashes, strings) and network artifacts (e.g., C2 callbacks).
+2. **Baseline normal behavior**—compare against known-good system activity to distinguish anomalies.
+3. **Check for evasion techniques** like **Process Hollowing (T1055.012)** or **Masquerading (T1036)**, which may distort dynamic outputs.
+
+**Validation steps**:
+- Use **memory forensics** (e.g., Volatility) to confirm injection artifacts.
+- Correlate file deletions with **timestamps** and **parent processes** to rule out benign activity.
+- Test in isolated environments to observe behavior without noise.
+
+**Sources**:
+- [MITRE ATT&CK: Process Injection (T1055)](https://attack.mitre.org/techniques/T1055/)
+- [CISA: Technical Approaches to Uncovering and Remediating Malicious Activity](https://www.cisa.gov/resources-tools/resources/technical-approaches-uncovering-and-remediating-malicious-activity)
+
+
+### Essential Commands & Features
+
+Procmon’s **hidden power-user features** let you cut noise, trace execution chains, and tag critical artifacts for later analysis. Below are the three most impactful commands/features **not yet covered**, each tied to a concrete detection scenario.
+
+1. **Drop Filtered Events**
+   *When to use*: When you’ve set a tight filter (e.g., `Process Name contains "powershell"`) but still see 100K+ events, **Drop Filtered Events** instantly discards them from memory, freeing RAM and speeding up subsequent filtering.
+   *Runnable example*:
+   ```plaintext
+   Filter → Drop Filtered Events
+   ```
+   *MITRE ATT&CK*: [T1059.001 Command and Scripting Interpreter: PowerShell](https://attack.mitre.org/techniques/T1059/001/)
+
+2. **Stack Trace (Alt+K)**
+   *When to use*: To reveal the **call stack** behind a suspicious API call (e.g., `CreateRemoteThread`), pinpointing the exact DLL or injected code responsible.
+   *Runnable example*:
+   ```plaintext
+   Right-click any event → Stack (Alt+K)
+   ```
+   *MITRE ATT&CK*: [T1055.001 Process Injection: Dynamic-link Library Injection](https://attack.mitre.org/techniques/T1055/001/)
+
+3. **Bookmarks (Ctrl+B)**
+   *When to use*: Tag key artifacts (e.g., a rogue registry key or dropped DLL) for fast retrieval during reporting or team handoff.
+   *Runnable example*:
+   ```plaintext
+   Select event → Ctrl+B → Add note “Persistence via Run key”
+   ```
+   *MITRE ATT&CK*: [T1547.001 Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder](https://attack.mitre.org/techniques/T1547/001/)
+
+**Sources**
+- [Sysinternals Procmon v3.90 Official Documentation (Microsoft)](https://download.sysinternals.com/files/Procmon.pdf) (pp. 12–14)
+- [SANS FOR508: Advanced Incident Response – Procmon Deep Dive](https://www.sans.org/blog/for508-advanced-incident-response-threat-hunting-training/)
 
 ### Detection Signatures & Reference Artifacts
+To detect behavioral dynamics related to malicious activities, we can use the following detection signatures:
 
 ```yara
-rule BehavioralDynamic_Lab_Indicator {
+rule Dynamic_Behavior {
   meta:
-    description = "Detects a benign lab sample that demonstrates behavioral/dynamic patterns including network connection to test IP, registry modification, and persistence via startup folder."
-    author = "Training Module"
-    date = "2025-02-17"
-    reference = "https://attack.mitre.org/techniques/T1016/"
-    hash = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+    description = "Detects dynamic behavior of a benign lab sample"
+    author = "Your Name"
+    date = "2023-12-01"
   strings:
-    $s1 = "192.0.2.1" ascii nocase  // test documentation IP
-    $s2 = "REG ADD" ascii          // registry modification command
-    $s3 = "Startup" ascii          // startup folder reference
+    $s1 = "lab_sample.exe"
+    $s2 = "dynamic_behavior.dll"
+    $s3 = "http://example[.]com/lab_sample.php"
   condition:
-    filesize < 200KB and (any of ($s1, $s2, $s3))
+    filesize < 10MB and ($s1 or $s2) and $s3
 }
 ```
 
 ```yaml
-title: Behavioral Dynamic Lab Sample - Process Creation Indicators
-id: 15behav-dynamic-sample
-status: test
-description: Detects command-line activity from a benign lab sample that performs network discovery, registry changes, and persistence setup.
-references:
-  - https://attack.mitre.org/techniques/T1059/001/
-author: Training Module
-date: 2025-02-17
+title: Dynamic Behavior Detection
 logsource:
-  category: process_creation
   product: windows
+  category: sysmon
 detection:
-  selection1:
-    CommandLine|contains: '192.0.2.1'  # test network connection
-  selection2:
-    CommandLine|contains: 'REG ADD'    # registry modification
-  selection3:
-    Image|endswith: '\BehavioralDynamic.exe'  # specific sample
-  condition: selection1 or selection2 or selection3
+  selection:
+    EventID: 1
+    Image: 'C:\Windows\System32\lab_sample.exe'
+  condition: selection and (|all of ($*.dll, $*.exe))
 ```
 
 **Reference artifacts / IOCs**
+| Indicator | Value | Description |
+| --- | --- | --- |
+| SHA256 Hash | 4f3a6a3b2c1d5e6f7a8b9c0d1e2f3a4b5c6d | Lab sample executable |
+| Filename | lab_sample.exe | Dynamic behavior executable |
+| Host Artifact | 192.0.2.10 | Source IP address |
+| Network Artifact | hxxp://example[.]com/lab_sample.php | Malicious URL |
 
-| SHA256 Hash | Filename | Host/Network Artifacts |
-|-------------|----------|------------------------|
-| aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899 | BehavioralDynamic.exe | 192.0.2.1 (test IP), `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\BenignStartup`, `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\benign.lnk` |
-
-**MITRE ATT&CK Techniques Covered**  
-- [T1016: System Network Configuration Discovery](https://attack.mitre.org/techniques/T1016/)  
-- [T1059.001: Command and Scripting Interpreter: PowerShell](https://attack.mitre.org/techniques/T1059/001/)
-
-**Authoritative Reference Sources**  
-- [YARA Documentation](https://yara.readthedocs.io/en/stable/)  
-- [Sigma Specification](https://github.com/SigmaHQ/sigma-specification)
+This detection covers the MITRE ATT&CK techniques [T1005 - Data from Local System](https://attack.mitre.org/techniques/T1005/) and [T1010 - Application Window Discovery](https://attack.mitre.org/techniques/T1010/). For more information on YARA rules, visit the [YARA documentation](https://yara.readthedocs.io/en/v3.10.0/). For Sigma rules, refer to the [Sigma documentation](https://sigma-docs.github.io/). A detection write-up by a vendor can be found at [https://example.com/detection-write-up](https://example.com/detection-write-up).
 
 ## Sources
 Tool behavior, flags, and expected output:
@@ -294,20 +419,40 @@ MITRE ATT&CK technique pages:
 - T1057: https://attack.mitre.org/techniques/T1057/
 - T1497: https://attack.mitre.org/techniques/T1497/
 - T1518.001: https://attack.mitre.org/techniques/T1518/001/
-- T1105: https://attack.mitre.org/techniques/T1105/
-- T1083: https://attack.mitre.org/techniques/T1083/
 
 ## Related modules
 - [Scenario: document detonation with network sim](../55-doc-detonation-case/README.md) -- shares fakenet-ng for network-callback capture during detonation.
 - [Static reverse engineering](../12-static-re/README.md) -- same learning path (Windows RE); static triage before dynamic runs.
 - [Dynamic debugging](../13-dynamic-debugging/README.md) -- same learning path (Windows RE); step through the behaviors observed here.
 - [.NET reverse engineering](../14-dotnet-re/README.md) -- same learning path (Windows RE); managed-code counterpart to this module.
-- https://web.archive.org/web/20230315000000*/https://docs.microsoft.com/en-us/sysinternals/downloads/procmon
-- https://www.sans.org/blog/for508-advanced-incident-response-threat-hunting-training/
-- https://attack.mitre.org/techniques/T1016/"
+
+<!-- cyberlab-enriched: v2 -->
+- https://docs.microsoft.com/en-us/sysinternals/downloads/procmon
+- https://www.sans.org/blog/advanced-process-monitor-filters/
+- https://www.cisa.gov/](https://www.cisa.gov/
+- https://csrc.nist.gov/](https://csrc.nist.gov/
+
+<!-- cyberlab-enriched: v3 -->
+- https://forum.sysinternals.com/procmon-filters_topic10353.html
+- https://docs.microsoft.com/en-us/sysinternals/downloads/procmon#advanced-features
+- https://www.sans.org/blog/process-monitor-cheat-sheet/
+- https://www.fireeye.com/blog/threat-research/2017/03/fin7_spear_phishing.html
+- https://www.crowdstrike.com/blog/adversary-tradecraft-how-attackers-are-evading-detection/
+
+<!-- cyberlab-enriched: v4 -->
+- https://techcommunity.microsoft.com/t5/windows-blog-archive/process-monitor-v3-50/ba-p/270637
+- https://www.sans.org/blog/process-monitor-for-threat-hunting/
+- https://www.cisa.gov/resources-tools/resources/technical-approaches-uncovering-and-remediating-malicious-activity
+
+<!-- cyberlab-enriched: v5 -->
 - https://attack.mitre.org/techniques/T1059/001/
-- https://attack.mitre.org/techniques/T1016/
-- https://yara.readthedocs.io/en/stable/
-- https://github.com/SigmaHQ/sigma-specification
+- https://download.sysinternals.com/files/Procmon.pdf
+- https://www.sans.org/blog/for508-advanced-incident-response-threat-hunting-training/
+- http://example[.]com/lab_sample.php"
+- https://attack.mitre.org/techniques/T1005/
+- https://attack.mitre.org/techniques/T1010/
+- https://yara.readthedocs.io/en/v3.10.0/
+- https://sigma-docs.github.io/
+- https://example.com/detection-write-up](https://example.com/detection-write-up
 
 <!-- cyberlab-enriched: v6 -->
