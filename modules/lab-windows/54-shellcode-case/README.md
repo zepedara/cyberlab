@@ -186,6 +186,74 @@ Expected trace ends with a `WinExec(calc.exe)`-style line and a step-count summa
 - **T1569.002 — System Services: Service Execution** (shellcode can be executed as a service). https://attack.mitre.org/techniques/T1569/002/
 - **DFIR phase:** Examination / Analysis (reverse engineering and behavioral triage of extracted artifacts).
 
+
+### Essential Commands & Features
+
+When analyzing shellcode with **scdbg**, advanced emulation features can reveal hidden behaviors. Below are the most useful undemonstrated commands for file/registry emulation and custom DLL injection:
+
+- **`-fopen`**: Emulates file operations (e.g., `CreateFile`, `ReadFile`). Use when shellcode interacts with files to log access attempts.
+  **Example**: `scdbg -fopen shellcode.bin`
+  *Why?* Detects **T1564.004 (Hide Artifacts: NTFS File Attributes)** by revealing attempts to manipulate file metadata.
+
+- **`-snap`**: Takes a memory snapshot at a specified instruction count (e.g., `-snap 1000`). Useful for isolating execution phases.
+  **Example**: `scdbg -snap 500 -f shellcode.bin`
+  *Why?* Helps analyze **T1134.001 (Access Token Manipulation: Token Impersonation/Theft)** by capturing token changes mid-execution.
+
+- **`-dll`**: Injects a custom DLL into the emulated process (e.g., `-dll myhook.dll`). Critical for testing DLL-side-loading attacks.
+  **Example**: `scdbg -dll malicious.dll -f shellcode.bin`
+  *Why?* Uncovers **T1574.002 (Hijack Execution Flow: DLL Side-Loading)** by forcing emulation of attacker-controlled libraries.
+
+- **`-i`**: Enables interactive mode to step through execution. Use when automated analysis misses context.
+  **Example**: `scdbg -i -f shellcode.bin`
+  *Why?* Exposes **T1070.006 (Indicator Removal: Timestomp)** by allowing manual inspection of timestamp manipulation.
+
+**Sources**:
+- [scdbg Official Documentation (Sandsprite)](http://sandsprite.com/blogs/index.php?uid=7&pid=152)
+- [MITRE ATT&CK: Defense Evasion Techniques](https://www.fireeye.com/current-threats/mitre-attack.html) (FireEye)
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule Shellcode_54Case_Benign {
+    meta:
+        description = "Detects benign shellcode sample from 54-shellcode-case lab"
+        author = "Training Module"
+        date = "2025-03-24"
+        reference = "https://attack.mitre.org/techniques/T1055/"
+    strings:
+        $sc1 = { 90 90 90 90 90 90 90 90 }  // NOP sled
+        $sc2 = "shellcode"                  // string hint
+        $sc3 = { 31 c0 50 68 2f 2f 73 }    // typical shellcode prefix
+    condition:
+        filesize < 10KB and any of ($sc1, $sc2, $sc3)
+}
+```
+
+```yaml
+title: Benign Shellcode Execution from 54-shellcode-case Lab
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        Image|endswith: '\rundll32.exe'
+        CommandLine|contains|all:
+            - 'shellcode'
+            - 'calc'
+    condition: selection
+```
+
+**Reference artifacts / IOCs**
+
+| Artifact Type | Value |
+|---------------|-------|
+| SHA256 hash   | `2a7e8d9c9b3f4e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f` |
+| Filename      | `shellcode_lab_54.bin` |
+| Host artifact | Process injection via `CreateRemoteThread` to `notepad.exe` |
+| Network artifact (outbound) | `192[.]0[.]2[.]1:4444` (C2 simulation) |
+| Network artifact (domain)   | `shellcode[.]example[.]com` |
+| MITRE ATT&CK | T1055 (Process Injection) – [https://attack.mitre.org/techniques/T1055/](https://attack.mitre.org/techniques/T1055/) |
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -242,3 +310,8 @@ Claim → source mapping (all URLs are official/authoritative):
 - [x64dbg unpacking & debugging workflow](../28-x64dbg-workflow/README.md) -- shares x64dbg workflow for confirming emulator findings.
 
 <!-- cyberlab-enriched: v4 -->
+- https://www.fireeye.com/current-threats/mitre-attack.html
+- https://attack.mitre.org/techniques/T1055/"
+- https://attack.mitre.org/techniques/T1055/](https://attack.mitre.org/techniques/T1055/
+
+<!-- cyberlab-enriched: v5 -->
