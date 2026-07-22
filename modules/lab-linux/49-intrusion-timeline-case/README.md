@@ -118,6 +118,8 @@ Concrete detection logic and pivots:
 - **Masquerading (T1036).** Identify renamed system binaries (e.g., `svch0st.exe`) by comparing file names in the timeline against known-good hashes (e.g., Microsoft's hash catalog). Look for executables in user writeable directories (`%APPDATA%`, `%TEMP%`) with names similar to legitimate system processes ([ATT&CK T1036](https://attack.mitre.org/techniques/T1036/)).
 - **Lateral Tool Transfer (T1570).** Correlate file creation of remote administration tools (e.g., `PsExec.exe`, `Mimikatz.exe`) with network connections to internal IPs in Zeek `conn.log`. Look for `SERVICE` field `smb` or `rpc` and `orig_bytes` > 1MB, indicating file transfer. The timeline will show the tool's creation time and subsequent SMB/WinRM connections ([ATT&CK T1570](https://attack.mitre.org/techniques/T1570/)).
 - **Data from Local System (T1005).** Hunt for file access events (Windows Event ID 4663) targeting sensitive files like `C:\Windows\NTDS\ntds.dit` or `C:\Windows\System32\config\SAM`. Correlate with the creation of `vssadmin` shadow copies or `ntdsutil` execution in the timeline. Plaso's Windows Event Log parser can extract these events ([ATT&CK T1005](https://attack.mitre.org/techniques/T1005/)).
+- **Process Injection (T1055.001).** Hunt for Windows Event ID 4688 (Process Creation) where the parent process is a known injection vector (e.g., `rundll32.exe`, `regsvr32.exe`) and the child process is a system binary (e.g., `svchost.exe`). Correlate with the creation time of a suspicious DLL in `%TEMP%` or `%APPDATA%` from the timeline. Sysmon Event ID 8 (CreateRemoteThread) with `StartAddress` pointing to a non-image region can also indicate injection ([ATT&CK T1055.001](https://attack.mitre.org/techniques/T1055/001/); [Sysmon Event ID 8](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-8-createremotethread)).
+- **Exfiltration Over C2 Channel (T1041).** Hunt for Zeek `conn.log` entries where a host makes repeated outbound connections to a single external IP on non-standard ports (e.g., 8443, 8080) with consistent `orig_bytes` sizes (e.g., 512KB chunks). Correlate with file deletion events (Windows Event ID 4660) of sensitive documents just before the network traffic. The timeline can show the file deletion timestamp preceding the exfiltration connection ([ATT&CK T1041](https://attack.mitre.org/techniques/T1041/); [Zeek conn.log reference](https://docs.zeek.org/en/master/logs/conn.html)).
 
 Timelines also feed Security Onion case notes, help scope which hosts and time windows need containment, and provide a defensible chronology for reporting.
 
@@ -137,6 +139,8 @@ Concrete TTPs, artifacts, and evasion:
 - **Process injection (T1055).** Injecting malicious code into a legitimate process (e.g., `explorer.exe`) leaves artifacts in memory and may create a child process with unexpected parent-child relationships. The timeline may show the injection DLL's file creation and subsequent process creation events with anomalous parent PIDs ([ATT&CK T1055](https://attack.mitre.org/techniques/T1055/)).
 - **Lateral Tool Transfer (T1570).** Attackers copy tools like `PsExec` or `Mimikatz` to target systems over SMB or RDP. This leaves file creation events on the remote host and network connections in Zeek `conn.log`. To evade, they may rename the tool (T1036) or use living-off-the-land binaries (T1218) like `wmic` for lateral movement, which leaves fewer file artifacts but still creates process execution events ([ATT&CK T1570](https://attack.mitre.org/techniques/T1570/)).
 - **Data from Local System (T1005).** Adversaries may steal local files like `SAM`, `SYSTEM`, or `ntds.dit` for credential harvesting. They use tools like `vssadmin` to create shadow copies or `reg save` to export registry hives. This leaves file creation events for the stolen data and command-line artifacts in Windows Event Logs (Event ID 4688). The timeline will show the tool execution and subsequent file writes ([ATT&CK T1005](https://attack.mitre.org/techniques/T1005/)).
+- **Process Injection via DLL Search Order Hijacking (T1574.001).** Attackers place a malicious DLL in a directory searched before the legitimate one (e.g., `C:\ProgramData\` before `C:\Windows\System32\`). This leaves a file creation event for the DLL and a process creation event for the legitimate executable that loads it. The timeline can show the DLL creation time just before the executable launch ([ATT&CK T1574.001](https://attack.mitre.org/techniques/T1574/001/)).
+- **Exfiltration Over C2 Channel (T1041).** Attackers exfiltrate data over existing C2 channels (e.g., HTTPS, DNS) to blend with normal traffic. They may chunk data into small packets and send at regular intervals. This leaves network connections in Zeek `conn.log` with consistent `orig_bytes` sizes and periodic timing. The timeline can correlate file access/deletion events with these outbound connections ([ATT&CK T1041](https://attack.mitre.org/techniques/T1041/)).
 
 ## Answer key
 Expected findings from the sample (`exercise/intrusion_bodyfile.txt`):
@@ -166,6 +170,9 @@ Sample sha256: reproduce with the generator's `sha256sum intrusion_bodyfile.txt`
 - **T1055** — Process Injection — https://attack.mitre.org/techniques/T1055/
 - **T1570** — Lateral Tool Transfer — https://attack.mitre.org/techniques/T1570/
 - **T1005** — Data from Local System — https://attack.mitre.org/techniques/T1005/
+- **T1055.001** — Process Injection: Dynamic-link Library Injection — https://attack.mitre.org/techniques/T1055/001/
+- **T1041** — Exfiltration Over C2 Channel — https://attack.mitre.org/techniques/T1041/
+- **T1574.001** — Hijack Execution Flow: DLL Search Order Hijacking — https://attack.mitre.org/techniques/T1574/001/
 - **DFIR phase:** Examination and Analysis (timeline reconstruction / correlation) following Identification.
 
 ### Threat Hunting & Detection Engineering
@@ -180,11 +187,15 @@ Once the 49-intrusion timeline is reconstructed, pivot to **proactive threat hun
 - **Scheduled Task (T1053.005):** Hunt for Event ID 4698 (Scheduled Task Created) and check the task XML for `Command` fields launching suspicious executables. Compare with file system timeline to see if the binary was created shortly before the task.
 - **Lateral Tool Transfer (T1570):** Hunt for SMB connections (`service` = `smb` in Zeek `conn.log`) with large `orig_bytes` (>1MB) followed by file creation events for known lateral movement tools (e.g., `PsExec.exe`, `Mimikatz.exe`). Correlate with Windows Event ID 5145 (Network Share Object) for file access.
 - **Data from Local System (T1005):** Hunt for file access events (Windows Event ID 4663) targeting sensitive files like `C:\Windows\NTDS\ntds.dit` or `C:\Windows\System32\config\SAM`. Correlate with the creation of `vssadmin` shadow copies or `ntdsutil` execution in the timeline. Plaso's Windows Event Log parser can extract these events.
+- **Process Injection (T1055.001):** Hunt for Windows Event ID 4688 (Process Creation) where the parent process is a known injection vector (e.g., `rundll32.exe`, `regsvr32.exe`) and the child process is a system binary (e.g., `svchost.exe`). Correlate with the creation time of a suspicious DLL in `%TEMP%` or `%APPDATA%` from the timeline. Sysmon Event ID 8 (CreateRemoteThread) with `StartAddress` pointing to a non-image region can also indicate injection.
+- **Exfiltration Over C2 Channel (T1041):** Hunt for Zeek `conn.log` entries where a host makes repeated outbound connections to a single external IP on non-standard ports (e.g., 8443, 8080) with consistent `orig_bytes` sizes (e.g., 512KB chunks). Correlate with file deletion events (Windows Event ID 4660) of sensitive documents just before the network traffic. The timeline can show the file deletion timestamp preceding the exfiltration connection.
 
 **Threat-Hunting Pivots:**
 - **Sysmon Event ID 10 (Process Access)** targeting `lsass.exe` with `GrantedAccess` values like `0x1438` (read/write memory) or `0x1410` (query information). Pivot on `CallTrace` to identify the calling process.
 - **Suricata’s `fileinfo` log** for executables downloaded via HTTP with mismatched MIME types (e.g., `.jpg` extension but `PE32` magic bytes). Correlate with Zeek `http.log` `uri` and `md5` fields.
 - **Zeek `ssl.log`** for self-signed certificates or unusual `ja3` fingerprints associated with known C2 frameworks.
+- **Windows Event ID 4688 (Process Creation)** with `ParentProcessName` containing `rundll32.exe` and `CommandLine` containing `javascript:` or `vbscript:` to detect **T1218.011** (Signed Binary Proxy Execution: Rundll32). Correlate with timeline entries for script file creation in `%TEMP%`.
+- **Zeek `files.log`** for files transferred over SMB with `filename` matching known lateral movement tools (e.g., `PsExec.exe`, `Mimikatz.exe`). Pivot on `tx_hosts` and `rx_hosts` to map internal movement.
 
 **Sources:**
 - [CISA Alert AA23-347A: Threat Hunting for PowerShell Abuse](https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a)
@@ -192,6 +203,10 @@ Once the 49-intrusion timeline is reconstructed, pivot to **proactive threat hun
 - [Sysmon Documentation (Microsoft)](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon)
 - [Zeek HTTP log reference](https://docs.zeek.org/en/master/logs/http.html)
 - [Suricata File Extraction & fileinfo log](https://suricata.readthedocs.io/en/latest/output/log-files.html#fileinfo-log)
+- [MITRE ATT&CK: Process Injection (T1055.001)](https://attack.mitre.org/techniques/T1055/001/)
+- [MITRE ATT&CK: Exfiltration Over C2 Channel (T1041)](https://attack.mitre.org/techniques/T1041/)
+- [Zeek conn.log reference](https://docs.zeek.org/en/master/logs/conn.html)
+- [Windows Security Auditing Events (Microsoft)](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/advanced-security-auditing)
 
 ### Adversary Emulation & Red-Team Perspective
 
@@ -302,6 +317,9 @@ Claim → source mapping (all URLs are real, authoritative pages):
   - T1204 — https://attack.mitre.org/techniques/T1204/
   - T1550 — https://attack.mitre.org/techniques/T1550/
   - T1550.002 — https://attack.mitre.org/techniques/T1550/002/
+  - T1055.001 — https://attack.mitre.org/techniques/T1055/001/
+  - T1041 — https://attack.mitre.org/techniques/T1041/
+  - T1574.001 — https://attack.mitre.org/techniques/T1574/001/
 - CISA Alert AA23-347A:
   - https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a
 - Forensic Focus – Using Plaso for Timeline Analysis:
@@ -319,4 +337,4 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [Timeline / super-timelining](../03-timeline-analysis/README.md) -- shares plaso
 - [Registry analysis](../04-registry-analysis/README.md) -- shares regripper
 
-<!-- cyberlab-enriched: v5 -->
+<!-- cyberlab-enriched: v6 -->
