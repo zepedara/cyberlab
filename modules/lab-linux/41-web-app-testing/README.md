@@ -376,6 +376,15 @@ To avoid false conclusions, always:
 - [OWASP Testing Guide: False Positives](https://owasp.org/www-project-web-security-testing-guide/latest/3-The_OWASP_Testing_Framework/1-Penetration_Testing_Methodologies#false-positives)
 - [NIST SP 800-115: Technical Guide to Information Security Testing](https://csrc.nist.gov/publications/detail/sp/800-115/final) (Section 4.3: Validation of Findings)
 
+### Real-World Case Study
+This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
+- **MITRE ATT&CK T1046 (Network Service Discovery)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1046/
+- **Threat actors documented using it:** APT32, APT39, APT41 (see each group's page on attack.mitre.org for the specific intrusions).
+- **RedCanary Threat Detection Report** — how often this technique appears in real environments + detection guidance: https://redcanary.com/threat-detection-report/
+- **The DFIR Report** — full real intrusion walk-throughs (timeline, TTPs, IOCs): https://thedfirreport.com/
+
+*Exercise: pick one documented actor above, read its ATT&CK page, and map how this module's tool would surface that activity in an investigation.*
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 

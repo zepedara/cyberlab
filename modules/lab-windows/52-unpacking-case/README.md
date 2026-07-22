@@ -419,6 +419,15 @@ To validate findings, cross-reference unpacked code with **behavioral indicators
 - [FireEye: Unpacking Malware Series (Part 3)](https://www.fireeye.com/blog/threat-research/2020/03/unpacking-malware-series-part-three.html)
 - [CERT-EU: Malware Unpacking Techniques](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_Malware_Unpacking_Techniques.pdf)
 
+### Real-World Case Study
+This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
+- **MITRE ATT&CK T1027.002 (Obfuscated Files or Information: Software Packing)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1027/002/
+- **Threat actors documented using it:** Sandworm, APT29, APT3, APT38, APT39, APT41 (see each group's page on attack.mitre.org for the specific intrusions).
+- **RedCanary Threat Detection Report** — how often this technique appears in real environments + detection guidance: https://redcanary.com/threat-detection-report/
+- **The DFIR Report** — full real intrusion walk-throughs (timeline, TTPs, IOCs): https://thedfirreport.com/
+
+*Exercise: pick one documented actor above, read its ATT&CK page, and map how this module's tool would surface that activity in an investigation.*
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 

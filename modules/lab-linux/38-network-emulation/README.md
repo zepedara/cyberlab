@@ -306,6 +306,15 @@ Another pitfall is **ignoring network baselines**. Emulated traffic that deviate
 - [CISA: Emulating Adversary Network Activity](https://www.cisa.gov/resources-tools/services/emulating-adversary-network-activity)
 - [The Honeynet Project: Network Traffic Analysis Pitfalls](https://www.honeynet.org/papers)
 
+### Real-World Case Study
+This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
+- **MITRE ATT&CK T1071 (Application Layer Protocol)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1071/
+- **Threat actors documented using it:** Magic Hound (see each group's page on attack.mitre.org for the specific intrusions).
+- **RedCanary Threat Detection Report** — how often this technique appears in real environments + detection guidance: https://redcanary.com/threat-detection-report/
+- **The DFIR Report** — full real intrusion walk-throughs (timeline, TTPs, IOCs): https://thedfirreport.com/
+
+*Exercise: pick one documented actor above, read its ATT&CK page, and map how this module's tool would surface that activity in an investigation.*
+
 ## Sources
 - REMnux — simulate internet services (INetSim): https://docs.remnux.org/discover-the-tools/handle+network+interactions/simulate+internet+services
 - REMnux — intercept network connections (FakeNet-NG): https://docs.remnux.org/discover-the-tools/handle+network+interactions/intercept+network+connections

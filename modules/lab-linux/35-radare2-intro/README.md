@@ -285,6 +285,15 @@ Evasion considerations include:
 - [MITRE ATT&CK: T1055.002](https://attack.mitre.org/techniques/T1055/002/)
 - [FireEye: Red Team Techniques for Evasion](https://www.fireeye.com/blog/threat-research/2021/04/red-team-techniques-for-evasion.html)
 
+### Real-World Case Study
+This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
+- **MITRE ATT&CK T1027 (Obfuscated Files or Information)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1027/
+- **Threat actors documented using it:** Sandworm (see each group's page on attack.mitre.org for the specific intrusions).
+- **RedCanary Threat Detection Report** — how often this technique appears in real environments + detection guidance: https://redcanary.com/threat-detection-report/
+- **The DFIR Report** — full real intrusion walk-throughs (timeline, TTPs, IOCs): https://thedfirreport.com/
+
+*Exercise: pick one documented actor above, read its ATT&CK page, and map how this module's tool would surface that activity in an investigation.*
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 

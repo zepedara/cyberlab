@@ -248,6 +248,15 @@ Analysts often misinterpret Plaso supertimeline results due to **over-reliance o
 - [DFIR Review: Plaso Super Timeline Analysis Pitfalls](https://www.dfir.review/2022/03/15/plaso-pitfalls/)
 - [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://csrc.nist.gov/publications/detail/sp/800-86/final)
 
+### Real-World Case Study
+This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
+- **MITRE ATT&CK T1070.006 (Indicator Removal: Timestomp)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1070/006/
+- **Threat actors documented using it:** APT28, APT29, APT32 (see each group's page on attack.mitre.org for the specific intrusions).
+- **RedCanary Threat Detection Report** — how often this technique appears in real environments + detection guidance: https://redcanary.com/threat-detection-report/
+- **The DFIR Report** — full real intrusion walk-throughs (timeline, TTPs, IOCs): https://thedfirreport.com/
+
+*Exercise: pick one documented actor above, read its ATT&CK page, and map how this module's tool would surface that activity in an investigation.*
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs / repos, MITRE ATT&CK, SANS, or recognized project docs):
 

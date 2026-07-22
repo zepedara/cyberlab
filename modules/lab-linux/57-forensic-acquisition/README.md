@@ -71,6 +71,15 @@ The E01 stores MD5/SHA1 (and optional SHA-256) computed at acquisition; `ewfveri
 - **T1005 (Data from Local System)** — The forensic image is the primary source for this technique, containing all local data for analysis.
 - **T1490 (Inhibit System Recovery)** — Adversaries may destroy volume shadow copies or backup catalogs; a timely forensic image preserves the system state before such inhibition completes.
 
+### Real-World Case Study
+This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
+- **MITRE ATT&CK T1070 (Indicator Removal)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1070/
+- **Threat actors documented using it:** APT42, APT5 (see each group's page on attack.mitre.org for the specific intrusions).
+- **RedCanary Threat Detection Report** — how often this technique appears in real environments + detection guidance: https://redcanary.com/threat-detection-report/
+- **The DFIR Report** — full real intrusion walk-throughs (timeline, TTPs, IOCs): https://thedfirreport.com/
+
+*Exercise: pick one documented actor above, read its ATT&CK page, and map how this module's tool would surface that activity in an investigation.*
+
 ## Sources
 - Forensic acquisition (E01/libewf): https://github.com/libyal/libewf/wiki
 - SANS SIFT Workstation: https://www.sans.org/tools/sift-workstation

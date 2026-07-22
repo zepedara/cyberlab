@@ -344,6 +344,15 @@ For deeper emulation, red teams can use frameworks like **Cobalt Strike** or **S
 - [MITRE ATT&CK: Reflective Code Loading (T1406.001)](https://attack.mitre.org/techniques/T1406/001/)
 - [FireEye: Process Hollowing and Other Malware Evasion Techniques](https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html)
 
+### Real-World Case Study
+This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
+- **MITRE ATT&CK T1486 (Data Encrypted for Impact)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1486/
+- **Threat actors documented using it:** Akira (see each group's page on attack.mitre.org for the specific intrusions).
+- **RedCanary Threat Detection Report** — how often this technique appears in real environments + detection guidance: https://redcanary.com/threat-detection-report/
+- **The DFIR Report** — full real intrusion walk-throughs (timeline, TTPs, IOCs): https://thedfirreport.com/
+
+*Exercise: pick one documented actor above, read its ATT&CK page, and map how this module's tool would surface that activity in an investigation.*
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 

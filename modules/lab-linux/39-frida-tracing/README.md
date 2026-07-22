@@ -443,6 +443,15 @@ To validate findings, **cross-reference Frida output with static analysis** (e.g
 - [OWASP Frida Hooking Guide: Common Anti-Patterns](https://owasp.org/www-community/controls/Frida_Hooking_Guide)
 - [FireEye: Dynamic Tracing Pitfalls in Malware Analysis](https://www.fireeye.com/blog/threat-research/2021/03/dynamic-tracing-pitfalls-in-malware-analysis.html)
 
+### Real-World Case Study
+This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
+- **MITRE ATT&CK T1055 (Process Injection)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1055/
+- **Threat actors documented using it:** Sandworm, APT32, APT37, APT38 (see each group's page on attack.mitre.org for the specific intrusions).
+- **RedCanary Threat Detection Report** — how often this technique appears in real environments + detection guidance: https://redcanary.com/threat-detection-report/
+- **The DFIR Report** — full real intrusion walk-throughs (timeline, TTPs, IOCs): https://thedfirreport.com/
+
+*Exercise: pick one documented actor above, read its ATT&CK page, and map how this module's tool would surface that activity in an investigation.*
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
