@@ -285,6 +285,48 @@ detection:
 | Artifacts      | URI: `hxxp://192[.]0[.]2[.]1/lab-sample` (defanged)                          |
 | MITRE ATT&CK   | **T1049 - System Network Connections Discovery** (authoritative: https://attack.mitre.org/techniques/T1049/) |
 
+
+### Essential Commands & Features
+
+#### **TShark: Advanced Filters & Analysis**
+- **`-Y` (Read Filter)**: Apply display filters directly in TShark to isolate suspicious traffic. Example: Detect **T1070.001 Indicator Removal: Clear Windows Event Logs** by filtering for SMB traffic (port 445) with `smb2.cmd == 0x0a` (log deletion commands).
+  ```bash
+  tshark -r capture.pcap -Y "tcp.port == 445 && smb2.cmd == 0x0a"
+  ```
+- **`-w` (Write PCAP)**: Save filtered traffic for offline analysis. Critical for preserving evidence of **T1560.002 Archive Collected Data: Archive via Library** (e.g., ZIP/RAR exfiltration).
+  ```bash
+  tshark -r input.pcap -Y "http.request.method == POST" -w exfil.pcap
+  ```
+- **`-z` (Statistics)**: Generate protocol hierarchies or endpoint summaries. Useful for spotting **T1021.001 Remote Services: Remote Desktop Protocol** anomalies.
+  ```bash
+  tshark -r capture.pcap -z io,phs -q
+  ```
+- **Follow TCP Streams**: Reconstruct sessions (e.g., C2 traffic via **T1071.003 Application Layer Protocol: Mail Protocols**).
+  ```bash
+  tshark -r capture.pcap -q -z follow,tcp,ascii,1
+  ```
+
+#### **Wireshark: Visual Analysis**
+- **IO Graph**: Visualize traffic spikes (e.g., **T1048.002 Exfiltration Over Alternative Protocol: Asymmetric Encryption**).
+  *Navigate*: **Statistics → IO Graph** → Set Y-axis to "Bytes/s" and filter for `dns.flags.response == 0`.
+- **Expert Info (`Ex`)**: Highlight protocol errors or unusual behavior (e.g., **T1572 Protocol Tunneling**).
+  *Navigate*: **Analyze → Expert Info** → Sort by "Severity".
+
+**Sources**:
+- [Wireshark Display Filters (Official)](https://www.wireshark.org/docs/man-pages/wireshark-filter.html)
+- [MITRE ATT&CK: TShark for Threat Hunting (Splunk)](https://www.splunk.com/en_us/blog/security/hunting-with-tshark.html)
+
+### Common Pitfalls & Result Validation
+
+Analysts often misinterpret Wireshark’s output by overlooking **packet fragmentation** or **TCP reassembly errors**, leading to false negatives in detecting exfiltration (e.g., **T1030: Data Transfer Size Limits**) or command-and-control (C2) traffic (e.g., **T1571: Non-Standard Port**). For example, fragmented packets may evade simple string searches, while TCP stream reassembly failures can break protocol parsing, obscuring malicious payloads. To validate findings:
+1. **Check for fragmentation**: Use `ip.flags.mf == 1` or `tcp.analysis.retransmission` filters to identify split packets. Correlate with endpoint logs to confirm if reassembly occurred.
+2. **Verify protocol anomalies**: Cross-reference Wireshark’s "Expert Info" (Analyze > Expert Info) with known malicious patterns (e.g., HTTP headers in **T1071.001: Web Protocols** traffic). False positives arise when benign apps mimic C2 (e.g., Slack or Zoom), so validate with network baselines.
+3. **Avoid over-reliance on signatures**: Rule-based detections (e.g., Suricata alerts) may miss obfuscated traffic. Manually inspect payloads for encoding (e.g., Base64 in **T1132.001: Data Encoding: Standard Encoding**) or custom encryption.
+
+**Sources**:
+- [MITRE ATT&CK: Data Transfer Size Limits (T1030)](https://attack.mitre.org/techniques/T1030/)
+- [CERT-EU: Wireshark for Incident Response](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_Wireshark_for_Incident_Response.pdf)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -329,3 +371,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://attack.mitre.org/techniques/T1049/
 
 <!-- cyberlab-enriched: v5 -->
+- https://www.wireshark.org/docs/man-pages/wireshark-filter.html
+- https://www.splunk.com/en_us/blog/security/hunting-with-tshark.html
+- https://attack.mitre.org/techniques/T1030/
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_Wireshark_for_Incident_Response.pdf
+
+<!-- cyberlab-enriched: v6 -->
