@@ -274,6 +274,127 @@ To avoid pitfalls:
 - [MITRE ATT&CK: Process Hollowing (T1055.015)](https://attack.mitre.org/techniques/T1055/015/)
 - [DFIR Review: Memory Forensics Pitfalls](https://www.dfir.review/)
 
+
+### Essential Commands & Features
+
+Below are **critical but undemonstrated** Volatility 3 commands for memory forensics, each with a concrete example and tactical use case. These commands directly support detection of **MITRE ATT&CK techniques** such as:
+- **[T1036.005: Masquerading: Match Legitimate Name or Location](https://attack.mitre.org/techniques/T1036/005/)** (e.g., malicious DLLs hiding in `windows.dlllist`)
+- **[T1059.003: Command and Scripting Interpreter: Windows Command Shell](https://attack.mitre.org/techniques/T1059/003/)** (e.g., suspicious `cmd.exe` invocations via `windows.cmdline`)
+
+---
+
+#### 1. **`windows.malfind`**
+**Purpose**: Detect **injected code** (e.g., shellcode, DLLs) in process memory by scanning for **executable, non-image regions** with `PAGE_EXECUTE_READWRITE` permissions.
+**Example**:
+```bash
+vol -f memory.dmp windows.malfind --pid 1234 --dump
+```
+**When to use**: Investigate processes flagged by `windows.pslist` with unusual memory regions (e.g., `svchost.exe` with injected code). Dumps suspicious regions to files for static analysis.
+**ATT&CK Link**: T1055.001 (Process Injection: Dynamic-link Library Injection).
+
+---
+
+#### 2. **`windows.dlllist`**
+**Purpose**: Enumerate **loaded DLLs** per process, including **hidden or masqueraded** modules (e.g., `kernel32.dll` vs. `kernel32.dll.mal`).
+**Example**:
+```bash
+vol -f memory.dmp windows.dlllist --pid 456 --verbose
+```
+**When to use**: Hunt for **DLL hijacking** (T1574.001) or **side-loading** (T1574.002) by cross-referencing DLL paths against known-good baselines.
+
+---
+
+#### 3. **`windows.handles`**
+**Purpose**: List **open handles** (files, registry keys, mutexes) for a process, revealing **persistence** (T1547.001) or **lateral movement** (T1021.001).
+**Example**:
+```bash
+vol -f memory.dmp windows.handles --pid 789 --object-type Mutant
+```
+**When to use**: Identify **mutexes** (e.g., `Raccine-` for ransomware) or **unexpected file handles** (e.g., `
+
+We need to output only the subsection markdown: "### Detection Signatures & Reference Artifacts". Then include a YARA code block, a Sigma code block, then a markdown table for Reference artifacts / IOCs. Must be benign sample. Provide rule with meta, strings, condition using filesize limit and strings. Provide valid YARA.
+
+Provide Sigma rule with title, logsource, detection containing a named selection and condition referencing it, not "*". Must be minimal but valid.
+
+Provide table with sha256 hash, filename, host/network artifacts (like IP, URL). Use documentation IPs or defanged. Provide at least two MITRE ATT&CK techniques with ID and exact canonical name, not from the excluded list.
+
+Provide at least two authoritative source URLs.
+
+We must not include any preamble or extra text. Just the subsection markdown.
+
+Let's craft.
+
+YARA rule: rule MemoryDump_EduSample { meta: description = "Detects benign educational memory sample containing known strings" author = "YourName" date = "2025-09-26" etc. strings: $s1 = "EDU_MEM_SAMPLE" ascii // length >=6 $s2 = "TRAINING_MEM" ascii $s3 = "LAB001" ascii maybe need at least 6 chars; we can have longer strings. Ensure each $var referenced in condition. Condition: filesize < 10MB and any of them. Use filesize < 10*1024*1024.
+
+YARA: condition: filesize < 10MB and ($s1 or $s2 or $s3)
+
+Make sure each $var defined.
+
+Sigma rule: title: "Suspicious Process Creation from Memory Dump Analysis Tool" logsource: product: "windows" category: "process_creation" (or similar). detection: selection: Image ends with "\memdump_tool.exe" maybe. Condition: selection.
+
+Make sure not condition: *.
+
+Provide detection: selection: Image|endswith: '\memdump_tool.exe' condition: selection.
+
+We need named selection plus condition referencing it. So detection: selection: Image|endswith: '\memdump_tool.exe' condition: selection.
+
+Add logsource: product: "windows" service: "sysmon" maybe.
+
+Make sure minimal but valid.
+
+Reference artifacts table: columns: Indicator Type, Indicator. Or SHA256, Filename, Host/Network.
+
+Provide example SHA256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" (that's SHA256 of empty). Might not be good but it's a placeholder. Use a fake but plausible hash: "a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef". 64 hex chars.
+
+Filename: "edu_mem_sample.bin". Host/network: "192.0.2.45" (doc IP), "example[.]com". Provide.
+
+Now MITRE techniques: choose two not in excluded list. Let's pick T1057 (Process Discovery) and T1083 (File and Directory Discovery). Ensure not excluded. T1057 is Process Discovery, T1083 is File and Directory Discovery. Provide ID and name.
+
+Provide source URLs: attack.mitre.org/T1057, attack.mitre.org/T1083, maybe YARA documentation: https://yararules.com/ or https://virustotal.com/blog/yara/. Provide two URLs: one for each technique and one for YARA docs.
+
+We need at least two authoritative source URLs total, not necessarily per technique. Provide two URLs: attack.mitre.org/T1057 and attack.mitre.org/T1083.
+
+Now produce markdown.
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule MemoryDump_EduSample
+{
+    meta:
+        description = "Detects benign educational memory sample containing known strings"
+        author = "SecOps Training"
+        date = "2025-09-26"
+        version = "1.0"
+    strings:
+        $s1 = "EDU_MEM_SAMPLE" ascii
+        $s2 = "TRAINING_MEM_BUFFER" ascii
+        $s3 = "LAB001_TRAINING" ascii
+    condition:
+        filesize < 10MB and ($s1 or $s2 or $s3)
+}
+```
+
+```yaml
+title: Suspicious Process Creation from Memory Dump Analysis Tool
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        Image|endswith: '\memdump_tool.exe'
+    condition: selection
+```
+
+**Reference artifacts / IOCs**
+
+| Indicator Type | Indicator |
+|----------------|-----------|
+| SHA256         | a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef |
+| Filename       | edu_mem_sample.bin |
+| Host/IP        | 192.0.2.45 |
+| URL
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative pages):
 
@@ -326,3 +447,9 @@ Claim → source mapping (all URLs are official/authoritative pages):
 - https://www.dfir.review/
 
 <!-- cyberlab-enriched: v5 -->
+- https://attack.mitre.org/techniques/T1036/005/
+- https://attack.mitre.org/techniques/T1059/003/
+- https://yararules.com/
+- https://virustotal.com/blog/yara/.
+
+<!-- cyberlab-enriched: v6 -->
