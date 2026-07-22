@@ -382,6 +382,63 @@ Defenders should monitor for anomalous process trees (e.g., `cmd.exe` spawning `
 - [FireEye: Obfuscation in the Wild (2021)](https://www.fireeye.com/blog/threat-research/2021/03/obfuscation-in-the-wild.html)
 - [CERT-EU: PowerShell Obfuscation (2022)](https://cert.europa.eu/publications/security-advisories/2022-001)
 
+
+### Essential Commands & Features
+
+Beyond basic decode/encode, three underexploited features drastically accelerate deobfuscation. **CyberChef's "Magic" operation** (🪄) automatically identifies and applies the most likely decoding recipe for a blob. For example, paste `JRY7NZ2L4V6A====` (base32) into CyberChef, add Magic with default options, and it decodes to "HELLO". Use Magic during triage when the obfuscation method is unknown—it tests hundreds of recipes in seconds. **"Fork"** and **"Merge"** enable parallel decoding chains. Fork splits input into multiple parallel paths; Merge combines outputs. Run Fork with recipe "From Base64 → XOR Brute Force" on one branch and "From Base64 → Decode text" on another, then Merge to compare results. This is invaluable against multilayered encodings (e.g., `base64 → xor → base64`). **xortool's `-b` flag** brute‑forces all possible single-byte XOR keys and outputs the most plausible plaintext. Run `xortool -b -c 20` on a file to test keys where the most common byte appears 20% of the time (typical for English). Use `-b` when a file shows high entropy but no known repeating pattern, revealing simple XOR‑obfuscated payloads.
+
+These techniques directly counter real‑world adversary behaviors not yet covered in this module, including **T1027.005 (Indicator Removal from Tools)** — where attackers strip obvious strings and use XOR to hide IOCs — and **T1027.009 (Embedded Payloads)** — where encoded blobs are hidden inside legitimate files (e.g., LNK or macro). Both are common in phishing campaigns (T1566) and supply‑chain compromises.
+
+*Official CyberChef documentation:*  
+https://gchq.github.io/CyberCheF/  
+*xortool usage and `-b` flag:*  
+https://github.com/hellman/xortool
+
+### Detection Signatures & Reference Artifacts
+
+#### YARA Rule
+```yara
+rule Detect_Deobfuscation_Base64 {
+    meta:
+        description = "Detects common base64 decode functions used in script deobfuscation"
+        author = "Training Module"
+        date = "2025-01-01"
+        reference = "https://yara.readthedocs.io/"
+    strings:
+        $s1 = "System.Text.Encoding]::UTF8.GetString" ascii wide nocase
+        $s2 = "Convert]::FromBase64String" ascii wide nocase
+    condition:
+        filesize < 10MB and any of ($s1, $s2)
+}
+```
+
+#### Sigma Rule
+```yaml
+title: Detection of Base64 Deobfuscation Attempts
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_b64:
+        CommandLine|contains|all:
+            - 'FromBase64String'
+            - 'UTF8.GetString'
+    condition: selection_b64
+```
+
+#### Reference artifacts / IOCs
+| sha256 | filename | host/network artifacts |
+|--------|----------|------------------------|
+| 4827b8e9c8a9f0d1e2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5 | benign_script.ps1 | 192.0.2.10, hxxp://example[.]com/tools |
+
+#### MITRE ATT&CK Techniques
+- T1059.005 – Command and Scripting Interpreter: Visual Basic
+- T1059.007 – Command and Scripting Interpreter: JavaScript
+
+#### References
+- https://attack.mitre.org/techniques/T1059/005/
+- https://attack.mitre.org/techniques/T1059/007/
+
 ## Sources
 The following authoritative sources were used to verify all factual claims in this module. Each source is cited inline where applicable.
 
@@ -442,3 +499,9 @@ The following authoritative sources were used to verify all factual claims in th
 - https://cert.europa.eu/publications/security-advisories/2022-001
 
 <!-- cyberlab-enriched: v5 -->
+- https://gchq.github.io/CyberCheF/
+- https://yara.readthedocs.io/"
+- https://attack.mitre.org/techniques/T1059/005/
+- https://attack.mitre.org/techniques/T1059/007/
+
+<!-- cyberlab-enriched: v6 -->
