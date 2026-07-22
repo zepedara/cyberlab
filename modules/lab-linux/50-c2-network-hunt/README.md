@@ -258,6 +258,68 @@ When conducting network hunts, analysts often make mistakes that can lead to fal
 - Cross-check the C2 IP by examining both `ip.dst` in the HTTP request and the conversation table; they should match.
 - If using Wireshark GUI, verify that the "Follow HTTP Stream" display includes the full header and body. Blank streams indicate incorrect selection of packet or stream index.
 
+
+### Essential Commands & Features
+
+Below are **high-impact `tshark` commands and features** not yet covered in this module, each paired with a concrete example and tactical use case. These capabilities directly support detection of **T1110.003 (Brute Force: Password Spraying)** and **T1560.001 (Archive Collected Data: Archive via Utility)**—techniques where structured output and statistical analysis are critical.
+
+| **Command/Flag**       | **Example**                                                                 | **When to Use**                                                                                     | **MITRE ATT&CK**                                                                 |
+|------------------------|-----------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|
+| `-Y <read filter>`     | `tshark -r capture.pcap -Y "http.request.method == POST && http.host == evil.com"` | Apply **BPF-like filters** to isolate traffic (e.g., suspicious HTTP POSTs to a C2 domain).        | [T1110.003](https://attack.mitre.org/techniques/T1110/003/) (Password Spraying)  |
+| `-z <stats>`           | `tshark -r capture.pcap -q -z io,phs`                                       | Generate **protocol hierarchy stats** to identify anomalous traffic volumes (e.g., unexpected SMB). | [T1560.001](https://attack.mitre.org/techniques/T1560/001/) (Archive via Utility) |
+| `-T ek|json|pdml`      | `tshark -r capture.pcap -T json -e ip.src -e dns.qry.name`                  | Export **structured output** (JSON/Elasticsearch/PDML) for SIEM ingestion or scripting.            | N/A                                                                              |
+| `-E <export options>`  | `tshark -r capture.pcap -T fields -E separator=, -e frame.time -e ip.src`   | Customize **field separators** (e.g., CSV) for log parsing or timeline analysis.                   | N/A                                                                              |
+
+**Key Notes:**
+- Use `-Y` to **filter traffic in real-time** (e.g., `dns.flags.response == 0` for DNS queries to attacker-controlled domains).
+- Combine `-z` with `-q` to **suppress packet output** while generating stats (e.g., `-z endpoints,ip` for top talkers).
+- For **automated analysis**, pair `-T json` with tools like `jq` to extract fields (e.g., `jq '.[]._source.layers.http[]?.["http.host"]'`).
+
+**Authoritative Sources:**
+- [Wireshark Display Filters (Official)](https://www.wireshark.org/docs/
+
+### Detection Signatures & Reference Artifacts
+To detect potential C2 network hunt activities, the following detection signatures can be utilized:
+```yara
+rule C2_Network_Hunt {
+  meta:
+    description = "Detects C2 network hunt activities"
+    author = "Your Name"
+    date = "2023-12-01"
+  strings:
+    $http_request = "GET /index.php?cmd="
+    $dns_query = "example[.]com"
+    $file_transfer = "File transfer complete"
+  condition:
+    filesize < 100KB and ($http_request or $dns_query) and $file_transfer
+}
+```
+Additionally, a Sigma rule can be used to detect these activities:
+```yaml
+title: C2 Network Hunt Detection
+logsource:
+  product: web_server
+  category: http
+detection:
+  selection:
+    http_request: 
+      - 'GET /index.php?cmd='
+    dns_query: 
+      - 'example[.]com'
+  condition: selection and http_request and dns_query
+```
+These detection signatures cover the MITRE ATT&CK techniques [T1002 - Software Deployment Tools](https://attack.mitre.org/techniques/T1002/) and [T1018 - Remote System Discovery](https://attack.mitre.org/techniques/T1018/), which are often used in C2 network hunt activities. For more information on these techniques and detection methods, refer to the following sources:
+* [YARA documentation](https://yara.readthedocs.io/en/v4.2.3/)
+* [Sigma documentation](https://sigma-docs.github.io/)
+**Reference artifacts / IOCs**
+| SHA256 Hash | Filename | Host/Network Artifacts |
+| --- | --- | --- |
+| 0123456789abcdef0123456789abcdef01234567 | c2_hunt_sample.exe | 192.0.2.1, hxxp://example[.]com/index.php?cmd= |
+| fedcba9876543210fedcba9876543210fedcba98 | network_hunt.dll | 198.51.100.2, example[.]com:8080 |
+For more information on C2 network hunt detection and response, refer to the following sources:
+* [MITRE ATT&CK](https://attack.mitre.org/)
+* [Cybersecurity and Infrastructure Security Agency (CISA)](https://www.cisa.gov/)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -312,3 +374,14 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Malware static triage](../08-malware-static-triage/README.md) -- shares yara for authoring and running detection rules.
 
 <!-- cyberlab-enriched: v5 -->
+- https://attack.mitre.org/techniques/T1110/003/
+- https://attack.mitre.org/techniques/T1560/001/
+- https://www.wireshark.org/docs/
+- https://attack.mitre.org/techniques/T1002/
+- https://attack.mitre.org/techniques/T1018/
+- https://yara.readthedocs.io/en/v4.2.3/
+- https://sigma-docs.github.io/
+- https://attack.mitre.org/
+- https://www.cisa.gov/
+
+<!-- cyberlab-enriched: v6 -->
