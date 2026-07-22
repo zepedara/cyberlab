@@ -258,64 +258,76 @@ These flags extend detection to lateral movement and defense evasion scenarios n
 
 ### Detection Signatures & Reference Artifacts
 
-#### YARA Rule
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Kernel Memory Dump Via LiveKD** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_sysinternals_livekd_kernel_memory_dump.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Kernel Memory Dump Via LiveKD
+id: c7746f1c-47d3-43d6-8c45-cd1e54b6b0a2
+status: test
+description: Detects execution of LiveKD with the "-m" flag to potentially dump the kernel memory
+references:
+    - https://learn.microsoft.com/en-us/sysinternals/downloads/livekd
+    - https://4sysops.com/archives/creating-a-complete-memory-dump-without-a-blue-screen/
+    - https://kb.acronis.com/content/60892
+author: Nasreddine Bencherchali (Nextron Systems)
+date: 2023-05-16
+modified: 2024-03-13
+tags:
+    - attack.stealth
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+        - Image|endswith:
+              - '\livekd.exe'
+              - '\livekd64.exe'
+        - OriginalFileName: 'livekd.exe'
+    selection_cli:
+        CommandLine|contains|windash: ' -m'
+    condition: all of selection_*
+falsepositives:
+    - Unlikely in production environment
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/susp_office_template_injection.yar, author: Florian Roth):
 
 ```yara
-rule ProcessMemoryLab_BenignDump {
-  meta:
-    description = "Detects benign process memory dump sample used in defensive training"
-    author = "Training Module - 16-process-memory"
-    date = "2025-04-11"
-    reference = "hxxps://github[.]com/training/lab-samples"
-    hash = "a1b2c3d4e5f6789012345678abcdefa123456789abcdef0123456789abcdef0"
-  strings:
-    $s1 = "PROCESS_MEMORY_LAB_SAMPLE"
-  condition:
-    filesize < 1MB and $s1
+rule EXPL_Office_TemplateInjection_Aug19 {
+   meta:
+      old_rule_name = "EXPL_Office_TemplateInjection"
+      description = "Detects possible template injections in Office documents, particularly those that load content from external sources"
+      author = "Florian Roth"
+      reference = "https://attack.mitre.org/techniques/T1221/"
+      date = "2019-08-22"
+      modified = "2025-03-20"
+      score = 75
+      hash = "f2bdf3716b39d29a9c6c3b7b3355e935594b8d8e9149a784a59dc2381fa1628a"
+      id = "2a7e1021-97be-510b-8826-d15ac06ed00e"
+   strings:
+      $x1 = /attachedTemplate" Target="http[s]?:\/\/[^"]{4,60}/ ascii
+
+      $fp1 = ".sharepoint.com"  // this could cause false negatives if the malicious template is hosted on sharepoint
+      $fp2 = ".office.com"  // this could cause false negatives if the malicious template is hosted on office.com
+   condition:
+      filesize < 20MB
+      and $x1
+      and not 1 of ($fp*)
 }
 ```
 
-#### Sigma Rule
+**Real-world context (MITRE T1055 -- Process Injection):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1055/ -- real in-the-wild use includes Sandworm, APT32, APT37, APT38.
 
-```yaml
-title: Process Memory Lab Sample Execution Detection
-status: test
-description: Detects execution of a benign lab sample designed for process memory analysis training
-author: Training Module - 16-process-memory
-logsource:
-  product: windows
-  category: process_creation
-detection:
-  selection:
-    CommandLine|contains: "process_memory_lab_sample.exe"
-  condition: selection
-falsepositives:
-  - None expected for this specific lab sample
-level: low
-tags:
-  - attack.t1204.002
-  - attack.t1569.002
-```
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-#### Reference Artifacts / IOCs
-
-| Indicator Type | Value |
-|----------------|-------|
-| SHA256 Hash | `a1b2c3d4e5f6789012345678abcdefa123456789abcdef0123456789abcdef0` |
-| Filename | `process_memory_lab_sample.exe` |
-| Host Artifact | `C:\Lab\samples\process_memory_dump.dmp` |
-| Network Artifact (IP) | `192.0.2.100` (documentation range, defanged) |
-| Network Artifact (Domain) | `lab-memory-training[.]com` |
-
-#### MITRE ATT&CK Coverage
-
-- **T1204.002** – User Execution: Malicious File  
-- **T1569.002** – System Services: Service Execution  
-
-#### Authoritative Sources
-
-- https://attack.mitre.org/techniques/T1204/002/
-- https://attack.mitre.org/techniques/T1569/002/
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):

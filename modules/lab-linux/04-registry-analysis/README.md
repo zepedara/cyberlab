@@ -465,42 +465,90 @@ RegRipper’s power lies in its ability to automate deep registry analysis. Belo
 - [DFIR Review: RegRipper Plugin Deep Dive](https://www.dfir.review/2021/03/15/regripper-plugins-a-deep-dive/)
 
 ### Detection Signatures & Reference Artifacts
-To detect malicious activity related to registry analysis, the following detection content can be utilized:
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Persistence Via Disk Cleanup Handler - Autorun** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_disk_cleanup_handler_autorun_persistence.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Persistence Via Disk Cleanup Handler - Autorun
+id: d4e2745c-f0c6-4bde-a3ab-b553b3f693cc
+status: test
+description: |
+    Detects when an attacker modifies values of the Disk Cleanup Handler in the registry to achieve persistence via autorun.
+    The disk cleanup manager is part of the operating system.
+    It displays the dialog box […] The user has the option of enabling or disabling individual handlers by selecting or clearing their check box in the disk cleanup manager's UI.
+    Although Windows comes with a number of disk cleanup handlers, they aren't designed to handle files produced by other applications.
+    Instead, the disk cleanup manager is designed to be flexible and extensible by enabling any developer to implement and register their own disk cleanup handler.
+    Any developer can extend the available disk cleanup services by implementing and registering a disk cleanup handler.
+references:
+    - https://persistence-info.github.io/Data/diskcleanuphandler.html
+    - https://www.hexacorn.com/blog/2018/09/02/beyond-good-ol-run-key-part-86/
+author: Nasreddine Bencherchali (Nextron Systems)
+date: 2022-07-21
+modified: 2023-08-17
+tags:
+    - attack.persistence
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    root:
+        TargetObject|contains: '\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\'
+    selection_autorun:
+        # Launching PreCleanupString / CleanupString programs w/o gui, i.e. while using e.g. /autoclean
+        TargetObject|contains: '\Autorun'
+        Details: 'DWORD (0x00000001)'
+    selection_pre_after:
+        TargetObject|contains:
+            - '\CleanupString'
+            - '\PreCleanupString'
+        Details|contains:
+            # Add more as you see fit
+            - 'cmd'
+            - 'powershell'
+            - 'rundll32'
+            - 'mshta'
+            - 'cscript'
+            - 'wscript'
+            - 'wsl'
+            - '\Users\Public\'
+            - '\Windows\TEMP\'
+            - '\Microsoft\Windows\Start Menu\Programs\Startup\'
+    condition: root and 1 of selection_*
+falsepositives:
+    - Unknown
+level: medium
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/gen_vcruntime140_dll_sideloading.yar, author: Jonathan Peters):
 
 ```yara
-rule Registry_Analysis {
-  meta:
-    description = "Detects registry analysis tools"
-    author = "Your Name"
-    date = "2023-12-01"
-  strings:
-    $a = "regedit.exe"
-    $b = "reg query"
-  condition:
-    filesize < 100KB and ($a or $b)
+import "pe"
+
+rule SUSP_VCRuntime_Sideloading_Indicators_Aug23 {
+   meta:
+      description = "Detects indicators of .NET based malware sideloading as VCRUNTIME140 with .NET DLL imports"
+      author = "Jonathan Peters"
+      date = "2023-08-30"
+      hash = "b4bc73dfe9a781e2fee4978127cb9257bc2ffd67fc2df00375acf329d191ffd6"
+      score = 75
+      id = "00400122-1343-5051-af31-880a3ef1745d"
+   condition:
+      (filename == "VCRUNTIME140.dll" or filename == "vcruntime140.dll")
+      and pe.imports("mscoree.dll", "_CorDllMain")
 }
 ```
 
-```yaml
-title: Suspicious Registry Access
-logsource:
-  product: windows
-  category: registry
-detection:
-  selection:
-    RegistryAccess: regedit.exe|reg query
-  condition: selection | contains RegistryAccess
-```
+**Real-world context (MITRE T1547.001 -- Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1547/001/
 
-**Reference artifacts / IOCs**
-| Indicator | Value | Description |
-| --- | --- | --- |
-| SHA256 Hash | 4f4d4f4f4f4f4f4f4f4f4f4f4f4f4f4f | Benign lab sample |
-| Filename | example.exe | Registry analysis tool |
-| Host Artifact | 192.0.2.1 | Documentation IP |
-| Network Artifact | hxxp://example[.]com | Defanged URL |
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-This detection content covers the MITRE ATT&CK techniques [T1012: System Network Configuration Discovery](https://attack.mitre.org/techniques/T1012/) and [T1063: System Information Discovery](https://attack.mitre.org/techniques/T1063/). For more information on YARA rules, visit the [YARA documentation](https://yara.readthedocs.io/en/v4.0.0/). For more information on Sigma rules, visit the [Sigma documentation](https://sigma-docs.github.io/).
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 **Claim → Source Mapping** (all URLs are real, authoritative pages):

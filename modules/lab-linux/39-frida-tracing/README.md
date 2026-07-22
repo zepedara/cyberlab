@@ -307,41 +307,82 @@ Interceptor.replace(Module.findExportByName(null, "strcmp"), new NativeCallback(
 
 ### Detection Signatures & Reference Artifacts
 
-```yara
-rule detect_frida_agent {
-    meta:
-        description = "Detects the Frida dynamic instrumentation agent library"
-        author = "Defensive Training Module"
-        reference = "https://attack.mitre.org/techniques/T1140/"
-        date = "2025-04-10"
-    strings:
-        $frida_agent = "frida-agent" ascii wide nocase fullword
-    condition:
-        filesize < 1MB and $frida_agent
-}
-```
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Potential Process Injection Via Msra.EXE** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_msra_process_injection.yml; license: Detection Rule License / DRL):
 
 ```yaml
-title: Frida Process Creation
+title: Potential Process Injection Via Msra.EXE
+id: 744a188b-0415-4792-896f-11ddb0588dbc
+status: test
+description: Detects potential process injection via Microsoft Remote Asssistance (Msra.exe) by looking at suspicious child processes spawned from the aforementioned process. It has been a target used by many threat actors and used for discovery and persistence tactics
+references:
+    - https://www.microsoft.com/security/blog/2021/12/09/a-closer-look-at-qakbots-latest-building-blocks-and-how-to-knock-them-down/
+    - https://www.fortinet.com/content/dam/fortinet/assets/analyst-reports/ar-qakbot.pdf
+author: Alexander McDonald
+date: 2022-06-24
+modified: 2023-02-03
+tags:
+    - attack.privilege-escalation
+    - attack.stealth
+    - attack.t1055
 logsource:
     category: process_creation
     product: windows
-    service: sysmon
 detection:
-    selection_frida:
-        Image|contains: 'frida'
-    condition: selection_frida
+    selection:
+        ParentImage|endswith: '\msra.exe'
+        ParentCommandLine|endswith: 'msra.exe'
+        Image|endswith:
+            - '\arp.exe'
+            - '\cmd.exe'
+            - '\net.exe'
+            - '\netstat.exe'
+            - '\nslookup.exe'
+            - '\route.exe'
+            - '\schtasks.exe'
+            - '\whoami.exe'
+    condition: selection
+falsepositives:
+    - Legitimate use of Msra.exe
+level: high
 ```
 
-| Indicator | Description |
-|-----------|-------------|
-| `4f8a5c6b7d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5` | SHA-256 hash of benign lab file `frida-trace.exe` included in training package |
-| `frida-trace.exe` | Filename for the Frida command-line tracing tool used in this lab |
-| `hxxp://192[.]0[.]2[.]1:27042/script` | Example defanged network artifact – URL used to fetch Frida instrumentation scripts during training |
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/susp_office_template_injection.yar, author: Florian Roth):
 
-**Associated MITRE ATT&CK Technique:** T1140 Deobfuscate/Decode Files or Information  
-**Authoritative Source:** [https://attack.mitre.org/techniques/T1140/](https://attack.mitre.org/techniques/T1140/)
+```yara
+rule EXPL_Office_TemplateInjection_Aug19 {
+   meta:
+      old_rule_name = "EXPL_Office_TemplateInjection"
+      description = "Detects possible template injections in Office documents, particularly those that load content from external sources"
+      author = "Florian Roth"
+      reference = "https://attack.mitre.org/techniques/T1221/"
+      date = "2019-08-22"
+      modified = "2025-03-20"
+      score = 75
+      hash = "f2bdf3716b39d29a9c6c3b7b3355e935594b8d8e9149a784a59dc2381fa1628a"
+      id = "2a7e1021-97be-510b-8826-d15ac06ed00e"
+   strings:
+      $x1 = /attachedTemplate" Target="http[s]?:\/\/[^"]{4,60}/ ascii
 
+      $fp1 = ".sharepoint.com"  // this could cause false negatives if the malicious template is hosted on sharepoint
+      $fp2 = ".office.com"  // this could cause false negatives if the malicious template is hosted on office.com
+   condition:
+      filesize < 20MB
+      and $x1
+      and not 1 of ($fp*)
+}
+```
+
+**Real-world context (MITRE T1059 -- Command and Scripting Interpreter):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1059/ -- real in-the-wild use includes APT19, APT32, APT37, APT39.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

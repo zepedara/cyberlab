@@ -270,54 +270,80 @@ Let's craft.
 
 ### Detection Signatures & Reference Artifacts
 
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Outlook Macro Execution Without Warning Setting Enabled** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_office_outlook_enable_macro_execution.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Outlook Macro Execution Without Warning Setting Enabled
+id: e3b50fa5-3c3f-444e-937b-0a99d33731cd
+status: test
+description: Detects the modification of Outlook security setting to allow unprompted execution of macros.
+references:
+    - https://www.mdsec.co.uk/2020/11/a-fresh-outlook-on-mail-based-persistence/
+    - https://speakerdeck.com/heirhabarov/hunting-for-persistence-via-microsoft-exchange-server-or-outlook?slide=53
+author: '@ScoubiMtl'
+date: 2021-04-05
+modified: 2023-08-17
+tags:
+    - attack.privilege-escalation
+    - attack.persistence
+    - attack.command-and-control
+    - attack.t1137
+    - attack.t1008
+    - attack.t1546
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|endswith: '\Outlook\Security\Level'
+        Details|contains: '0x00000001' # Enable all Macros
+    condition: selection
+falsepositives:
+    - Unlikely
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/general_officemacros.yar, author: Florian Roth (Nextron Systems)):
+
 ```yara
-rule Lab_MaliciousDoc_Detection
-{
-    meta:
-        description = "Detects benign lab sample mimicking malicious document behavior"
-        author = "Security Training Team"
-        reference = "Internal lab exercise"
-    strings:
-        $doc_marker = "PK\x03\x04"   // ZIP local file header (Office docs)
-        $suspicious_string = "AutoOpen" ascii wide
-        $macro_indicator = "VBAProject" ascii wide
-    condition:
-        filesize < 200KB and
-        ($doc_marker and $suspicious_string and $macro_indicator)
+rule Office_AutoOpen_Macro {
+	meta:
+		description = "Detects an Microsoft Office file that contains the AutoOpen Macro function"
+		license = "Detection Rule License 1.1 https://github.com/Neo23x0/signature-base/blob/master/LICENSE"
+		author = "Florian Roth (Nextron Systems)"
+		date = "2015-05-28"
+		score = 40
+		hash1 = "4d00695d5011427efc33c9722c61ced2"
+		hash2 = "63f6b20cb39630b13c14823874bd3743"
+		hash3 = "66e67c2d84af85a569a04042141164e6"
+		hash4 = "a3035716fe9173703941876c2bde9d98"
+		hash5 = "7c06cab49b9332962625b16f15708345"
+		hash6 = "bfc30332b7b91572bfe712b656ea8a0c"
+		hash7 = "25285b8fe2c41bd54079c92c1b761381"
+		id = "9774d96c-4d15-5a54-8fe2-e06372d9c4ec"
+	strings:
+		$s1 = "AutoOpen" ascii fullword
+		$s2 = "Macros" wide fullword
+	condition:
+		(
+			uint32be(0) == 0xd0cf11e0 or 	// DOC, PPT, XLS
+			uint32be(0) == 0x504b0304		// DOCX, PPTX, XLSX (PKZIP)
+		)
+		and all of ($s*) and filesize < 300000
 }
 ```
 
-```yaml
-title: Suspicious Office Document Creation with Macro Indicators
-logsource:
-    product: windows
-    category: file_creation
-detection:
-    selection:
-        TargetFilename:
-            - '*.doc*'
-            - '*.xls*'
-            - '*.ppt*'
-        Image:
-            - '*\winword.exe'
-            - '*\excel.exe'
-            - '*\powerpnt.exe'
-        CommandLine:
-            - '*AutoOpen*'
-            - '*VBAProject*'
-    condition: selection
-```
+**Real-world context (MITRE T1059 -- Command and Scripting Interpreter):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1059/ -- real in-the-wild use includes APT19, APT32, APT37, APT39.
 
-**Reference artifacts / IOCs**
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-| Indicator          | Value                                                | Description |
-|--------------------|------------------------------------------------------|-------------|
-| SHA256             | `a3f5c9e2b1d4f6a8c9e0b1d2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2` | Hash of the benign lab document sample |
-| Filename           | `sample_report.docx`                                 | Name of the test document used in the lab |
-| Host artifact      | `hxxp://example[.]com/payload`                       | Defanged URL referenced inside the document (simulated C2) |
-| Network artifact   | `192.0.2.55`                                         | Documentation IP used for beaconing in the lab scenario |
-
-*This detection covers MITRE
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, Microsoft Learn, SANS, or recognized project docs):

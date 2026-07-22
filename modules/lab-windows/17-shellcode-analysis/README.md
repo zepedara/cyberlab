@@ -282,54 +282,81 @@ The following `scdbg` commands and flags unlock deeper shellcode analysis capabi
 
 ### Detection Signatures & Reference Artifacts
 
-#### YARA Rule
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Potential CobaltStrike Service Installations - Registry** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_cobaltstrike_service_installs.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Potential CobaltStrike Service Installations - Registry
+id: 61a7697c-cb79-42a8-a2ff-5f0cdfae0130
+status: test
+description: |
+    Detects known malicious service installs that appear in cases in which a Cobalt Strike beacon elevates privileges or lateral movement.
+references:
+    - https://www.sans.org/webcasts/tech-tuesday-workshop-cobalt-strike-detection-log-analysis-119395
+author: Wojciech Lesicki
+date: 2021-06-29
+modified: 2024-03-25
+tags:
+    - attack.persistence
+    - attack.execution
+    - attack.privilege-escalation
+    - attack.lateral-movement
+    - attack.t1021.002
+    - attack.t1543.003
+    - attack.t1569.002
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection_key:
+        - TargetObject|contains: '\System\CurrentControlSet\Services'
+        - TargetObject|contains|all:
+              - '\System\ControlSet'
+              - '\Services'
+    selection_details:
+        - Details|contains|all:
+              - 'ADMIN$'
+              - '.exe'
+        - Details|contains|all:
+              - '%COMSPEC%'
+              - 'start'
+              - 'powershell'
+    condition: all of selection_*
+falsepositives:
+    - Unlikely
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/gen_ps1_shellcode.yar, author: Nick Carr, David Ledbetter):
+
 ```yara
-rule Shellcode_Loader_Lab {
-    meta:
-        description = "Detects a benign lab shellcode loader that drops calc.exe"
-        author = "Training Module"
-        reference = "https://attack.mitre.org/techniques/T1055/002/"
-        hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    strings:
-        $s1 = "VirtualAlloc" wide ascii
-        $s2 = "CreateProcess" wide ascii
-        $s3 = "calc.exe" ascii
-    condition:
-        filesize < 1MB and all of them
+rule Base64_PS1_Shellcode {
+   meta:
+      description = "Detects Base64 encoded PS1 Shellcode"
+      author = "Nick Carr, David Ledbetter"
+      reference = "https://twitter.com/ItsReallyNick/status/1062601684566843392"
+      date = "2018-11-14"
+      score = 65
+      id = "7c3cec3b-a192-5bfd-b4f1-22b1afeb717e"
+   strings:
+      $substring = "AAAAYInlM"
+      $pattern1 = "/OiCAAAAYInlM"
+      $pattern2 = "/OiJAAAAYInlM"
+   condition:
+      $substring and 1 of ($p*)
 }
 ```
 
-#### Sigma Rule
-```yaml
-title: Shellcode Loader Process Creation
-logsource:
-    category: process_creation
-    product: windows
-detection:
-    selection:
-        Image|endswith: '\shellcode_loader.exe'
-        CommandLine|contains: 'calc'
-    condition: selection
-```
+**Real-world context (MITRE T1055.001 -- Process Injection: Dynamic-link Library Injection):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1055/001/
 
-#### Reference Artifacts / IOCs
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-| Artifact Type        | Value                                                                 |
-|----------------------|-----------------------------------------------------------------------|
-| SHA256 Hash          | 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef |
-| Filename             | shellcode_loader.exe                                                  |
-| Host Artifact        | %TEMP%\calc.exe (dropped file)                                        |
-| Network Indicator    | 192.0.2.1:8080 (C2 simulation)                                        |
-| Domain (defanged)    | shellcode-analysis[.]local                                            |
-
-#### MITRE ATT&CK Techniques Covered
-- **T1055.002** – Process Injection: Portable Executable Injection (attack.mitre.org/techniques/T1055/002/)
-- **T1204.001** – User Execution: Malicious Link (attack.mitre.org/techniques/T1204/001/)
-
-#### Authoritative Sources
-- MITRE ATT&CK technique pages above
-- YARA documentation: [yara.readthedocs.io](https://yara.readthedocs.io/)
-- Sigma specification: [github.com/SigmaHQ/sigma](https://github.com/SigmaHQ/sigma)
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):

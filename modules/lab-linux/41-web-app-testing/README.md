@@ -252,50 +252,83 @@ nmap -sV --script=broadcast-dhcp-discover 192.168.1.0/24
 
 ### Detection Signatures & Reference Artifacts
 
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Suspicious File Write to Webapps Root Directory** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/file/file_event/file_event_win_susp_file_write_in_webapps_root.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Suspicious File Write to Webapps Root Directory
+id: 89c42960-f244-4dad-9151-ae9b1a3287a2
+status: experimental
+description: |
+    Detects suspicious file writes to the root directory of web applications, particularly Apache web servers or Tomcat servers.
+    This may indicate an attempt to deploy malicious files such as web shells or other unauthorized scripts.
+references:
+    - https://labs.watchtowr.com/guess-who-would-be-stupid-enough-to-rob-the-same-vault-twice-pre-auth-rce-chains-in-commvault/
+author: Swachchhanda Shrawan Poudel (Nextron Systems)
+date: 2025-10-20
+tags:
+    - attack.persistence
+    - attack.t1505.003
+    - attack.initial-access
+    - attack.t1190
+logsource:
+    product: windows
+    category: file_event
+detection:
+    # Add more suspicious processes or paths or extensions as needed
+    selection_susp_img:
+        Image|endswith:
+            - '\dotnet.exe'
+            - '\w3wp.exe'
+            - '\java.exe'
+    selection_servers:
+        TargetFilename|contains:
+            - '\apache'
+            - '\tomcat'
+    selection_path:
+        TargetFilename|contains: '\webapps\ROOT\'
+    selection_susp_extensions:
+        TargetFilename|endswith: '.jsp'
+    condition: all of selection_*
+falsepositives:
+    - Unknown
+level: medium
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/webshell_xsl_transform.yar, author: Max Altgelt):
+
 ```yara
-rule Detect_WebApp_SQLi_Test_Payload {
-    meta:
-        description = "Detects benign test strings commonly used in web application SQL injection exercises"
-        author = "Training Module - 41-web-app-testing"
-        reference = "https://attack.mitre.org/techniques/T1110/"
-        hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    strings:
-        $sql_string1 = "SELECT * FROM"
-        $sql_string2 = "admin' OR"
-        $payload_comment = "-- "
-    condition:
-        filesize < 10KB and all of them
+rule WEBSHELL_ASPX_XslTransform_Aug21 {
+   meta:
+      author = "Max Altgelt"
+      reference = "https://gist.github.com/JohnHammond/cdae03ca5bc2a14a735ad0334dcb93d6"
+      date = "2020-02-23"
+      description = "Detects an ASPX webshell utilizing XSL Transformations"
+      id = "44254084-a717-59e6-a3ac-eca3c1c864a8"
+   strings:
+      $csharpshell = "Language=\"C#\"" nocase
+
+      $x1 = "<root>1</root>"
+      $x2 = ".LoadXml(System.Text.Encoding.UTF8.GetString(System.Convert.FromBase64String("
+
+      $s1 = "XsltSettings.TrustedXslt"
+      $s2 = "Xml.XmlUrlResolver"
+      $s3 = "FromBase64String(Request[\""
+   condition:
+      filesize < 500KB and $csharpshell and (1 of ($x*) or all of ($s*))
 }
 ```
 
-```yaml
-title: Benign Web Application SQL Injection Test in Apache Log
-logsource:
-    product: apache
-    category: webserver
-detection:
-    selection_sqli:
-        keywords:
-            - "SELECT"
-            - "OR 1=1"
-            - "admin'"
-    condition: selection_sqli
-```
+**Real-world context (MITRE T1595 -- Active Scanning):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1595/
 
-**Reference artifacts / IOCs**
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-| Indicator Type | Value |
-|----------------|-------|
-| SHA256 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
-| Filename | `test_sqli.txt` |
-| Source IP | `192.0.2.1` |
-| Destination Host (defanged) | `example[.]com` |
-| URI (defanged) | `hxxp://192.0.2.2/sqli-test` |
-
-**MITRE ATT&CK Reference**  
-- Technique: **T1110** – Brute Force  
-- Source: [https://attack.mitre.org/techniques/T1110/](https://attack.mitre.org/techniques/T1110/)
-
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

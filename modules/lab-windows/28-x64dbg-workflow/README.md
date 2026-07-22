@@ -288,41 +288,51 @@ Capture process memory (`.dump /ma C:\dump.dmp`) for offline analysis of **T1055
 
 ### Detection Signatures & Reference Artifacts
 
-```yara
-rule Detect_x64dbg_Benign {
-   meta:
-      description = "Detects the benign x64dbg debugger executable used in defensive training."
-      author = "Training Module"
-      reference = "https://attack.mitre.org/techniques/T1070/"
-      date = "2025-04-10"
-   strings:
-      $s1 = "x64dbg" ascii wide nocase
-      $s2 = "dbghelp.dll" ascii wide nocase
-   condition:
-      filesize < 10MB and any of ($s1, $s2)
-}
-```
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Microsoft Workflow Compiler Execution** (source: https://github.com/SigmaHQ/sigma/blob/master/rules-threat-hunting/windows/process_creation/proc_creation_win_microsoft_workflow_compiler_execution.yml; license: Detection Rule License / DRL):
 
 ```yaml
-title: Detection of Benign x64dbg Debugger Execution
+title: Microsoft Workflow Compiler Execution
+id: 419dbf2b-8a9b-4bea-bf99-7544b050ec8d
+status: test
+description: |
+    Detects the execution of Microsoft Workflow Compiler, which may permit the execution of arbitrary unsigned code.
+references:
+    - https://posts.specterops.io/arbitrary-unsigned-code-execution-vector-in-microsoft-workflow-compiler-exe-3d9294bc5efb
+    - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1218/T1218.md
+    - https://lolbas-project.github.io/lolbas/Binaries/Microsoft.Workflow.Compiler/
+author: Nik Seetharaman, frack113
+date: 2019-01-16
+modified: 2023-02-03
+tags:
+    - attack.execution
+    - attack.stealth
+    - attack.t1127
+    - attack.t1218
+    - detection.threat-hunting
 logsource:
-   product: windows
-   category: process_creation
+    category: process_creation
+    product: windows
 detection:
-   selection:
-      Image|endswith: '\x64dbg.exe'
-   condition: selection
+    selection:
+        - Image|endswith: '\Microsoft.Workflow.Compiler.exe'
+        - OriginalFileName: 'Microsoft.Workflow.Compiler.exe'
+    condition: selection
+falsepositives:
+    - Legitimate MWC use (unlikely in modern enterprise environments)
+level: medium
 ```
 
-| **Reference artifacts / IOCs** | |
-|--------------------------------|-|
-| **sha256**                     | `3a0f8a9b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e` |
-| **filename**                   | `x64dbg.exe` |
-| **Host/network artifacts**     | - Local path: `C:\Tools\x64dbg\x64dbg.exe` <br> - Network: `dns request to symbols[.]microsoft[.]com` (defanged) <br> - IP (documentation): `192.0.2.1` |
+**Real-world context (MITRE T1027.002 -- Obfuscated Files or Information: Software Packing):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1027/002/ -- real in-the-wild use includes Sandworm, APT29, APT3, APT38, APT39, APT41.
 
-- **MITRE ATT&CK technique:** T1070 – Indicator Removal on Host
-- **Source URL:** https://attack.mitre.org/techniques/T1070/
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

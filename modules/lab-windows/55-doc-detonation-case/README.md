@@ -217,63 +217,90 @@ To deepen analysis of **55-doc-detonation-case**, leverage these undemonstrated 
 
 ### Detection Signatures & Reference Artifacts
 
-```yara
-rule DOC_Macro_AutoOpen_Indicators {
-    meta:
-        description = "Detects benign macro-enabled documents containing common macro auto-execute keywords for educational training."
-        author = "Cybersecurity Training Team"
-        date = "2025-04-04"
-        reference = "https://attack.mitre.org/techniques/T1059/005/"
-    strings:
-        $s1 = "AutoOpen"
-        $s2 = "Document_Open"
-    condition:
-        filesize < 2MB and any of ($s1, $s2)
-}
-```
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Potential Suspicious Browser Launch From Document Reader Process** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_susp_browser_launch_from_document_reader_process.yml; license: Detection Rule License / DRL):
 
 ```yaml
-title: Suspicious Office Process Spawning WScript from Macro
-id: 55d0c1a2-b3c4-5e6f-7a8b-9c0d1e2f3a4b
+title: Potential Suspicious Browser Launch From Document Reader Process
+id: 1193d960-2369-499f-a158-7b50a31df682
 status: test
-description: Detects a Windows scripting host (wscript.exe) launched by an Office application, mimicking macro-based execution for educational demos.
+description: |
+    Detects when a browser process or browser tab is launched from an application that handles document files such as Adobe, Microsoft Office, etc. And connects to a web application over http(s), this could indicate a possible phishing attempt.
 references:
-    - https://attack.mitre.org/techniques/T1059/005/
-author: Cybersecurity Training Team
-date: 2025-04-04
+    - https://app.any.run/tasks/69c5abaa-92ad-45ba-8c53-c11e23e05d04/ # PDF Document
+    - https://app.any.run/tasks/64043a79-165f-4052-bcba-e6e49f847ec1/ # Office Document
+author: Joseph Kamau
+date: 2024-05-27
+modified: 2025-10-07
+tags:
+    - attack.execution
+    - attack.t1204.002
 logsource:
     product: windows
     category: process_creation
 detection:
     selection:
-        ParentImage|endswith:
-            - '\WINWORD.EXE'
-            - '\EXCEL.EXE'
-            - '\POWERPNT.EXE'
+        ParentImage|contains:
+            - 'Acrobat Reader'
+            - 'Microsoft Office'
+            - 'PDF Reader'
         Image|endswith:
-            - '\wscript.exe'
-            - '\cscript.exe'
-    condition: selection
-fields:
-    - User
-    - CommandLine
-level: low
+            - '\brave.exe'
+            - '\chrome.exe'
+            - '\firefox.exe'
+            - '\msedge.exe'
+            - '\opera.exe'
+            - '\maxthon.exe'
+            - '\seamonkey.exe'
+            - '\vivaldi.exe'
+        CommandLine|contains: 'http'
+    filter_main_microsoft_help:
+        CommandLine|contains: 'https://go.microsoft.com/fwlink/'
+    filter_optional_foxit:
+        CommandLine|contains:
+            - 'http://ad.foxitsoftware.com/adlog.php?'
+            - 'https://globe-map.foxitservice.com/go.php?do=redirect'
+    condition: selection and not 1 of filter_main_* and not 1 of filter_optional_*
+falsepositives:
+    - Unlikely in most cases, further investigation should be done in the commandline of the browser process to determine the context of the URL accessed.
+level: medium
 ```
 
-**Reference artifacts / IOCs**
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/mal_fake_document_software.yar, author: Jonathan Peters):
 
-| Artifact          | Value                                                            |
-|-------------------|------------------------------------------------------------------|
-| SHA256 hash       | `3a4f5b7c9d0e2f1a6b8c7d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e` |
-| Filename          | `55-doc-detonation-case_sample.docm`                             |
-| Host artifact     | Process: `WINWORD.EXE` spawning `wscript.exe`                    |
-| Network artifact  | Connection to `198.51.100.10:8080` (simulated C2)                |
-| Network artifact  | DNS query to `exampledocument[.]com` (defanged)                  |
+```yara
+rule MAL_Fake_Document_Software_Indicators_Nov23 {
+   meta:
+      description = "Detects indicators of fake document/image utility software that acts as a downloader for additional malware"
+      author = "Jonathan Peters"
+      date = "2023-11-13"
+      reference = "https://nochlab.blogspot.com/2023/09/net-in-javascript-fake-pdf-converter.html"
+      hash1 = "ac5356ae011effb9d401bf428c92a48cf82c9b61f4c24a29a9718e3379f90f1d"
+      hash2 = "d1c29c2243c511ca3264ad568a6be62f374e104b903eca93debce6691e1c5007"
+      score = 80
+      id = "231474cd-1ec9-5738-bf48-ef707689056d"
+   strings:
+      $ = "tweakscode.com" wide
+      $ = "www.createmygif.com" wide
+      $ = "www.videownload.com" wide
+      $ = "www.pdfconverterz.com" wide
+      $ = "www.pdfconvertercompare.com" wide
+   condition:
+      uint16(0) == 0x5a4d
+      and 1 of them
+}
+```
 
-**MITRE ATT&CK Reference**
-- Technique: T1059.005 – Visual Basic for Applications
-- Source: https://attack.mitre.org/techniques/T1059/005/
+**Real-world context (MITRE T1218.005 -- System Binary Proxy Execution: Mshta):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1218/005/ -- real in-the-wild use includes APT29, APT32, APT38, FIN7, Kimsuky.
 
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 To further enhance the 55-doc-detonation-case analysis, it's crucial to understand additional commands and features of FakeNet-NG and Wireshark. For FakeNet-NG, the `--config` flag allows for customization of the simulation environment, such as specifying the IP address range for the fake network. For example, `FakeNet-NG.exe --config fake_net_config.txt` loads a custom configuration from a file. The `--dns`, `--http`, and `--ssl` flags enable DNS, HTTP, and SSL/TLS protocol simulation, respectively. These features are particularly useful when analyzing malware that utilizes these protocols, as seen in techniques like [T1588.001, "Obfuscated Files or Information"](https://attack.mitre.org/techniques/T1588/001/) and [T1595, "Active Scanning"](https://attack.mitre.org/techniques/T1595/). In Wireshark, the 'Follow TCP Stream' feature allows for in-depth analysis of a specific TCP conversation, while the IO Graph feature provides a visual representation of network traffic patterns. These tools are essential for identifying and understanding complex network interactions. For more information on utilizing these features, refer to the official [FakeNet-NG GitHub repository](https://github.com/mandiant/FakeNet-NG) and the [Wireshark User's Guide](https://www.wireshark.org/docs/wsug_html_chunked/).

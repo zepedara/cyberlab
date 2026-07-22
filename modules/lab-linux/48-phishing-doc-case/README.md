@@ -274,55 +274,75 @@ When analyzing malicious documents, leveraging advanced tool features can uncove
 
 ### Detection Signatures & Reference Artifacts
 
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Outlook Macro Execution Without Warning Setting Enabled** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_office_outlook_enable_macro_execution.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Outlook Macro Execution Without Warning Setting Enabled
+id: e3b50fa5-3c3f-444e-937b-0a99d33731cd
+status: test
+description: Detects the modification of Outlook security setting to allow unprompted execution of macros.
+references:
+    - https://www.mdsec.co.uk/2020/11/a-fresh-outlook-on-mail-based-persistence/
+    - https://speakerdeck.com/heirhabarov/hunting-for-persistence-via-microsoft-exchange-server-or-outlook?slide=53
+author: '@ScoubiMtl'
+date: 2021-04-05
+modified: 2023-08-17
+tags:
+    - attack.privilege-escalation
+    - attack.persistence
+    - attack.command-and-control
+    - attack.t1137
+    - attack.t1008
+    - attack.t1546
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|endswith: '\Outlook\Security\Level'
+        Details|contains: '0x00000001' # Enable all Macros
+    condition: selection
+falsepositives:
+    - Unlikely
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/mal_fake_document_software.yar, author: Jonathan Peters):
+
 ```yara
-rule PhishingDoc_Lab_Sample {
-    meta:
-        description = "Detects benign phishing training document (lab sample only)"
-        author = "Defensive Training Module"
-        reference = "Educational use only"
-        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
-    strings:
-        $s1 = "This document is for training purposes only" ascii wide
-        $s2 = "phishing-awareness-training" ascii wide
-        $s3 = "example[.]com" ascii wide
-        $s4 = "192.0.2.100" ascii wide
-        $s5 = "DoNotEnableMacros" ascii wide
-        $s6 = "SecurityTeam@organization" ascii wide
-    condition:
-        filesize < 500KB and 4 of them
+rule MAL_Fake_Document_Software_Indicators_Nov23 {
+   meta:
+      description = "Detects indicators of fake document/image utility software that acts as a downloader for additional malware"
+      author = "Jonathan Peters"
+      date = "2023-11-13"
+      reference = "https://nochlab.blogspot.com/2023/09/net-in-javascript-fake-pdf-converter.html"
+      hash1 = "ac5356ae011effb9d401bf428c92a48cf82c9b61f4c24a29a9718e3379f90f1d"
+      hash2 = "d1c29c2243c511ca3264ad568a6be62f374e104b903eca93debce6691e1c5007"
+      score = 80
+      id = "231474cd-1ec9-5738-bf48-ef707689056d"
+   strings:
+      $ = "tweakscode.com" wide
+      $ = "www.createmygif.com" wide
+      $ = "www.videownload.com" wide
+      $ = "www.pdfconverterz.com" wide
+      $ = "www.pdfconvertercompare.com" wide
+   condition:
+      uint16(0) == 0x5a4d
+      and 1 of them
 }
 ```
 
-```yaml
-title: Suspicious Phishing Training Document Macros
-id: 1a2b3c4d-5e6f-7890-1234-567890abcdef
-status: experimental
-description: Detects benign phishing training document with embedded macros (lab sample only)
-author: Defensive Training Module
-logsource:
-    product: windows
-    category: process_creation
-detection:
-    selection:
-        Image|endswith: '\WINWORD.EXE'
-        CommandLine|contains: 'phishing-awareness-training.docm'
-    condition: selection
-falsepositives:
-    - Legitimate security training documents
-level: informational
-```
+**Real-world context (MITRE T1059.001 -- Command and Scripting Interpreter: PowerShell):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1059/001/ -- real in-the-wild use includes Sandworm, Akira.
 
-**Reference artifacts / IOCs**
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-| SHA256 Hash | Filename | Host/Network Artifacts |
-|-------------|----------|------------------------|
-| a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef | phishing-awareness-training.docm | - C:\Users\Public\Downloads\phishing-awareness-training.docm<br>- hxxp://192.0.2.100/training/phishing-awareness-training.docm<br>- example[.]com (document metadata) |
-
-**MITRE ATT&CK Technique:**
-T1566.002 - Phishing: Spearphishing Link
-
-**Authoritative Source:**
-[MITRE ATT&CK - T1566.002](https://attack.mitre.org/techniques/T1566/002/)
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK, Microsoft Learn, or SANS):

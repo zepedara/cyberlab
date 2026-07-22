@@ -286,46 +286,50 @@ Binwalk’s power lies in its ability to recursively dissect nested firmware ima
 
 ### Detection Signatures & Reference Artifacts
 
-```yara
-rule Detect_Benign_Firmware_Squashfs {
-    meta:
-        author = "DFIR Training"
-        description = "Detects a benign sample containing Squashfs filesystem header"
-        reference = "https://attack.mitre.org/techniques/T1547/"
-    strings:
-        $squashfs = "squashfs" nocase
-        $filesystem = "filesystem" nocase
-        $mtd = "mtdblock" nocase
-    condition:
-        filesize < 10MB and any of ($squashfs, $filesystem, $mtd)
-}
-```
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Suspicious MacOS Firmware Activity** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/macos/process_creation/proc_creation_macos_susp_macos_firmware_activity.yml; license: Detection Rule License / DRL):
 
 ```yaml
-title: Detection of Binwalk Firmware Analysis Tool Execution
+title: Suspicious MacOS Firmware Activity
+id: 7ed2c9f7-c59d-4c82-a7e2-f859aa676099
+status: test
+description: Detects when a user manipulates with Firmward Password on MacOS. NOTE - this command has been disabled on silicon-based apple computers.
+references:
+    - https://github.com/usnistgov/macos_security/blob/932a51f3e819dd3e02ebfcf3ef433cfffafbe28b/rules/os/os_firmware_password_require.yaml
+    - https://www.manpagez.com/man/8/firmwarepasswd/
+    - https://support.apple.com/guide/security/firmware-password-protection-sec28382c9ca/web
+author: Austin Songer @austinsonger
+date: 2021-09-30
+modified: 2022-10-09
+tags:
+    - attack.impact
 logsource:
     category: process_creation
-    product: windows
+    product: macos
 detection:
-    selection:
-        Image|endswith: '\binwalk.exe'
-        CommandLine|contains: 'binwalk'
-    condition: selection
+    selection1:
+        Image: '/usr/sbin/firmwarepasswd'
+        CommandLine|contains:
+            - 'setpasswd'
+            - 'full'
+            - 'delete'
+            - 'check'
+    condition: selection1
+falsepositives:
+    - Legitimate administration activities
+level: medium
 ```
 
-**Reference artifacts / IOCs**
+**Real-world context (MITRE T1027 -- Obfuscated Files or Information):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1027/ -- real in-the-wild use includes Sandworm.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
 | Type | Value |
-|------|-------|
-| SHA256 hash | `0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a` |
-| Filename | `firmware.bin` |
-| Host artifact (path) | `C:\Users\analyst\Desktop\samples\firmware.bin` |
-| Network artifact | `hxxp://192[.]0[.]2[.]1/firmware.bin` |
-
-**MITRE ATT&CK Mapping:**  
-- **Technique:** T1547 – Boot or Logon Autostart Execution  
-- **Authoritative Source:** https://attack.mitre.org/techniques/T1547/
-
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

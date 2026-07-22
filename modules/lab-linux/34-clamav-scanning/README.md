@@ -241,50 +241,52 @@ When and why: Use daemon mode for repeated scans (e.g., cron jobs, file‑integr
 
 ### Detection Signatures & Reference Artifacts
 
-```yara
-rule Benign_ClamAV_Test {
-    meta:
-        description = "Detects a benign ClamAV test sample used for defensive training"
-        author = "Training Module"
-        reference = "https://docs.clamav.net/manual/Usage/Scanning.html#test-file"
-    strings:
-        $s1 = "ClamAV-Test" ascii wide nocase
-    condition:
-        filesize < 10KB and $s1
-}
-```
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- MacOS Network Service Scanning** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/macos/process_creation/proc_creation_macos_network_service_scanning.yml; license: Detection Rule License / DRL):
 
 ```yaml
-title: ClamAV Detection of Benign Test File
+title: MacOS Network Service Scanning
+id: 84bae5d4-b518-4ae0-b331-6d4afd34d00f
+status: test
+description: Detects enumeration of local or remote network services.
+references:
+    - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1046/T1046.md
+author: Alejandro Ortuno, oscd.community
+date: 2020-10-21
+modified: 2021-11-27
+tags:
+    - attack.discovery
+    - attack.t1046
 logsource:
-    product: clamav
-    category: antivirus
+    category: process_creation
+    product: macos
 detection:
-    selection:
-        cl_output|contains: "ClamAV-Test"
-    condition: selection
+    selection_1:
+        Image|endswith:
+            - '/nc'
+            - '/netcat'
+    selection_2:
+        Image|endswith:
+            - '/nmap'
+            - '/telnet'
+    filter:
+        CommandLine|contains: 'l'
+    condition: (selection_1 and not filter) or selection_2
+falsepositives:
+    - Legitimate administration activities
+level: low
 ```
 
-**Reference artifacts / IOCs**
+**Real-world context (MITRE T1105 -- Ingress Tool Transfer):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1105/ -- real in-the-wild use includes Sandworm.
 
-| Artifact Type | Value |
-|---------------|-------|
-| SHA256 hash   | `e8d5a0b7f3c9e2d1a4b6c8d0f9e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0` |
-| Filename      | `clamav-test.txt` |
-| Host artifact | `C:\Users\Public\clamav-test.txt` |
-| Network artifact | `192.0.2.100` (simulated C2) |
-| Network artifact | `hxxp://test-example[.]com/clamav-test` (defanged) |
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-**MITRE ATT&CK Coverage**
-
-- **T1562.001** – Impair Defenses: Disable or Modify Tools (adversaries may disable or modify antivirus tools; scanning for test files helps detect such tampering)
-- **T1036** – Masquerading (adversaries may mimic benign files; identifying ClamAV test artifacts can reveal masquerading attempts)
-
-**Reference Sources**
-- [MITRE ATT&CK T1562.001](https://attack.mitre.org/techniques/T1562/001/)
-- [MITRE ATT&CK T1036](https://attack.mitre.org/techniques/T1036/)
-- [ClamAV Test File Documentation](https://docs.clamav.net/manual/Usage/Scanning.html#test-file)
-
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

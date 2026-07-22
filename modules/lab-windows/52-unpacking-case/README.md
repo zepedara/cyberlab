@@ -320,69 +320,72 @@ Below are **critical but undemonstrated** x64dbg commands and features to accele
 
 ### Detection Signatures & Reference Artifacts
 
-Below are defensive detection signatures and reference artifacts for identifying benign unpacking behavior in a lab environment.
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
 
----
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/gen_case_anomalies.yar, author: Florian Roth (Nextron Systems)):
 
 ```yara
-rule Lab_Unpacking_Case_52_Benign {
-    meta:
-        description = "Detects benign unpacking stub from lab sample 52-unpacking-case"
-        author = "Defensive Training Module"
-        reference = "https://example[.]com/lab-samples/unpacking-case-52"
-        date = "2024-05-20"
-        hash = "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
+rule PowerShell_Case_Anomaly {
+   meta:
+      description = "Detects obfuscated PowerShell hacktools"
+      license = "Detection Rule License 1.1 https://github.com/Neo23x0/signature-base/blob/master/LICENSE"
+      author = "Florian Roth (Nextron Systems)"
+      reference = "https://twitter.com/danielhbohannon/status/905096106924761088"
+      date = "2017-08-11"
+      modified = "2022-06-12"
+      score = 70
+      id = "41c97d15-c167-5bdd-a8b4-871d14f66fe1"
+   strings:
+      // first detect 'powershell' keyword case insensitive
+      $s1 = "powershell" nocase ascii wide
+      // define the normal cases
+      $sn1 = "powershell" ascii wide
+      $sn2 = "Powershell" ascii wide
+      $sn3 = "PowerShell" ascii wide
+      $sn4 = "POWERSHELL" ascii wide
+      $sn5 = "powerShell" ascii wide
+      $sn6 = "PowerShelL" ascii wide /* PSGet.Resource.psd1 - part of PowerShellGet */
+      $sn7 = "PowershelL" ascii wide /* SCVMM.dll - part of Citrix */
 
-    strings:
-        $s1 = "UnpackMeLabStub" ascii wide
-        $s2 = "LabUnpackerInit" ascii wide
-        $s3 = "DecompressPayload" ascii
-        $s4 = "LoadLibraryExW" ascii
-        $s5 = "VirtualAlloc" ascii
-        $s6 = "RtlDecompressBuffer" ascii
+      // PowerShell with \x19\x00\x00
+      $a1 = "wershell -e " nocase wide ascii
+      // expected casing
+      $an1 = "wershell -e " wide ascii
+      $an2 = "werShell -e " wide ascii
 
-    condition:
-        filesize < 500KB and (all of them)
+      // adding a keyword with a sufficent length and relevancy
+      $k1 = "-noprofile" fullword nocase ascii wide
+      // define normal cases
+      $kn1 = "-noprofile" ascii wide
+      $kn2 = "-NoProfile" ascii wide
+      $kn3 = "-noProfile" ascii wide
+      $kn4 = "-NOPROFILE" ascii wide
+      $kn5 = "-Noprofile" ascii wide
+
+      $fp1 = "Microsoft Code Signing" ascii fullword
+      $fp2 = "Microsoft Corporation" ascii
+      $fp3 = "Microsoft.Azure.Commands.ContainerInstance" wide
+      $fp4 = "# Localized PSGet.Resource.psd1" wide
+   condition:
+      filesize < 800KB and (
+         // find all 'powershell' occurrences and ignore the expected cases
+         ( #s1 > #sn1 + #sn2 + #sn3 + #sn4 + #sn5 + #sn6 + #sn7 ) or
+         ( #a1 > #an1 + #an2 ) or
+         // find all '-noprofile' occurrences and ignore the expected cases
+         ( #k1 > #kn1 + #kn2 + #kn3 + #kn4 + #kn5 )
+      ) and not 1 of ($fp*)
 }
 ```
 
----
+**Real-world context (MITRE T1027 -- Obfuscated Files or Information):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1027/ -- real in-the-wild use includes Sandworm.
 
-```yaml
-title: Benign Unpacking Stub Execution - Lab Sample 52
-id: 9a8b7c6d-5e4f-3g2h-1i0j-k9l8m7n6o5p4
-status: experimental
-description: Detects execution of benign unpacking stub from lab sample 52-unpacking-case
-author: Defensive Training Module
-date: 2024/05/20
-logsource:
-    product: windows
-    category: process_creation
-detection:
-    selection:
-        Image|endswith: '\LabUnpackerStub.exe'
-        CommandLine|contains: '--decompress'
-    condition: selection
-falsepositives:
-    - Legitimate use in lab environments
-level: low
-```
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
----
-
-**Reference artifacts / IOCs**
-
-| SHA256 Hash                                                          | Filename               | Host/Network Artifacts                                                                 |
-|----------------------------------------------------------------------|------------------------|---------------------------------------------------------------------------------------|
-| a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890     | LabUnpackerStub.exe    | Writes to: `C:\LabSamples\unpacked_payload.dll` <br> Connects to: `hxxp://192.0.2.100/lab/update` |
-| c3d4e5f67890a1b2c3d4e5f6a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4     | unpacked_payload.dll   | Loaded by: `LabUnpackerStub.exe` <br> Creates process: `C:\Windows\System32\cmd.exe /c echo LabUnpackComplete` |
-
-**MITRE ATT&CK Technique:**
-- [T1027 - Obfuscated Files or Information](https://attack.mitre.org/techniques/T1027/)
-
-**Authoritative Source:**
-- [MITRE ATT&CK - T1027](https://attack.mitre.org/techniques/T1027/)
-
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

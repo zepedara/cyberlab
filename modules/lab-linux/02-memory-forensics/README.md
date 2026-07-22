@@ -358,42 +358,76 @@ Now produce markdown.
 
 ### Detection Signatures & Reference Artifacts
 
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Kernel Memory Dump Via LiveKD** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_sysinternals_livekd_kernel_memory_dump.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Kernel Memory Dump Via LiveKD
+id: c7746f1c-47d3-43d6-8c45-cd1e54b6b0a2
+status: test
+description: Detects execution of LiveKD with the "-m" flag to potentially dump the kernel memory
+references:
+    - https://learn.microsoft.com/en-us/sysinternals/downloads/livekd
+    - https://4sysops.com/archives/creating-a-complete-memory-dump-without-a-blue-screen/
+    - https://kb.acronis.com/content/60892
+author: Nasreddine Bencherchali (Nextron Systems)
+date: 2023-05-16
+modified: 2024-03-13
+tags:
+    - attack.stealth
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+        - Image|endswith:
+              - '\livekd.exe'
+              - '\livekd64.exe'
+        - OriginalFileName: 'livekd.exe'
+    selection_cli:
+        CommandLine|contains|windash: ' -m'
+    condition: all of selection_*
+falsepositives:
+    - Unlikely in production environment
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/susp_office_template_injection.yar, author: Florian Roth):
+
 ```yara
-rule MemoryDump_EduSample
-{
-    meta:
-        description = "Detects benign educational memory sample containing known strings"
-        author = "SecOps Training"
-        date = "2025-09-26"
-        version = "1.0"
-    strings:
-        $s1 = "EDU_MEM_SAMPLE" ascii
-        $s2 = "TRAINING_MEM_BUFFER" ascii
-        $s3 = "LAB001_TRAINING" ascii
-    condition:
-        filesize < 10MB and ($s1 or $s2 or $s3)
+rule EXPL_Office_TemplateInjection_Aug19 {
+   meta:
+      old_rule_name = "EXPL_Office_TemplateInjection"
+      description = "Detects possible template injections in Office documents, particularly those that load content from external sources"
+      author = "Florian Roth"
+      reference = "https://attack.mitre.org/techniques/T1221/"
+      date = "2019-08-22"
+      modified = "2025-03-20"
+      score = 75
+      hash = "f2bdf3716b39d29a9c6c3b7b3355e935594b8d8e9149a784a59dc2381fa1628a"
+      id = "2a7e1021-97be-510b-8826-d15ac06ed00e"
+   strings:
+      $x1 = /attachedTemplate" Target="http[s]?:\/\/[^"]{4,60}/ ascii
+
+      $fp1 = ".sharepoint.com"  // this could cause false negatives if the malicious template is hosted on sharepoint
+      $fp2 = ".office.com"  // this could cause false negatives if the malicious template is hosted on office.com
+   condition:
+      filesize < 20MB
+      and $x1
+      and not 1 of ($fp*)
 }
 ```
 
-```yaml
-title: Suspicious Process Creation from Memory Dump Analysis Tool
-logsource:
-    product: windows
-    category: process_creation
-detection:
-    selection:
-        Image|endswith: '\memdump_tool.exe'
-    condition: selection
-```
+**Real-world context (MITRE T1134.004 -- Access Token Manipulation: Parent PID Spoofing):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1134/004/
 
-**Reference artifacts / IOCs**
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-| Indicator Type | Indicator |
-|----------------|-----------|
-| SHA256         | a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef |
-| Filename       | edu_mem_sample.bin |
-| Host/IP        | 192.0.2.45 |
-| URL
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are official/authoritative pages):

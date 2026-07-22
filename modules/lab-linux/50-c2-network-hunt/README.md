@@ -279,46 +279,78 @@ Below are **high-impact `tshark` commands and features** not yet covered in this
 - [Wireshark Display Filters (Official)](https://www.wireshark.org/docs/
 
 ### Detection Signatures & Reference Artifacts
-To detect potential C2 network hunt activities, the following detection signatures can be utilized:
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Cobalt Strike DNS Beaconing** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/network/dns/net_dns_mal_cobaltstrike.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Cobalt Strike DNS Beaconing
+id: 2975af79-28c4-4d2f-a951-9095f229df29
+status: test
+description: Detects suspicious DNS queries known from Cobalt Strike beacons
+references:
+    - https://www.icebrg.io/blog/footprints-of-fin7-tracking-actor-patterns
+    - https://www.sekoia.io/en/hunting-and-detecting-cobalt-strike/
+author: Florian Roth (Nextron Systems)
+date: 2018-05-10
+modified: 2022-10-09
+tags:
+    - attack.command-and-control
+    - attack.t1071.004
+logsource:
+    category: dns
+detection:
+    selection1:
+        query|startswith:
+            - 'aaa.stage.'
+            - 'post.1'
+    selection2:
+        query|contains: '.stage.123456.'
+    condition: 1 of selection*
+falsepositives:
+    - Unknown
+level: critical
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/gen_xor_hunting.yar, author: Florian Roth):
+
 ```yara
-rule C2_Network_Hunt {
-  meta:
-    description = "Detects C2 network hunt activities"
-    author = "Your Name"
-    date = "2023-12-01"
-  strings:
-    $http_request = "GET /index.php?cmd="
-    $dns_query = "example[.]com"
-    $file_transfer = "File transfer complete"
-  condition:
-    filesize < 100KB and ($http_request or $dns_query) and $file_transfer
+rule SUSP_XORed_Mozilla_Oct19 {
+   meta:
+      old_rule_name = "SUSP_XORed_Mozilla"
+      description = "Detects suspicious single byte XORed keyword 'Mozilla/5.0' - it uses yara's XOR modifier and therefore cannot print the XOR key. You can use the CyberChef recipe linked in the reference field to brute force the used key."
+      author = "Florian Roth"
+      reference = "https://gchq.github.io/CyberChef/#recipe=XOR_Brute_Force()"
+      date = "2019-10-28"
+      modified = "2023-11-03"
+      score = 60
+      id = "71e5b399-c384-5330-ae52-4e0a806e7969"
+   strings:
+      $xo1 = "Mozilla/5.0" xor ascii wide
+      $xof1 = "Mozilla/5.0" ascii wide
+
+      $fpa1 = "Sentinel Labs" wide
+      $fpa2 = "<filter object at" ascii /* Norton Security */
+
+      $fpb1 = { 64 65 78 0a 30 33 35 } /* dex.035 */
+   condition:
+      $xo1 
+      and not $xof1 
+      and not 1 of ($fpa*)
+      and not $fpb1 at 0
 }
 ```
-Additionally, a Sigma rule can be used to detect these activities:
-```yaml
-title: C2 Network Hunt Detection
-logsource:
-  product: web_server
-  category: http
-detection:
-  selection:
-    http_request: 
-      - 'GET /index.php?cmd='
-    dns_query: 
-      - 'example[.]com'
-  condition: selection and http_request and dns_query
-```
-These detection signatures cover the MITRE ATT&CK techniques [T1002 - Software Deployment Tools](https://attack.mitre.org/techniques/T1002/) and [T1018 - Remote System Discovery](https://attack.mitre.org/techniques/T1018/), which are often used in C2 network hunt activities. For more information on these techniques and detection methods, refer to the following sources:
-* [YARA documentation](https://yara.readthedocs.io/en/v4.2.3/)
-* [Sigma documentation](https://sigma-docs.github.io/)
-**Reference artifacts / IOCs**
-| SHA256 Hash | Filename | Host/Network Artifacts |
-| --- | --- | --- |
-| 0123456789abcdef0123456789abcdef01234567 | c2_hunt_sample.exe | 192.0.2.1, hxxp://example[.]com/index.php?cmd= |
-| fedcba9876543210fedcba9876543210fedcba98 | network_hunt.dll | 198.51.100.2, example[.]com:8080 |
-For more information on C2 network hunt detection and response, refer to the following sources:
-* [MITRE ATT&CK](https://attack.mitre.org/)
-* [Cybersecurity and Infrastructure Security Agency (CISA)](https://www.cisa.gov/)
+
+**Real-world context (MITRE T1204 -- User Execution):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1204/ -- real in-the-wild use includes Scattered Spider.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):

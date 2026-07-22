@@ -277,74 +277,105 @@ FLOSS and Capa offer powerful flags to refine analysis, particularly for detecti
 
 ### Detection Signatures & Reference Artifacts
 
-Below are defensive detection rules and reference artifacts for identifying the benign `42-floss-strings` lab sample, which demonstrates string obfuscation techniques in a controlled environment.
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
 
----
+**Sigma rule -- Potential PowerShell Obfuscation Via Reversed Commands** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_powershell_cmdline_reversed_strings.yml; license: Detection Rule License / DRL):
 
-#### YARA Rule
+```yaml
+title: Potential PowerShell Obfuscation Via Reversed Commands
+id: b6b49cd1-34d6-4ead-b1bf-176e9edba9a4
+status: test
+description: Detects the presence of reversed PowerShell commands in the CommandLine. This is often used as a method of obfuscation by attackers
+references:
+    - https://2019.offzone.moscow/ru/report/hunting-for-powershell-abuses/
+    - https://speakerdeck.com/heirhabarov/hunting-for-powershell-abuse?slide=66
+author: Teymur Kheirkhabarov (idea), Vasiliy Burov (rule), oscd.community, Tim Shelton
+date: 2020-10-11
+modified: 2023-05-31
+tags:
+    - attack.stealth
+    - attack.t1027
+    - attack.execution
+    - attack.t1059.001
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+        - Image|endswith:
+              - '\powershell.exe'
+              - '\pwsh.exe'
+        - OriginalFileName:
+              - 'PowerShell.EXE'
+              - 'pwsh.dll'
+    selection_cli:
+        CommandLine|contains:
+            - 'hctac'
+            - 'kaerb'
+            - 'dnammoc'
+            - 'ekovn' # Also covers 'ekovni'
+            - 'eliFd'
+            - 'rahc'
+            - 'etirw'
+            - 'golon'
+            - 'tninon'
+            - 'eddih'
+            - 'tpircS'
+            - 'ssecorp'
+            - 'llehsrewop'
+            - 'esnopser'
+            - 'daolnwod'
+            - 'tneilCbeW'
+            - 'tneilc'
+            - 'ptth'
+            - 'elifotevas'
+            - '46esab'
+            - 'htaPpmeTteG'
+            - 'tcejbO'
+            - 'maerts'
+            - 'hcaerof'
+            - 'retupmoc'
+    filter_main_encoded_keyword:
+        # We exclude usage of encoded commands as they might generate FPs as shown here:
+        #   https://github.com/SigmaHQ/sigma/pull/2720
+        #   https://github.com/SigmaHQ/sigma/issues/4270
+        CommandLine|contains:
+            - ' -EncodedCommand '
+            - ' -enc '
+    condition: all of selection_* and not 1 of filter_main_*
+falsepositives:
+    - Unlikely
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/susp_claude_magic_strings.yar, author: Marius Benthin):
+
 ```yara
-rule Lab_Benign_FlossStrings_Example {
-    meta:
-        description = "Detects benign 42-floss-strings lab sample via embedded static strings"
-        author = "Defensive Training Module"
-        reference = "https://github.com/mandiant/flare-floss"
-        mitre_attack = "T1027.002 - Obfuscated Files or Information: Software Packing"
-        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
-
-    strings:
-        $s1 = "FLOSS static strings" ascii wide
-        $s2 = "This is a benign sample" ascii wide
-        $s3 = "LabExercise42" ascii wide
-        $s4 = "hxxp://example[.]com/lab" ascii wide
-        $s5 = "192.0.2.100" ascii wide
-        $s6 = "DefensiveTraining" ascii wide
-
-    condition:
-        uint16(0) == 0x5A4D and filesize < 5MB and 4 of them
+rule SUSP_Claude_Refusal_Magic_String_Jan26 {
+   meta:
+      description = "Detects refusal magic string that cause Claude sessions to be terminated. This might indicate that a file tries to prevent being analyzed by LLM agents."
+      author = "Marius Benthin"
+      date = "2026-01-29"
+      reference = "https://x.com/williballenthin/status/2014687699165135150"
+      hash = "ffa48ed4b7b48897f6756c4222b2606399de0bca627cedfddf61e69986580430"
+      score = 75
+      id = "7a164817-9e90-52f6-a3cb-e6965ee1cc54"
+   strings:
+      $x1 = "ANTHROPIC_MAGIC_STRING_TRIGGER_REFUSAL_" ascii wide nocase
+   condition:
+      $x1
 }
 ```
 
----
+**Real-world context (MITRE T1497 -- Virtualization/Sandbox Evasion):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1497/
 
-#### Sigma Rule
-```yaml
-title: Benign FLOSS Strings Lab Sample Detection
-id: 1a2b3c4d-5e6f-7890-1234-567890abcdef
-status: experimental
-description: Detects benign 42-floss-strings lab sample via process creation artifacts
-author: Defensive Training Module
-reference: https://github.com/mandiant/flare-floss
-logsource:
-    product: windows
-    category: process_creation
-detection:
-    selection:
-        Image|endswith: '\42-floss-strings.exe'
-        CommandLine|contains:
-            - 'LabExercise42'
-            - 'DefensiveTraining'
-            - '192.0.2.100'
-    condition: selection
-level: low
-mitre_attack:
-    - "T1027.002 - Obfuscated Files or Information: Software Packing"
-```
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
----
-
-#### Reference Artifacts / IOCs
-
-| **Indicator Type**       | **Value**                                                                 |
-|--------------------------|---------------------------------------------------------------------------|
-| SHA256 Hash              | `a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef`        |
-| Filename                 | `42-floss-strings.exe`                                                    |
-| Embedded String          | `FLOSS static strings`, `LabExercise42`, `DefensiveTraining`              |
-| Network Artifact         | `hxxp://example[.]com/lab`                                                |
-| Documentation IP         | `192.0.2.100` (RFC 5737 TEST-NET-1)                                       |
-| Process Name             | `42-floss-strings.exe`                                                    |
-| Command Line Argument    | `--lab-mode --test-ip 192.0.2.100`                                        |
-
----
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE, SANS, Microsoft Learn, or recognized project docs):

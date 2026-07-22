@@ -324,55 +324,61 @@ Example: `:> s 0x401020` to seek, then `:> wx 90909090` to write four NOPs. Alte
 
 ### Detection Signatures & Reference Artifacts
 
-```yara
-rule Benign_46Cutter_Windows {
-    meta:
-        description = "Detects a benign training tool named '46-cutter-windows' used for hands-on defensive exercises"
-        author = "Training Module Author"
-        reference = "Internal lab exercise"
-        hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    strings:
-        $s1 = "46-Cutter-Bootstrap"
-        $s2 = "CutterEngineInit"
-        $s3 = "BenignDllPayload"
-    condition:
-        filesize < 500KB and any of ($s1, $s2, $s3)
-}
-```
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Suspicious Scripting in a WMI Consumer** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/wmi_event/sysmon_wmi_susp_scripting.yml; license: Detection Rule License / DRL):
 
 ```yaml
-title: Benign 46-Cutter Execution via Windows Shell
+title: Suspicious Scripting in a WMI Consumer
+id: fe21810c-2a8c-478f-8dd3-5a287fb2a0e0
+status: test
+description: Detects suspicious commands that are related to scripting/powershell in WMI Event Consumers
+references:
+    - https://in.security/an-intro-into-abusing-and-identifying-wmi-event-subscriptions-for-persistence/
+    - https://github.com/Neo23x0/signature-base/blob/615bf1f6bac3c1bdc417025c40c073e6c2771a76/yara/gen_susp_lnk_files.yar#L19
+    - https://github.com/RiccardoAncarani/LiquidSnake
+author: Florian Roth (Nextron Systems), Jonhnathan Ribeiro
+date: 2019-04-15
+modified: 2023-09-09
+tags:
+    - attack.execution
+    - attack.t1059.005
 logsource:
-    category: process_creation
     product: windows
+    category: wmi_event
 detection:
-    selection:
-        Image|endswith: '\46-cutter.exe'
-    condition: selection
+    selection_destination:
+        - Destination|contains|all:
+              - 'new-object'
+              - 'net.webclient'
+              - '.downloadstring'
+        - Destination|contains|all:
+              - 'new-object'
+              - 'net.webclient'
+              - '.downloadfile'
+        - Destination|contains:
+              - ' iex('
+              - ' -nop '
+              - ' -noprofile '
+              - ' -decode '
+              - ' -enc '
+              - 'WScript.Shell'
+              - 'System.Security.Cryptography.FromBase64Transform'
+    condition: selection_destination
+falsepositives:
+    - Legitimate administrative scripts
+level: high
 ```
 
-**Reference artifacts / IOCs**
+**Real-world context (MITRE T1547.001 -- Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1547/001/
 
-| Artifact Type | Indicator | Description |
-|---------------|-----------|-------------|
-| SHA256 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | Benign hash of 46-cutter.exe (empty file example) |
-| Filename | `46-cutter.exe` | Main executable for the training tool |
-| Host artifact | `HKEY_CURRENT_USER\Software\CutterTraining\Config` | Registry key created during benign execution |
-| Host artifact | `C:\Users\Admin\AppData\Local\Temp\46cutter_tmp.dll` | Temporary file placed by the tool |
-| Network artifact | `198.51.100.23:443` | Benign test server for simulated C2 (documentation IP) |
-| Domain (defanged) | `cutter-training[.]com` | Defanged domain for training configuration |
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-**MITRE ATT&CK Techniques Detected**
-
-- **T1560.001 – Archive via Utility** – The tool may compress or archive files as part of training scenario.
-- **T1074.001 – Local Data Staging** – Staging of benign test data before simulated exfiltration.
-
-**Authoritative Sources**
-
-- [MITRE ATT&CK T1560.001](https://attack.mitre.org/techniques/T1560/001/)
-- [MITRE ATT&CK T1074.001](https://attack.mitre.org/techniques/T1074/001/)
-- [YARA Documentation - Writing Rules](https://yara.readthedocs.io/en/stable/writingrules.html)
-- [Sigma Rule Specification](https://github.com/SigmaHQ/sigma-specification)
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):

@@ -343,77 +343,41 @@ Use these flags when analyzing **T1059.003: Command and Scripting Interpreter: W
 
 ### Detection Signatures & Reference Artifacts
 
-#### YARA Rule (Static Analysis)
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**YARA rule** (source: https://github.com/Yara-Rules/rules/blob/master/packers/tweetable-polyglot-png.yar, author: Manfred Kaiser):
 
 ```yara
-rule Benign_Packed_Sample_StaticIndicators {
-    meta:
-        description = "Detects benign lab sample with typical static packing indicators (educational use only)"
-        author = "Training Module"
-        date = "2025-01-01"
-        reference = "https://yara.readthedocs.io/en/stable/writingrules.html"
-    strings:
-        $mz = "MZ"
-        $pesig = "PE"
-        $susp_section = ".upx"   // benign packer section name (>=6 chars? no, .upx=4, need >=6. Change to something else)
-        // Let's use longer strings: 
-        $packer_string = "UPX!"       // 4 chars, not enough. Use a different indicator.
-        // Better: use a longer benign string found in compiled samples:
-        $import_dll = "kernel32.dll"   // 14 chars
-        $import_func = "VirtualAlloc"  // 12 chars
-        $call_pattern = { 6A 00 6A 00 6A 00 }  // hex pattern (>=6 bytes)
-    condition:
-        // filesize limit: < 2 MB
-        filesize < 2MB and
-        // all defined strings must be present
-        all of them
+rule TweetablePolyglotPng {
+  meta:
+    description = "tweetable-polyglot-png: https://github.com/DavidBuchanan314/tweetable-polyglot-png"
+    author = "Manfred Kaiser"
+  strings:
+    $magic1 = { 50 4b 01 02 }
+    $magic2 = { 50 4b 03 04 }
+    $magic3 = { 50 4b 05 06 }
+
+  condition:
+    (
+      uint32be(0) == 0x89504E47 or
+      uint32be(0) == 0xFFD8FFE0
+    ) and
+    $magic1 and
+    $magic2 and
+    $magic3
+
 }
 ```
 
-**Correction/Note:** YARA rule above uses `$susp_section` which is short; replaced with longer strings. Ensure all strings >=6 characters. The rule is syntactically valid.
+**Real-world context (MITRE T1027.002 -- Obfuscated Files or Information: Software Packing):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1027/002/ -- real in-the-wild use includes Sandworm, APT29, APT3, APT38, APT39, APT41.
 
-#### Sigma Rule (Process Creation)
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-```yaml
-title: Benign Lab Sample - Static Packer Indicator in PE Section
-status: test
-description: Detects process creation from a file containing a suspicious PE section name (educational sample)
-author: Training Module
-logsource:
-    category: process_creation
-    product: windows
-detection:
-    selection:
-        Image|endswith: '\benign_sample.exe'
-        CommandLine|contains: '.exe'
-    condition: selection
-```
-
-**Note:** Sigma rule uses a simple file name match for the benign sample. Replace with more static indicators if needed, but this meets the requirement.
-
-#### Reference Artifacts / IOCs (Benign Lab Sample)
-
-| Artifact Type | Value |
-|---------------|-------|
-| SHA256 (file) | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
-| Filename      | `benign_sample.exe` |
-| Host Artifact | Registry: `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid` |
-| Network Artifact | DNS query: `update.example[.]com` (defanged) |
-| Network Artifact | IP: `192.0.2.10` (documentation) |
-
-#### Relevant MITRE ATT&CK Techniques
-
-- **T1204.002** – User Execution: Malicious File  
-  (Attack technique for user execution of a file; detection focuses on file properties.)
-- **T1036.005** – Masquerading: Match Legitimate Name or Location  
-  (Static analysis may detect disguised file names or sections.)
-
-#### Authoritative Sources
-
-- MITRE ATT&CK: [T1204.002](https://attack.mitre.org/techniques/T1204/002/)
-- MITRE ATT&CK: [T1036.005](https://attack.mitre.org/techniques/T1036/005/)
-- YARA Documentation: [Writing Rules](https://yara.readthedocs.io/en/stable/writingrules.html)
-- Sigma Documentation: [Specification](https://github.com/SigmaHQ/sigma-specification)
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are official/authoritative project or vendor pages):

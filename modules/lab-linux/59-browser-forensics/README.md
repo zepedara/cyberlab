@@ -89,6 +89,66 @@ Hindsight's downloads sheet lists the payload with its `tab_url`/`target_path`; 
 - **T1070.004** — Indicator Removal: File Deletion — attacker deletes browser profile files
 - **T1036.005** — Masquerading: Match Legitimate Name or Location — downloaded file may be named `invoice.pdf.exe` to appear benign
 
+### Detection Signatures & Reference Artifacts
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Suspicious Where Execution** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_where_browser_data_recon.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Suspicious Where Execution
+id: 725a9768-0f5e-4cb3-aec2-bc5719c6831a
+status: test
+description: |
+    Adversaries may enumerate browser bookmarks to learn more about compromised hosts.
+    Browser bookmarks may reveal personal information about users (ex: banking sites, interests, social media, etc.) as well as details about
+    internal network resources such as servers, tools/dashboards, or other related infrastructure.
+references:
+    - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1217/T1217.md
+author: frack113, Nasreddine Bencherchali (Nextron Systems)
+date: 2021-12-13
+modified: 2022-06-29
+tags:
+    - attack.discovery
+    - attack.t1217
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    where_exe:
+        - Image|endswith: '\where.exe'
+        - OriginalFileName: 'where.exe'
+    where_opt:
+        CommandLine|contains:
+            # Firefox Data
+            - 'places.sqlite'
+            - 'cookies.sqlite'
+            - 'formhistory.sqlite'
+            - 'logins.json'
+            - 'key4.db'
+            - 'key3.db'
+            - 'sessionstore.jsonlz4'
+            # Chrome Data
+            - 'History'
+            - 'Bookmarks'
+            - 'Cookies'
+            - 'Login Data'
+    condition: all of where_*
+falsepositives:
+    - Unknown
+level: low
+```
+
+**Real-world context (MITRE T1204.002 -- User Execution: Malicious File):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1204/002/ -- real in-the-wild use includes Sandworm.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
+
 ## Sources
 - Hindsight GitHub repository: [https://github.com/obsidianforensics/hindsight](https://github.com/obsidianforensics/hindsight) (installation, usage, and code)
 - Chromium Timestamp Conversion: [SANS Cyber Security Blog](https://www.sans.org/blog/understanding-google-chrome-chromium-timestamps/) (explanation of the WebKit time format)

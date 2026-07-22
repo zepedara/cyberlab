@@ -346,57 +346,196 @@ To further enhance your Kali Linux skills, it's crucial to master essential comm
 
 ### Detection Signatures & Reference Artifacts
 
-```yara
-rule Benign_Kali_Lab_Sample {
-    meta:
-        author = "Training Module"
-        description = "Detects a benign Kali Linux offensive scripting sample used for lab training"
-        date = "2025-04-16"
-        reference = "Internal training lab"
-    strings:
-        $s1 = "#!/bin/bash"
-        $s2 = "nmap -sV"
-        $s3 = "msfconsole"
-    condition:
-        filesize < 100KB and any of ($s1, $s2, $s3)
-}
-```
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- WSL Kali-Linux Usage** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_wsl_kali_linux_usage.yml; license: Detection Rule License / DRL):
 
 ```yaml
-title: Kali Offensive Tool Command Line Detection
+title: WSL Kali-Linux Usage
+id: 6f1a11aa-4b8a-4b7f-9e13-4d3e4ff0e0d4
+status: experimental
+description: Detects the use of Kali Linux through Windows Subsystem for Linux
+references:
+    - https://medium.com/@redfanatic7/running-kali-linux-on-windows-51ad95166e6e
+    - https://learn.microsoft.com/en-us/windows/wsl/install
+author: Swachchhanda Shrawan Poudel (Nextron Systems)
+date: 2025-10-10
+tags:
+    - attack.stealth
+    - attack.t1202
 logsource:
     category: process_creation
-    product: linux
+    product: windows
 detection:
-    selection:
+    selection_img_appdata:
+        - Image|contains|all:
+              - ':\Users\'
+              - '\AppData\Local\packages\KaliLinux'
+        - Image|contains|all:
+              - ':\Users\'
+              - '\AppData\Local\Microsoft\WindowsApps\kali.exe'
+    selection_img_windowsapps:
+        Image|contains: ':\Program Files\WindowsApps\KaliLinux.'
+        Image|endswith: '\kali.exe'
+    selection_kali_wsl_parent:
+        ParentImage|endswith:
+            - '\wsl.exe'
+            - '\wslhost.exe'
+    selection_kali_wsl_child:
+        - Image|contains:
+              - '\kali.exe'
+              - '\KaliLinux'
+        - CommandLine|contains:
+              - 'Kali.exe'
+              - 'Kali-linux'
+              - 'kalilinux'
+    filter_main_install_uninstall:
         CommandLine|contains:
-            - 'nmap'
-            - 'msfconsole'
-            - 'sqlmap'
-            - 'hydra'
-    condition: selection
+            - ' -i '
+            - ' --install '
+            - ' --unregister '
+    condition: 1 of selection_img_* or all of selection_kali_* and not 1 of filter_main_*
+falsepositives:
+    - Legitimate installation or usage of Kali Linux WSL by administrators or security teams
+level: high
 ```
 
-**Reference artifacts / IOCs**
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/gen_mimikatz.yar, author: Florian Roth):
 
-| Type          | Value                                                               |
-|---------------|---------------------------------------------------------------------|
-| sha256        | b5c7e1d2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c |
-| Filename      | offensive_demo.sh                                                   |
-| Host/Network  | Listener: 192.0.2.100:4444, Callback: example[.]com:8080            |
+```yara
+import "pe"
 
-**MITRE ATT&CK Techniques Covered**
+rule Mimikatz_Memory_Rule_1 : APT {
+   meta:
+      author = "Florian Roth"
+      date = "2014-12-22"
+      modified = "2023-07-04"
+      score = 70
+      nodeepdive = 1
+      description = "Detects password dumper mimikatz in memory (False Positives: an service that could have copied a Mimikatz executable, AV signatures)"
+      id = "55cc7129-5ea0-5545-a8f6-b5306a014dd0"
+   strings:
+      $s1 = "sekurlsa::wdigest" fullword ascii
+      $s2 = "sekurlsa::logonPasswords" fullword ascii
+      $s3 = "sekurlsa::minidump" fullword ascii
+      $s4 = "sekurlsa::credman" fullword ascii
 
-- **T1059.004 – Command and Scripting Interpreter: Unix Shell**  
-  [https://attack.mitre.org/techniques/T1059/004/](https://attack.mitre.org/techniques/T1059/004/)
+      $fp1 = "\"x_mitre_version\": " ascii
+      $fp2 = "{\"type\":\"bundle\","
+      $fp3 = "use strict" ascii fullword
+      $fp4 = "\"url\":\"https://attack.mitre.org/" ascii
+   condition:
+      1 of ($s*) and not 1 of ($fp*)
+}
 
-- **T1204.002 – User Execution: Malicious File**  
-  [https://attack.mitre.org/techniques/T1204/002/](https://attack.mitre.org/techniques/T1204/002/)
+/* we have much better rules now
+rule Mimikatz_Memory_Rule_2 : APT {
+   meta:
+      description = "Mimikatz Rule generated from a memory dump"
+      author = "Florian Roth (Nextron Systems) - Florian Roth"
+      score = 75
+      date = "2014-12-22"
+      modified = "2023-05-19"
+      reference = "https://blog.gentilkiwi.com/mimikatz"
+   strings:
+      $s0 = "sekurlsa::" ascii
+      $x1 = "cryptprimitives.pdb" ascii
+      $x2 = "Now is t1O" ascii fullword
+      $x4 = "ALICE123" ascii
+      $x5 = "BOBBY456" ascii
+   condition:
+      $s0 and 1 of ($x*)
+}
+*/
 
-**Authoritative Sources**
+rule mimikatz : FILE {
+   meta:
+      description      = "mimikatz"
+      author         = "Benjamin DELPY (gentilkiwi)"
+      tool_author      = "Benjamin DELPY (gentilkiwi)"
+      modified = "2022-11-16"
+      id = "840a5b8c-a311-50bc-a099-6b8ab1492e12"
+   strings:
+      $exe_x86_1      = { 89 71 04 89 [0-3] 30 8d 04 bd }
+      $exe_x86_2      = { 8b 4d e? 8b 45 f4 89 75 e? 89 01 85 ff 74 }
 
-- YARA Documentation: [https://yara.readthedocs.io/](https://yara.readthedocs.io/)  
-- Sigma Specification: [https://github.com/SigmaHQ/sigma-specification](https://github.com/SigmaHQ/sigma-specification)
+      $exe_x64_1      = { 33 ff 4? 89 37 4? 8b f3 45 85 c? 74}
+      $exe_x64_2      = { 4c 8b df 49 [0-3] c1 e3 04 48 [0-3] 8b cb 4c 03 [0-3] d8 }
+
+/*
+      $dll_1         = { c7 0? 00 00 01 00 [4-14] c7 0? 01 00 00 00 }
+      $dll_2         = { c7 0? 10 02 00 00 ?? 89 4? }
+*/
+
+      $sys_x86      = { a0 00 00 00 24 02 00 00 40 00 00 00 [0-4] b8 00 00 00 6c 02 00 00 40 00 00 00 }
+      $sys_x64      = { 88 01 00 00 3c 04 00 00 40 00 00 00 [0-4] e8 02 00 00 f8 02 00 00 40 00 00 00 }
+
+   condition:
+      (all of ($exe_x86_*)) or (all of ($exe_x64_*))
+      // or (all of ($dll_*))
+      or (any of ($sys_*))
+}
+
+rule wce
+{
+   meta:
+      description      = "wce"
+      author         = "Benjamin DELPY (gentilkiwi)"
+      tool_author      = "Hernan Ochoa (hernano)"
+      id = "857981ee-3f57-580b-8bfd-8d2109298e27"
+   strings:
+      $hex_legacy      = { 8b ff 55 8b ec 6a 00 ff 75 0c ff 75 08 e8 [0-3] 5d c2 08 00 }
+      $hex_x86      = { 8d 45 f0 50 8d 45 f8 50 8d 45 e8 50 6a 00 8d 45 fc 50 [0-8] 50 72 69 6d 61 72 79 00 }
+      $hex_x64      = { ff f3 48 83 ec 30 48 8b d9 48 8d 15 [0-16] 50 72 69 6d 61 72 79 00 }
+   condition:
+      any of them
+}
+
+rule power_pe_injection
+{
+   meta:
+      description      = "PowerShell with PE Reflective Injection"
+      author         = "Benjamin DELPY (gentilkiwi)"
+      id = "a71fe9f2-9c2a-5650-a5c7-116b76f10db6"
+   strings:
+      $str_loadlib   = "0x53, 0x48, 0x89, 0xe3, 0x48, 0x83, 0xec, 0x20, 0x66, 0x83, 0xe4, 0xc0, 0x48, 0xb9"
+   condition:
+      $str_loadlib
+}
+
+rule Mimikatz_Logfile
+{
+   meta:
+      description = "Detects a log file generated by malicious hack tool mimikatz"
+      license = "Detection Rule License 1.1 https://github.com/Neo23x0/signature-base/blob/master/LICENSE"
+      author = "Florian Roth (Nextron Systems)"
+      score = 80
+      date = "2015/03/31"
+      id = "921d85fc-fb4d-57ed-b4ac-203d5c6f1e8e"
+   strings:
+      $s1 = "SID               :" ascii fullword
+      $s2 = "* NTLM     :" ascii fullword
+      $s3 = "Authentication Id :" ascii fullword
+      $s4 = "wdigest :" ascii fullword
+   condition:
+      all of them
+}
+
+rule Mimikatz_Strings {
+   meta:
+      description = "Detects Mimikatz strings"
+      license = "Detect
+```
+
+**Real-world context (MITRE T1046 -- Network Service Discovery):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1046/ -- real in-the-wild use includes APT32, APT39, APT41.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are official tool docs, project repos, MITRE ATT&CK, Microsoft Learn, SANS, or Security Onion docs):

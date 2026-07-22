@@ -272,42 +272,41 @@ Below are **undocumented but critical** commands and features for **DIE** and **
 
 ### Detection Signatures & Reference Artifacts
 
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**YARA rule** (source: https://github.com/Yara-Rules/rules/blob/master/packers/tweetable-polyglot-png.yar, author: Manfred Kaiser):
+
 ```yara
-rule Benign_Sample_Indicator {
+rule TweetablePolyglotPng {
   meta:
-    description = "Detects a benign educational sample for static triage training"
-    author = "Training Module"
-    date = "2023-10-01"
-    reference = "https://attack.mitre.org/techniques/T1071/001/"
+    description = "tweetable-polyglot-png: https://github.com/DavidBuchanan314/tweetable-polyglot-png"
+    author = "Manfred Kaiser"
   strings:
-    $s1 = "This program cannot be run in DOS mode" ascii
-    $s2 = "!This program cannot be run in DOS mode" wide
+    $magic1 = { 50 4b 01 02 }
+    $magic2 = { 50 4b 03 04 }
+    $magic3 = { 50 4b 05 06 }
+
   condition:
-    filesize < 1MB and all of them
+    (
+      uint32be(0) == 0x89504E47 or
+      uint32be(0) == 0xFFD8FFE0
+    ) and
+    $magic1 and
+    $magic2 and
+    $magic3
+
 }
 ```
 
-```yaml
-title: Benign Sample Static Triage Indicator
-logsource:
-  product: windows
-  category: file_event
-detection:
-  selection:
-    TargetFilename|contains: 'sample.exe'
-  condition: selection
-```
+**Real-world context (MITRE T1105 -- Ingress Tool Transfer):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1105/ -- real in-the-wild use includes Sandworm.
 
-**Reference artifacts / IOCs**
-| Indicator Type | Value |
-|----------------|-------|
-| SHA256 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
-| Filename | `sample.exe` |
-| Host Artifact | File path `C:\Users\Analyst\Desktop\sample.exe` |
-| Network Artifact | `hxxp://192.0.2.1/benign` |
-| MITRE ATT&CK | T1071.001 – Application Layer Protocol: Web Protocols |
-| Source URL | https://attack.mitre.org/techniques/T1071/001/ |
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Adversary Emulation & Evasion
 

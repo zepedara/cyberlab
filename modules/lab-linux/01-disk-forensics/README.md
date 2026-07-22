@@ -280,51 +280,70 @@ Once disk artifacts are recovered, pivot to **threat hunting** by correlating fi
 
 ### Detection Signatures & Reference Artifacts
 
-#### YARA Rule
-```yara
-rule Benign_SamDumpIndicator {
-    meta:
-        description = "Detects benign lab file containing SAM hive reference strings"
-        author = "Training Module"
-        reference = "https://yara.readthedocs.io/en/stable/writingrules.html"
-        date = "2025-03-27"
-    strings:
-        $s1 = "sam_hive"  // benign indicator (≥6 chars)
-        $s2 = "dump_creds"  // benign indicator (≥6 chars)
-    condition:
-        filesize < 1MB and ($s1 or $s2)
-}
-```
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
 
-#### Sigma Rule
+**Sigma rule -- Persistence Via Disk Cleanup Handler - Autorun** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_disk_cleanup_handler_autorun_persistence.yml; license: Detection Rule License / DRL):
+
 ```yaml
-title: Benign Sam Dump Tool Process Creation
+title: Persistence Via Disk Cleanup Handler - Autorun
+id: d4e2745c-f0c6-4bde-a3ab-b553b3f693cc
+status: test
+description: |
+    Detects when an attacker modifies values of the Disk Cleanup Handler in the registry to achieve persistence via autorun.
+    The disk cleanup manager is part of the operating system.
+    It displays the dialog box […] The user has the option of enabling or disabling individual handlers by selecting or clearing their check box in the disk cleanup manager's UI.
+    Although Windows comes with a number of disk cleanup handlers, they aren't designed to handle files produced by other applications.
+    Instead, the disk cleanup manager is designed to be flexible and extensible by enabling any developer to implement and register their own disk cleanup handler.
+    Any developer can extend the available disk cleanup services by implementing and registering a disk cleanup handler.
+references:
+    - https://persistence-info.github.io/Data/diskcleanuphandler.html
+    - https://www.hexacorn.com/blog/2018/09/02/beyond-good-ol-run-key-part-86/
+author: Nasreddine Bencherchali (Nextron Systems)
+date: 2022-07-21
+modified: 2023-08-17
+tags:
+    - attack.persistence
 logsource:
-    category: process_creation
+    category: registry_set
     product: windows
 detection:
-    selection:
-        Image|endswith: '\python.exe'
-        CommandLine|contains: 'sam_hive'
-    condition: selection
+    root:
+        TargetObject|contains: '\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\'
+    selection_autorun:
+        # Launching PreCleanupString / CleanupString programs w/o gui, i.e. while using e.g. /autoclean
+        TargetObject|contains: '\Autorun'
+        Details: 'DWORD (0x00000001)'
+    selection_pre_after:
+        TargetObject|contains:
+            - '\CleanupString'
+            - '\PreCleanupString'
+        Details|contains:
+            # Add more as you see fit
+            - 'cmd'
+            - 'powershell'
+            - 'rundll32'
+            - 'mshta'
+            - 'cscript'
+            - 'wscript'
+            - 'wsl'
+            - '\Users\Public\'
+            - '\Windows\TEMP\'
+            - '\Microsoft\Windows\Start Menu\Programs\Startup\'
+    condition: root and 1 of selection_*
+falsepositives:
+    - Unknown
+level: medium
 ```
 
-#### Reference artifacts / IOCs
-| Indicator | Value |
-|-----------|-------|
-| SHA256    | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
-| Filename  | `sam_dump_tool.py` |
-| Host artifact | File path: `C:\Users\Admin\Desktop\sam_dump_tool.py` |
-| Host artifact | Registry key accessed: `HKEY_LOCAL_MACHINE\SAM` |
-| Network artifact | Connection to `192.0.2.1` (documentation IP) |
+**Real-world context (MITRE T1485 -- Data Destruction):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1485/ -- real in-the-wild use includes Sandworm.
 
-**MITRE ATT&CK Techniques Covered:**  
-- [T1560.001 - Archive via Utility](https://attack.mitre.org/techniques/T1560/001/)  
-- [T1003 - OS Credential Dumping](https://attack.mitre.org/techniques/T1003/)
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-**Authoritative Sources:**  
-- [YARA Rules Documentation](https://yara.readthedocs.io/en/stable/writingrules.html)  
-- [Sigma Specification](https://github.com/SigmaHQ/sigma-specification)
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Adversary Emulation & Red-Team Perspective
 

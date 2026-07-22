@@ -241,76 +241,55 @@ Sources: OSR WinDbg tips (https://www.osr.com/blog/) and x64dbg official blog (h
 
 ### Detection Signatures & Reference Artifacts
 
-Below are defensive detection signatures and reference artifacts for analyzing benign WinDbg deep debugging samples in a lab environment.
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
 
----
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/apt_scanbox_deeppanda.yar, author: Florian Roth (Nextron Systems)):
 
 ```yara
-rule WinDbg_Benign_Lab_Sample {
-    meta:
-        description = "Detects benign WinDbg deep debugging lab sample (educational use only)"
-        author = "Defensive Training Module"
-        reference = "https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/debugging-a-user-mode-process-using-windbg"
-        date = "2024-05-20"
-        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
+rule ScanBox_Malware_Generic {
+	meta:
+		description = "Scanbox Chinese Deep Panda APT Malware http://goo.gl/MUUfjv and http://goo.gl/WXUQcP"
+		license = "Detection Rule License 1.1 https://github.com/Neo23x0/signature-base/blob/master/LICENSE"
+		author = "Florian Roth (Nextron Systems)"
+		reference1 = "http://goo.gl/MUUfjv"
+		reference2 = "http://goo.gl/WXUQcP"
+		date = "2015/02/28"
+		hash1 = "8d168092d5601ebbaed24ec3caeef7454c48cf21366cd76560755eb33aff89e9"
+		hash2 = "d4be6c9117db9de21138ae26d1d0c3cfb38fd7a19fa07c828731fa2ac756ef8d"
+		hash3 = "3fe208273288fc4d8db1bf20078d550e321d9bc5b9ab80c93d79d2cb05cbf8c2"
+		id = "f7867e65-567f-530f-83d4-b5126021e523"
+	strings:
+		/* Sample 1 */
+		$s0 = "http://142.91.76.134/p.dat" fullword ascii
+		$s1 = "HttpDump 1.1" fullword ascii
 
-    strings:
-        $windbg_str = "WinDbg.exe" nocase
-        $dbg_help = "!analyze -v" nocase
-        $pe_header = "MZ" wide
-        $debug_str = "Debugging Tools for Windows" nocase
-        $lab_marker = "LabSample_44_WinDbgDeep" nocase
-        $breakpoint = "bp " nocase
+		/* Sample 2 */
+		$s3 = "SecureInput .exe" fullword wide
+		$s4 = "http://extcitrix.we11point.com/vpn/index.php?ref=1" fullword ascii
 
-    condition:
-        uint16(0) == 0x5A4D and filesize < 10MB and
-        (3 of ($windbg_str, $dbg_help, $debug_str, $lab_marker, $breakpoint))
+		/* Sample 3 */
+		$s5 = "%SystemRoot%\\System32\\svchost.exe -k msupdate" fullword ascii
+		$s6 = "ServiceMaix" fullword ascii
+
+		/* Certificate and Keywords */
+		$x1 = "Management Support Team1" fullword ascii
+		$x2 = "DTOPTOOLZ Co.,Ltd.0" fullword ascii
+		$x3 = "SEOUL1" fullword ascii
+	condition:
+		( 1 of ($s*) and 2 of ($x*) ) or
+		( 3 of ($x*) )
 }
 ```
 
----
+**Real-world context (MITRE T1055 -- Process Injection):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1055/ -- real in-the-wild use includes Sandworm, APT32, APT37, APT38.
 
-```yaml
-title: Suspicious WinDbg Deep Debugging Activity (Benign Lab Sample)
-id: 1a2b3c4d-5e6f-7890-1234-567890abcdef
-status: experimental
-description: Detects benign WinDbg deep debugging activity in a lab environment (educational use only)
-author: Defensive Training Module
-date: 2024/05/20
-logsource:
-    product: windows
-    category: process_creation
-detection:
-    selection:
-        Image|endswith: '\WinDbg.exe'
-        CommandLine|contains:
-            - '!analyze -v'
-            - 'LabSample_44_WinDbgDeep'
-            - 'bp '
-    condition: selection
-falsepositives:
-    - Legitimate debugging activity in a lab environment
-level: informational
-tags:
-    - attack.defense_evasion
-    - attack.t1218.011  # System Binary Proxy Execution: Rundll32 (WinDbg may be used to load DLLs)
-```
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
----
-
-**Reference artifacts / IOCs**
-
-| SHA256 Hash | Filename | Host/Network Artifacts |
-|-------------|----------|------------------------|
-| `a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef` | `LabSample_44_WinDbgDeep.exe` | - Parent process: `explorer.exe`<br>- Command line: `"C:\Debuggers\WinDbg.exe" -y "C:\Lab\Symbols" -c "!analyze -v; q" LabSample_44_WinDbgDeep.exe`<br>- Network: `hxxp://msdl[.]microsoft[.]com/download/symbols` (symbol server) |
-| `b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdefa1` | `LabSample_44_WinDbgDeep.pdb` | - File path: `C:\Lab\Symbols\LabSample_44_WinDbgDeep.pdb\`<br>- Debugger output: `Loading symbols for LabSample_44_WinDbgDeep.exe` |
-
-**MITRE ATT&CK Technique:**
-- [T1218.011](https://attack.mitre.org/techniques/T1218/011/) - System Binary Proxy Execution: Rundll32 (WinDbg may be used to load and debug DLLs in a lab environment)
-
-**Authoritative Source:**
-- [Microsoft WinDbg Documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/debugging-a-user-mode-process-using-windbg)
-
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

@@ -430,52 +430,86 @@ We need 1-2 URLs; maybe give two: one to the ilspycmd documentation (GitHub) and
 
 ### Detection Signatures & Reference Artifacts
 
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Process Memory Dump Via Dotnet-Dump** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_dotnetdump_memory_dump.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Process Memory Dump Via Dotnet-Dump
+id: 53d8d3e1-ca33-4012-adf3-e05a4d652e34
+status: test
+description: |
+    Detects the execution of "dotnet-dump" with the "collect" flag. The execution could indicate potential process dumping of critical processes such as LSASS.
+references:
+    - https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-dump#dotnet-dump-collect
+    - https://twitter.com/bohops/status/1635288066909966338
+author: Nasreddine Bencherchali (Nextron Systems)
+date: 2023-03-14
+tags:
+    - attack.stealth
+    - attack.t1218
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+        - Image|endswith: '\dotnet-dump.exe'
+        - OriginalFileName: 'dotnet-dump.dll'
+    selection_cli:
+        CommandLine|contains: 'collect'
+    condition: all of selection_*
+falsepositives:
+    - Process dumping is the expected behavior of the tool. So false positives are expected in legitimate usage. The PID/Process Name of the process being dumped needs to be investigated
+level: medium
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/apt_scanbox_deeppanda.yar, author: Florian Roth (Nextron Systems)):
+
 ```yara
-rule ILSpy_Decompiler_Detect {
-    meta:
-        description = "Detects ILSpy decompiler binary or decompiled output indicators"
-        author = "DFIR Training"
-        reference = "https://attack.mitre.org/techniques/T1083/"
-        date = "2025-03"
-    strings:
-        $s1 = "ICSharpCode.ILSpy" nocase
-        $s2 = "decompiled by" nocase
-    condition:
-        uint32(0) == 0x4D5A and filesize < 10MB and ($s1 or $s2)
+rule ScanBox_Malware_Generic {
+	meta:
+		description = "Scanbox Chinese Deep Panda APT Malware http://goo.gl/MUUfjv and http://goo.gl/WXUQcP"
+		license = "Detection Rule License 1.1 https://github.com/Neo23x0/signature-base/blob/master/LICENSE"
+		author = "Florian Roth (Nextron Systems)"
+		reference1 = "http://goo.gl/MUUfjv"
+		reference2 = "http://goo.gl/WXUQcP"
+		date = "2015/02/28"
+		hash1 = "8d168092d5601ebbaed24ec3caeef7454c48cf21366cd76560755eb33aff89e9"
+		hash2 = "d4be6c9117db9de21138ae26d1d0c3cfb38fd7a19fa07c828731fa2ac756ef8d"
+		hash3 = "3fe208273288fc4d8db1bf20078d550e321d9bc5b9ab80c93d79d2cb05cbf8c2"
+		id = "f7867e65-567f-530f-83d4-b5126021e523"
+	strings:
+		/* Sample 1 */
+		$s0 = "http://142.91.76.134/p.dat" fullword ascii
+		$s1 = "HttpDump 1.1" fullword ascii
+
+		/* Sample 2 */
+		$s3 = "SecureInput .exe" fullword wide
+		$s4 = "http://extcitrix.we11point.com/vpn/index.php?ref=1" fullword ascii
+
+		/* Sample 3 */
+		$s5 = "%SystemRoot%\\System32\\svchost.exe -k msupdate" fullword ascii
+		$s6 = "ServiceMaix" fullword ascii
+
+		/* Certificate and Keywords */
+		$x1 = "Management Support Team1" fullword ascii
+		$x2 = "DTOPTOOLZ Co.,Ltd.0" fullword ascii
+		$x3 = "SEOUL1" fullword ascii
+	condition:
+		( 1 of ($s*) and 2 of ($x*) ) or
+		( 3 of ($x*) )
 }
 ```
 
-```yaml
-title: ILSpy Execution Detection
-id: 8c7a6f5e-4b3d-2c1a-9f8e-7d6c5b4a3f2e
-status: experimental
-description: Detects execution of ILSpy decompiler (ilspy.exe)
-author: DFIR Training
-logsource:
-    product: windows
-    category: process_creation
-detection:
-    selection:
-        - Image|endswith: '\ilspy.exe'
-        - OriginalFileName|contains: 'ILSpy'
-    condition: selection
-falsepositives:
-    - Legitimate use of ILSpy for software analysis
-level: low
-```
+**Real-world context (MITRE T1027 -- Obfuscated Files or Information):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1027/ -- real in-the-wild use includes Sandworm.
 
-**Reference artifacts / IOCs**
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-| Indicator Type | Value |
-|----------------|-------|
-| SHA256 (benign sample) | `d6d418aab09cc5751e757ea7b01b95d7e9c2a03cc5edc9df543f1447423cfc6e` |
-| Filename | `SampleAssembly.dll` |
-| Host artifact (process) | `ilspy.exe` spawned with parent `explorer.exe` |
-| Network artifact | DNS query for `softwareupdate[.]example[.]com` |
-
-**MITRE ATT&CK Technique:** T1083 – File and Directory Discovery  
-**Source:** https://attack.mitre.org/techniques/T1083/
-
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

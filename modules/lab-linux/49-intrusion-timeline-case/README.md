@@ -259,6 +259,111 @@ False conclusions often arise from **ignoring context**. For example, detecting 
 - [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-86.pdf)
 - [DFIR Review: Timestamp Analysis Pitfalls](https://www.dfir.review/)
 
+### Detection Signatures & Reference Artifacts
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- COM Hijacking via TreatAs** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_treatas_persistence.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: COM Hijacking via TreatAs
+id: dc5c24af-6995-49b2-86eb-a9ff62199e82
+status: test
+description: Detect modification of TreatAs key to enable "rundll32.exe -sta" command
+references:
+    - https://github.com/redcanaryco/atomic-red-team/blob/40b77d63808dd4f4eafb83949805636735a1fd15/atomics/T1546.015/T1546.015.md
+    - https://www.youtube.com/watch?v=3gz1QmiMhss&t=1251s
+author: frack113
+date: 2022-08-28
+modified: 2025-07-11
+tags:
+    - attack.privilege-escalation
+    - attack.persistence
+    - attack.t1546.015
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|endswith: 'TreatAs\(Default)'
+    filter_office:
+        Image|startswith: 'C:\Program Files\Common Files\Microsoft Shared\ClickToRun\'
+        Image|endswith: '\OfficeClickToRun.exe'
+    filter_office2:
+        Image:
+            - 'C:\Program Files\Microsoft Office\root\integration\integrator.exe'
+            - 'C:\Program Files (x86)\Microsoft Office\root\integration\integrator.exe'
+    filter_svchost:
+        # Example of target object by svchost
+        # TargetObject: HKLM\SOFTWARE\Microsoft\MsixRegistryCompatibility\Package\Microsoft.Paint_11.2208.6.0_x64__8wekyb3d8bbwe\User\SOFTWARE\Classes\CLSID\{0003000A-0000-0000-C000-000000000046}\TreatAs\(Default)
+        # TargetObject: HKU\S-1-5-21-1000000000-000000000-000000000-0000_Classes\CLSID\{0003000A-0000-0000-C000-000000000046}\TreatAs\(Default)
+        Image: 'C:\Windows\system32\svchost.exe'
+    filter_misexec:
+        # This FP has been seen during installation/updates
+        Image:
+            - 'C:\Windows\system32\msiexec.exe'
+            - 'C:\Windows\SysWOW64\msiexec.exe'
+    condition: selection and not 1 of filter_*
+falsepositives:
+    - Legitimate use
+level: medium
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/gen_osx_pyagent_persistence.yar, author: John Lambert @JohnLaTwC):
+
+```yara
+rule Persistence_Agent_MacOS {
+    meta:
+        description = "Detects a Python agent that establishes persistence on macOS"
+        author = "John Lambert @JohnLaTwC"
+        reference = "https://ghostbin.com/paste/mz5nf"
+        hash = "4288a81779a492b5b02bad6e90b2fa6212fa5f8ee87cc5ec9286ab523fc02446 cec7be2126d388707907b4f9d681121fd1e3ca9f828c029b02340ab1331a5524 e1cf136be50c4486ae8f5e408af80b90229f3027511b4beed69495a042af95be"
+
+        id = "9c69af3c-ee85-58ac-8b78-66760addc117"
+    strings:
+        $h1 = "#!/usr/bin/env python"
+        $s_1= "<plist" ascii fullword
+        $s_2= "ProgramArguments" ascii fullword
+        $s_3= "Library" ascii fullword
+        $sinterval_1= "StartInterval" ascii fullword
+        $sinterval_2= "RunAtLoad" ascii fullword
+
+        //<plist
+        $e_1 = /(AHAAbABpAHMAdA|cGxpc3|PABwAGwAaQBzAHQA|PHBsaXN0|wAcABsAGkAcwB0A|xwbGlzd)/ ascii
+
+        //ProgramArguments
+        $e_2 =/(AAcgBvAGcAcgBhAG0AQQByAGcAdQBtAGUAbgB0AHMA|AHIAbwBnAHIAYQBtAEEAcgBnAHUAbQBlAG4AdABzA|Byb2dyYW1Bcmd1bWVudH|cm9ncmFtQXJndW1lbnRz|UAByAG8AZwByAGEAbQBBAHIAZwB1AG0AZQBuAHQAcw|UHJvZ3JhbUFyZ3VtZW50c)/ ascii
+        //Library
+        $e_4 = /(AGkAYgByAGEAcgB5A|aWJyYXJ5|TABpAGIAcgBhAHIAeQ|TGlicmFye|wAaQBiAHIAYQByAHkA|xpYnJhcn)/ ascii
+
+        //StartInterval
+        $einterval_a = /(AHQAYQByAHQASQBuAHQAZQByAHYAYQBsA|dGFydEludGVydmFs|MAdABhAHIAdABJAG4AdABlAHIAdgBhAGwA|N0YXJ0SW50ZXJ2YW|U3RhcnRJbnRlcnZhb|UwB0AGEAcgB0AEkAbgB0AGUAcgB2AGEAbA)/ ascii
+        $einterval_b = /(AHUAbgBBAHQATABvAGEAZA|dW5BdExvYW|IAdQBuAEEAdABMAG8AYQBkA|J1bkF0TG9hZ|UgB1AG4AQQB0AEwAbwBhAGQA|UnVuQXRMb2Fk)/ ascii
+
+    condition:
+        uint32(0) == 0x752f2123
+        and $h1 at 0
+        and filesize < 120KB
+        and
+        (
+            (all of ($s_*) and 1 of ($sinterval*))
+            or
+            (all of ($e_*) and 1 of ($einterval*))
+        )
+
+}
+```
+
+**Real-world context (MITRE T1547.001 -- Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1547/001/
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 

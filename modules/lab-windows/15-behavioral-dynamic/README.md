@@ -351,44 +351,90 @@ Procmon’s **hidden power-user features** let you cut noise, trace execution ch
 - [SANS FOR508: Advanced Incident Response – Procmon Deep Dive](https://www.sans.org/blog/for508-advanced-incident-response-threat-hunting-training/)
 
 ### Detection Signatures & Reference Artifacts
-To detect behavioral dynamics related to malicious activities, we can use the following detection signatures:
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- COM Hijacking via TreatAs** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_treatas_persistence.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: COM Hijacking via TreatAs
+id: dc5c24af-6995-49b2-86eb-a9ff62199e82
+status: test
+description: Detect modification of TreatAs key to enable "rundll32.exe -sta" command
+references:
+    - https://github.com/redcanaryco/atomic-red-team/blob/40b77d63808dd4f4eafb83949805636735a1fd15/atomics/T1546.015/T1546.015.md
+    - https://www.youtube.com/watch?v=3gz1QmiMhss&t=1251s
+author: frack113
+date: 2022-08-28
+modified: 2025-07-11
+tags:
+    - attack.privilege-escalation
+    - attack.persistence
+    - attack.t1546.015
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|endswith: 'TreatAs\(Default)'
+    filter_office:
+        Image|startswith: 'C:\Program Files\Common Files\Microsoft Shared\ClickToRun\'
+        Image|endswith: '\OfficeClickToRun.exe'
+    filter_office2:
+        Image:
+            - 'C:\Program Files\Microsoft Office\root\integration\integrator.exe'
+            - 'C:\Program Files (x86)\Microsoft Office\root\integration\integrator.exe'
+    filter_svchost:
+        # Example of target object by svchost
+        # TargetObject: HKLM\SOFTWARE\Microsoft\MsixRegistryCompatibility\Package\Microsoft.Paint_11.2208.6.0_x64__8wekyb3d8bbwe\User\SOFTWARE\Classes\CLSID\{0003000A-0000-0000-C000-000000000046}\TreatAs\(Default)
+        # TargetObject: HKU\S-1-5-21-1000000000-000000000-000000000-0000_Classes\CLSID\{0003000A-0000-0000-C000-000000000046}\TreatAs\(Default)
+        Image: 'C:\Windows\system32\svchost.exe'
+    filter_misexec:
+        # This FP has been seen during installation/updates
+        Image:
+            - 'C:\Windows\system32\msiexec.exe'
+            - 'C:\Windows\SysWOW64\msiexec.exe'
+    condition: selection and not 1 of filter_*
+falsepositives:
+    - Legitimate use
+level: medium
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/susp_office_template_injection.yar, author: Florian Roth):
 
 ```yara
-rule Dynamic_Behavior {
-  meta:
-    description = "Detects dynamic behavior of a benign lab sample"
-    author = "Your Name"
-    date = "2023-12-01"
-  strings:
-    $s1 = "lab_sample.exe"
-    $s2 = "dynamic_behavior.dll"
-    $s3 = "http://example[.]com/lab_sample.php"
-  condition:
-    filesize < 10MB and ($s1 or $s2) and $s3
+rule EXPL_Office_TemplateInjection_Aug19 {
+   meta:
+      old_rule_name = "EXPL_Office_TemplateInjection"
+      description = "Detects possible template injections in Office documents, particularly those that load content from external sources"
+      author = "Florian Roth"
+      reference = "https://attack.mitre.org/techniques/T1221/"
+      date = "2019-08-22"
+      modified = "2025-03-20"
+      score = 75
+      hash = "f2bdf3716b39d29a9c6c3b7b3355e935594b8d8e9149a784a59dc2381fa1628a"
+      id = "2a7e1021-97be-510b-8826-d15ac06ed00e"
+   strings:
+      $x1 = /attachedTemplate" Target="http[s]?:\/\/[^"]{4,60}/ ascii
+
+      $fp1 = ".sharepoint.com"  // this could cause false negatives if the malicious template is hosted on sharepoint
+      $fp2 = ".office.com"  // this could cause false negatives if the malicious template is hosted on office.com
+   condition:
+      filesize < 20MB
+      and $x1
+      and not 1 of ($fp*)
 }
 ```
 
-```yaml
-title: Dynamic Behavior Detection
-logsource:
-  product: windows
-  category: sysmon
-detection:
-  selection:
-    EventID: 1
-    Image: 'C:\Windows\System32\lab_sample.exe'
-  condition: selection and (|all of ($*.dll, $*.exe))
-```
+**Real-world context (MITRE T1055 -- Process Injection):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1055/ -- real in-the-wild use includes Sandworm, APT32, APT37, APT38.
 
-**Reference artifacts / IOCs**
-| Indicator | Value | Description |
-| --- | --- | --- |
-| SHA256 Hash | 4f3a6a3b2c1d5e6f7a8b9c0d1e2f3a4b5c6d | Lab sample executable |
-| Filename | lab_sample.exe | Dynamic behavior executable |
-| Host Artifact | 192.0.2.10 | Source IP address |
-| Network Artifact | hxxp://example[.]com/lab_sample.php | Malicious URL |
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-This detection covers the MITRE ATT&CK techniques [T1005 - Data from Local System](https://attack.mitre.org/techniques/T1005/) and [T1010 - Application Window Discovery](https://attack.mitre.org/techniques/T1010/). For more information on YARA rules, visit the [YARA documentation](https://yara.readthedocs.io/en/v3.10.0/). For Sigma rules, refer to the [Sigma documentation](https://sigma-docs.github.io/). A detection write-up by a vendor can be found at [https://example.com/detection-write-up](https://example.com/detection-write-up).
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Tool behavior, flags, and expected output:

@@ -297,81 +297,91 @@ We need to produce a subsection markdown with:
 
 ### Detection Signatures & Reference Artifacts
 
-Then three parts: a YARA code block, a Sigma code block, and a markdown table for reference artifacts/IOCs.
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
 
-We must ensure the YARA rule is valid: rule <Name> { meta: block, strings: block (specific indicators >=6 chars), condition: uses a filesize limit AND the strings (every $var referenced in condition must be defined in strings:).
+**Sigma rule -- Scheduled Tasks Names Used By SVR For GraphicalProton Backdoor - Task Scheduler** (source: https://github.com/SigmaHQ/sigma/blob/master/rules-emerging-threats/2023/TA/Cozy-Bear/win_taskscheduler_apt_cozy_bear_graphical_proton_task_names.yml; license: Detection Rule License / DRL):
 
-Make minimal valid YARA rule.
-
-Let's pick rule PE_Bear_Deep_Demo. Provide meta: description, author, reference maybe. strings: define at least two strings each at least 6 characters. For condition: filesize < 100KB and any of them. Must reference each $var used.
-
-Condition example: condition: filesize < 100KB and ($str1 or $str2)
-
-Make sure $str1, $str2 defined.
-
-Now Sigma rule: minimal valid Sigma with title, logsource (real product/category), detection containing a named selection plus condition that references it. No condition: *.
-
-Example: title: Suspicious PE Bear Deep Activity. logsource: product: windows, category: process_creation. detection: selection: Image endswith '.exe' and CommandLine contains '*bear*'; condition: selection
-
-But need a named selection and condition referencing it. Use selection: ... condition: selection.
-
-Now table: reference artifacts / IOCs markdown table with columns: Indicator Type, Indicator, Description. Provide a SHA256 hash (benign sample), a filename, host/network artifacts (like IP, URL). Use documentation IPs or defanged.
-
-We need at least two distinct MITRE ATT&CK techniques, with ID + exact canonical name, not from the excluded list. So we can choose T1059.001 (PowerShell) is excluded? Actually T1059.001 is excluded (in list). So cannot use that. Need to avoid those excluded. Let's pick T1059.003 (Windows Command Shell) is excluded? It's in list: yes T1059.003 excluded. T1059.001 and .003 excluded. T1059 is not excluded? The list includes T1059, T1059.001, T1059.003. So T1059 itself is excluded? The list includes "T1059". Yes T1059 is excluded. So can't use T1059. Let's pick T1027 (Obfuscated/Stored Files) is excluded? Actually T1027 is excluded? The list includes T1027 and many sub-technique. Yes T1027 excluded. So need techniques not in that list.
-
-Let's choose T1059.005 (Visual Basic) is not in list? The list includes T1059.001, .003 only. So .005 is okay. Also T1059.007 (JavaScript) maybe not listed. Also T1059.008 (Python) not listed. Also T1047 (Windows Management Instrumentation) not excluded. Also T1059.004 (Unix Shell) maybe not listed. Or T1083 (File and Directory Discovery) not excluded.
-
-We need at least two distinct techniques. Provide ID and exact canonical name.
-
-Let's pick T1059.005 (Visual Basic) and T1047 (Windows Management Instrumentation). Both not excluded.
-
-Now need at least two authoritative source URLs: e.g., attack.mitre.org technique pages for those, and maybe YARA documentation.
-
-We'll output only the subsection markdown, no preamble.
-
-Let's craft.
-
-YARA rule:
-
-rule PE_Bear_Deep_Demo {
-    meta:
-        description = "Detects benign PE Bear Deep sample strings"
-        author = "Training Lab"
-        reference = "https://attack.mitre.org/techniques/T1059/005/"
-    strings:
-        $str1 = "BearDeepInit" nocase
-        $str2 = "PEBearLoader" nocase
-    condition:
-        filesize < 100KB and ($str1 or $str2)
-
-Make sure strings >=6 chars: "BearDeepInit" length 12, "PEBearLoader" length 12.
-
-Sigma rule:
-
-title: Suspicious PE Bear Deep Activity
+```yaml
+title: Scheduled Tasks Names Used By SVR For GraphicalProton Backdoor - Task Scheduler
+id: 2bfc1373-0220-4fbd-8b10-33ddafd2a142
+related:
+    - id: 8fa65166-f463-4fd2-ad4f-1436133c52e1 # Security-Audting Eventlog
+      type: similar
+status: test
+description: Hunts for known SVR-specific scheduled task names
+author: CISA
+references:
+    - https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a
+date: 2023-12-18
+tags:
+    - attack.persistence
+    - detection.emerging-threats
 logsource:
     product: windows
-    category: process_creation
+    service: taskscheduler
+    definition: 'Requirements: The "Microsoft-Windows-TaskScheduler/Operational" is disabled by default and needs to be enabled in order for this detection to trigger'
 detection:
-    sel_proc:
-        Image:
-            - '*\\pebear*.exe'
-        CommandLine:
-            - '*BearDeep*'
-    condition: sel_proc
+    selection:
+        EventID:
+            - 129 # Task Created
+            - 140 # Task Updated
+            - 141 # Task Deleted
+        TaskName:
+            - '\defender'
+            - '\Microsoft\DefenderService'
+            - '\Microsoft\Windows\Application Experience\StartupAppTaskCheck'
+            - '\Microsoft\Windows\Application Experience\StartupAppTaskCkeck'
+            - '\Microsoft\Windows\ATPUpd'
+            - '\Microsoft\Windows\Data Integrity Scan\Data Integrity Update'
+            - '\Microsoft\Windows\DefenderUPDService'
+            - '\Microsoft\Windows\IISUpdateService'
+            - '\Microsoft\Windows\Speech\SpeechModelInstallTask'
+            - '\Microsoft\Windows\WiMSDFS'
+            - '\Microsoft\Windows\Windows Defender\Defender Update Service'
+            - '\Microsoft\Windows\Windows Defender\Service Update'
+            - '\Microsoft\Windows\Windows Error Reporting\CheckReporting'
+            - '\Microsoft\Windows\Windows Error Reporting\SubmitReporting'
+            - '\Microsoft\Windows\Windows Filtering Platform\BfeOnServiceStart'
+            - '\Microsoft\Windows\WindowsDefenderService'
+            - '\Microsoft\Windows\WindowsDefenderService2'
+            - '\Microsoft\Windows\WindowsUpdate\Scheduled AutoCheck'
+            - '\Microsoft\Windows\WindowsUpdate\Scheduled Check'
+            - '\WindowUpdate'
+    condition: selection
+falsepositives:
+    - Unknown
+level: high
+```
 
-Make sure selection named and referenced.
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/apt_waterbear.yar, author: Florian Roth (Nextron Systems)):
 
-Now table:
+```yara
+rule Waterbear_1_Jun17 {
+   meta:
+      description = "Detects malware from Operation Waterbear"
+      license = "Detection Rule License 1.1 https://github.com/Neo23x0/signature-base/blob/master/LICENSE"
+      author = "Florian Roth (Nextron Systems)"
+      reference = "https://goo.gl/L9g9eR"
+      date = "2017-06-23"
+      hash1 = "dd3676f478ee6f814077a12302d38426760b0701bb629f413f7bf2ec71319db5"
+      id = "2202506a-6009-5321-a8b2-df3bff51d06f"
+   strings:
+      $s1 = "\\Release\\svc.pdb" ascii
+      $s2 = "svc.dll" fullword ascii
+   condition:
+      ( uint16(0) == 0x5a4d and filesize < 100KB and all of them )
+}
+```
 
-| Indicator Type | Indicator | Description |
-|---|---|---|
-| SHA256 | d41d8cd98f00b204e9800998ecf8427e (example) | Hash of benign PE Bear Deep sample |
-| Filename | PEBearDemo.exe | Sample executable used in lab |
-| C2 URL | hxxp://example[.]com/payload | Defanged URL used for beacon |
-| Destination IP | 198.51.100.45 | Documentation IP for C2 |
+**Real-world context (MITRE T1070.006 -- Indicator Removal: Timestomp):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1070/006/ -- real in-the-wild use includes APT28, APT29, APT32.
 
-Need at least two distinct MITRE techniques: include after table maybe as bullet list
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):

@@ -225,45 +225,76 @@ For Suricata, monitor for **SMB2 `Tree Connect` requests** (SMB2 header `Command
 
 ### Detection Signatures & Reference Artifacts
 
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- HackTool - CobaltStrike BOF Injection Pattern** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_access/proc_access_win_hktl_cobaltstrike_bof_injection_pattern.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: HackTool - CobaltStrike BOF Injection Pattern
+id: 09706624-b7f6-455d-9d02-adee024cee1d
+status: test
+description: Detects a typical pattern of a CobaltStrike BOF which inject into other processes
+references:
+    - https://github.com/boku7/injectAmsiBypass
+    - https://github.com/boku7/spawn
+author: Christian Burkard (Nextron Systems)
+date: 2021-08-04
+modified: 2023-11-28
+tags:
+    - attack.execution
+    - attack.defense-impairment
+    - attack.t1106
+    - attack.t1685
+logsource:
+    category: process_access
+    product: windows
+detection:
+    selection:
+        CallTrace|re: '^C:\\Windows\\SYSTEM32\\ntdll\.dll\+[a-z0-9]{4,6}\|C:\\Windows\\System32\\KERNELBASE\.dll\+[a-z0-9]{4,6}\|UNKNOWN\([A-Z0-9]{16}\)$'
+        GrantedAccess:
+            - '0x1028'
+            - '0x1fffff'
+    condition: selection
+falsepositives:
+    - Unknown
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/susp_office_template_injection.yar, author: Florian Roth):
+
 ```yara
-rule Detect_Lab_NetworkEmulation_Script {
-    meta:
-        description = "Detects a benign network emulation script used in training environments"
-        author = "Defensive Training Module"
-        date = "2025-04-14"
-        reference = "MITRE ATT&CK T1046 - Network Service Scanning"
-        hash = "a000000000000000000000000000000000000000000000000000000000000001"
-    strings:
-        $s1 = "netem"        // tc netem (network emulation)
-        $s2 = "emulation"    // generic emulation keyword
-        $s3 = "tc qdisc"     // traffic control queueing discipline
-    condition:
-        filesize < 10KB and any of ($s1, $s2, $s3)
+rule EXPL_Office_TemplateInjection_Aug19 {
+   meta:
+      old_rule_name = "EXPL_Office_TemplateInjection"
+      description = "Detects possible template injections in Office documents, particularly those that load content from external sources"
+      author = "Florian Roth"
+      reference = "https://attack.mitre.org/techniques/T1221/"
+      date = "2019-08-22"
+      modified = "2025-03-20"
+      score = 75
+      hash = "f2bdf3716b39d29a9c6c3b7b3355e935594b8d8e9149a784a59dc2381fa1628a"
+      id = "2a7e1021-97be-510b-8826-d15ac06ed00e"
+   strings:
+      $x1 = /attachedTemplate" Target="http[s]?:\/\/[^"]{4,60}/ ascii
+
+      $fp1 = ".sharepoint.com"  // this could cause false negatives if the malicious template is hosted on sharepoint
+      $fp2 = ".office.com"  // this could cause false negatives if the malicious template is hosted on office.com
+   condition:
+      filesize < 20MB
+      and $x1
+      and not 1 of ($fp*)
 }
 ```
 
-```yaml
-title: Process Creation - Network Emulation Command (tc netem)
-logsource:
-    product: linux
-    category: process_creation
-detection:
-    selection:
-        CommandLine|contains|all:
-            - 'tc'
-            - 'netem'
-    condition: selection
-```
+**Real-world context (MITRE T1557.001 -- Adversary-in-the-Middle: Name Resolution Poisoning and SMB Relay):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1557/001/
 
-**Reference artifacts / IOCs**
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-| sha256 | Filename | Host/Network Artifacts |
-|--------|----------|------------------------|
-| a000000000000000000000000000000000000000000000000000000000000001 | network_emulation_script.sh | Host: `/tmp/sim_network.sh`<br>Network: `192.0.2.55` (documentation), `emulation-lab[.]com` (defanged) |
-| b000000000000000000000000000000000000000000000000000000000000002 | mininet_lab.py | Host: `/opt/training/topology.py`<br>Network: `198.51.100.77` (documentation), `hxxp://netemu[.]local` |
-
-- **MITRE ATT&CK Technique:** T1046 – Network Service Scanning  
-- **Source Reference:** [https://attack.mitre.org/techniques/T1046/](https://attack.mitre.org/techniques/T1046/)
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Common Pitfalls & Result Validation
 

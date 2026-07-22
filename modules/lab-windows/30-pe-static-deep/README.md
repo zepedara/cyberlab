@@ -294,76 +294,55 @@ PE-bear provides advanced static analysis capabilities beyond basic header inspe
 
 ### Detection Signatures & Reference Artifacts
 
-Below are defensive detection signatures and reference artifacts for analyzing benign PE files in a static deep-dive context.
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
 
----
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/apt_scanbox_deeppanda.yar, author: Florian Roth (Nextron Systems)):
 
-#### YARA Rule
 ```yara
-rule BenignPE_StaticDeepDive_LabSample {
-    meta:
-        description = "Detects benign lab PE sample used for static analysis training"
-        author = "Defensive Training Module"
-        reference = "https://docs.microsoft.com/en-us/windows/win32/debug/pe-format"
-        date = "2024-05-20"
-        hash = "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
+rule ScanBox_Malware_Generic {
+	meta:
+		description = "Scanbox Chinese Deep Panda APT Malware http://goo.gl/MUUfjv and http://goo.gl/WXUQcP"
+		license = "Detection Rule License 1.1 https://github.com/Neo23x0/signature-base/blob/master/LICENSE"
+		author = "Florian Roth (Nextron Systems)"
+		reference1 = "http://goo.gl/MUUfjv"
+		reference2 = "http://goo.gl/WXUQcP"
+		date = "2015/02/28"
+		hash1 = "8d168092d5601ebbaed24ec3caeef7454c48cf21366cd76560755eb33aff89e9"
+		hash2 = "d4be6c9117db9de21138ae26d1d0c3cfb38fd7a19fa07c828731fa2ac756ef8d"
+		hash3 = "3fe208273288fc4d8db1bf20078d550e321d9bc5b9ab80c93d79d2cb05cbf8c2"
+		id = "f7867e65-567f-530f-83d4-b5126021e523"
+	strings:
+		/* Sample 1 */
+		$s0 = "http://142.91.76.134/p.dat" fullword ascii
+		$s1 = "HttpDump 1.1" fullword ascii
 
-    strings:
-        $pe_magic = { 4D 5A }               // MZ header
-        $pe_signature = { 50 45 00 00 }     // PE signature
-        $section_text = ".text"             // Common section name
-        $section_data = ".data"             // Common section name
-        $import_kernel32 = "kernel32.dll"   // Common import
-        $import_user32 = "user32.dll"       // Common import
+		/* Sample 2 */
+		$s3 = "SecureInput .exe" fullword wide
+		$s4 = "http://extcitrix.we11point.com/vpn/index.php?ref=1" fullword ascii
 
-    condition:
-        uint16(0) == 0x5A4D and             // MZ header check
-        filesize < 2MB and                  // Size limit for lab samples
-        all of them                         // All strings must be present
+		/* Sample 3 */
+		$s5 = "%SystemRoot%\\System32\\svchost.exe -k msupdate" fullword ascii
+		$s6 = "ServiceMaix" fullword ascii
+
+		/* Certificate and Keywords */
+		$x1 = "Management Support Team1" fullword ascii
+		$x2 = "DTOPTOOLZ Co.,Ltd.0" fullword ascii
+		$x3 = "SEOUL1" fullword ascii
+	condition:
+		( 1 of ($s*) and 2 of ($x*) ) or
+		( 3 of ($x*) )
 }
 ```
 
----
+**Real-world context (MITRE T1027.002 -- Obfuscated Files or Information: Software Packing):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1027/002/ -- real in-the-wild use includes Sandworm, APT29, APT3, APT38, APT39, APT41.
 
-#### Sigma Rule
-```yaml
-title: Benign PE File Static Analysis Lab Sample
-id: 1a2b3c4d-5e6f-7890-a1b2-c3d4e5f67890
-status: experimental
-description: Detects benign PE file used in static analysis training exercises
-author: Defensive Training Module
-date: 2024/05/20
-logsource:
-    product: windows
-    category: file_event
-detection:
-    selection:
-        TargetFilename|endswith: '\LabSample.exe'
-        Hashes|contains: 'SHA256=a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890'
-    condition: selection
-falsepositives:
-    - Legitimate training or educational tools
-level: informational
-```
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
----
-
-#### Reference Artifacts / IOCs
-| **Indicator Type**       | **Value**                                                                 |
-|--------------------------|---------------------------------------------------------------------------|
-| **SHA256 Hash**          | `a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890`       |
-| **Filename**             | `LabSample.exe`                                                           |
-| **File Path**            | `C:\Training\StaticAnalysis\LabSample.exe`                                |
-| **Network Artifact**     | `hxxp://192[.]0[.]2[.]100/training/labsample` (documentation IP)          |
-| **Registry Key**         | `HKCU\Software\TrainingLab\StaticAnalysis`                                |
-| **Process Name**         | `LabSample.exe`                                                           |
-
-**MITRE ATT&CK Technique:**
-- **T1059.003** - Command and Scripting Interpreter: Windows Command Shell
-
-**Authoritative Source:**
-- [Microsoft PE Format Documentation](https://docs.microsoft.com/en-us/windows/win32/debug/pe-format)
-
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

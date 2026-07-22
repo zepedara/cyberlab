@@ -275,6 +275,73 @@ When analyzing PCAP files, analysts often fall into traps that lead to false con
 - [CERT-EU: PCAP Analysis Best Practices](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_PCAP_Analysis.pdf)
 - [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://csrc.nist.gov/publications/detail/sp/800-86/final)
 
+### Detection Signatures & Reference Artifacts
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Cobalt Strike DNS Beaconing** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/network/dns/net_dns_mal_cobaltstrike.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Cobalt Strike DNS Beaconing
+id: 2975af79-28c4-4d2f-a951-9095f229df29
+status: test
+description: Detects suspicious DNS queries known from Cobalt Strike beacons
+references:
+    - https://www.icebrg.io/blog/footprints-of-fin7-tracking-actor-patterns
+    - https://www.sekoia.io/en/hunting-and-detecting-cobalt-strike/
+author: Florian Roth (Nextron Systems)
+date: 2018-05-10
+modified: 2022-10-09
+tags:
+    - attack.command-and-control
+    - attack.t1071.004
+logsource:
+    category: dns
+detection:
+    selection1:
+        query|startswith:
+            - 'aaa.stage.'
+            - 'post.1'
+    selection2:
+        query|contains: '.stage.123456.'
+    condition: 1 of selection*
+falsepositives:
+    - Unknown
+level: critical
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/gen_gcti_cobaltstrike.yar, author: gssincla@google.com):
+
+```yara
+rule CobaltStrike_Resources_Artifact32_and_Resources_Dropper_v1_49_to_v3_14
+{
+	meta:
+		description = "Cobalt Strike's resources/artifact32{.exe,.dll,big.exe,big.dll} and resources/dropper.exe signature for versions 1.49 to 3.14"
+		hash =  "40fc605a8b95bbd79a3bd7d9af73fbeebe3fada577c99e7a111f6168f6a0d37a"
+		author = "gssincla@google.com"
+		reference = "https://cloud.google.com/blog/products/identity-security/making-cobalt-strike-harder-for-threat-actors-to-abuse"
+		date = "2022-11-18"
+		
+		id = "243e3761-cbea-561c-97da-f6ba12ebc7ee"
+	strings:
+  // Decoder function for the embedded payload
+	$payloadDecoder = { 8B [2] 89 ?? 03 [2] 8B [2] 03 [2] 0F B6 18 8B [2] 89 ?? C1 ?? 1F C1 ?? 1E 01 ?? 83 ?? 03 29 ?? 03 [2] 0F B6 00 31 ?? 88 ?? 8B [2] 89 ?? 03 [2] 8B [2] 03 [2] 0F B6 12 }
+
+	condition:
+		any of them
+}
+```
+
+**Real-world context (MITRE T1572 -- Protocol Tunneling):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1572/ -- real in-the-wild use includes Sandworm, Scattered Spider, Cobalt Group.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
+
 ## Sources
 Tooling and commands:
 - SANS SIFT Workstation: https://www.sans.org/tools/sift-workstation/

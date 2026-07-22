@@ -253,62 +253,76 @@ Expected: output showing the physical offset and process context (if any) where 
 
 ### Detection Signatures & Reference Artifacts
 
-#### YARA Rule
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Kernel Memory Dump Via LiveKD** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_sysinternals_livekd_kernel_memory_dump.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Kernel Memory Dump Via LiveKD
+id: c7746f1c-47d3-43d6-8c45-cd1e54b6b0a2
+status: test
+description: Detects execution of LiveKD with the "-m" flag to potentially dump the kernel memory
+references:
+    - https://learn.microsoft.com/en-us/sysinternals/downloads/livekd
+    - https://4sysops.com/archives/creating-a-complete-memory-dump-without-a-blue-screen/
+    - https://kb.acronis.com/content/60892
+author: Nasreddine Bencherchali (Nextron Systems)
+date: 2023-05-16
+modified: 2024-03-13
+tags:
+    - attack.stealth
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+        - Image|endswith:
+              - '\livekd.exe'
+              - '\livekd64.exe'
+        - OriginalFileName: 'livekd.exe'
+    selection_cli:
+        CommandLine|contains|windash: ' -m'
+    condition: all of selection_*
+falsepositives:
+    - Unlikely in production environment
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/susp_office_template_injection.yar, author: Florian Roth):
+
 ```yara
-rule Ransomware_Memory_Artifacts {
-    meta:
-        description = "Detects common ransomware indicators in memory strings"
-        author = "DFIR Training Module"
-        date = "2025-01-01"
-    strings:
-        $s1 = "encrypt" ascii wide nocase
-        $s2 = "decrypt" ascii wide nocase
-        $s3 = "ransom" ascii wide nocase
-        $s4 = "bitcoin" ascii wide nocase
-        $s5 = "shadow" ascii wide nocase
-        $s6 = "vssadmin" ascii wide nocase
-    condition:
-        filesize < 100KB and any of ($s1, $s2, $s3, $s4, $s5, $s6)
+rule EXPL_Office_TemplateInjection_Aug19 {
+   meta:
+      old_rule_name = "EXPL_Office_TemplateInjection"
+      description = "Detects possible template injections in Office documents, particularly those that load content from external sources"
+      author = "Florian Roth"
+      reference = "https://attack.mitre.org/techniques/T1221/"
+      date = "2019-08-22"
+      modified = "2025-03-20"
+      score = 75
+      hash = "f2bdf3716b39d29a9c6c3b7b3355e935594b8d8e9149a784a59dc2381fa1628a"
+      id = "2a7e1021-97be-510b-8826-d15ac06ed00e"
+   strings:
+      $x1 = /attachedTemplate" Target="http[s]?:\/\/[^"]{4,60}/ ascii
+
+      $fp1 = ".sharepoint.com"  // this could cause false negatives if the malicious template is hosted on sharepoint
+      $fp2 = ".office.com"  // this could cause false negatives if the malicious template is hosted on office.com
+   condition:
+      filesize < 20MB
+      and $x1
+      and not 1 of ($fp*)
 }
 ```
 
-#### Sigma Rule
-```yaml
-title: Ransomware Command-Line Artifacts
-logsource:
-    product: windows
-    category: process_creation
-detection:
-    selection:
-        CommandLine|contains:
-            - "encrypt"
-            - "decrypt"
-            - "ransom"
-            - "bitcoin"
-    condition: selection
-```
+**Real-world context (MITRE T1057 -- Process Discovery):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1057/ -- real in-the-wild use includes Akira, APT1, APT28, APT3, APT37.
 
-#### Reference Artifacts / IOCs
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-| Type | Indicator |
-|------|-----------|
-| SHA256 | `a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a` |
-| Filename | `ransomware_sample.exe` |
-| Host Artifact | Process memory strings containing "encrypt" and "vssadmin" |
-| Network Artifact | C2 domain: `192.0.2.100` (non‑routable test IP) |
-| Network Artifact | Defanged domain: `ransom[.]example[.]com` |
-
-#### MITRE ATT&CK Techniques
-
-- T1569.002 – Service Execution  
-- T1053.005 – Scheduled Task
-
-#### Authoritative Sources
-
-- https://attack.mitre.org/techniques/T1569/002/  
-- https://attack.mitre.org/techniques/T1053/005/  
-- https://yara.readthedocs.io/en/stable/writingrules.html  
-- https://github.com/SigmaHQ/sigma-specification
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Adversary Emulation & Red-Team Perspective
 

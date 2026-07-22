@@ -344,54 +344,43 @@ global rule Whitelist_Trusted_Signer {
 
 ### Detection Signatures & Reference Artifacts
 
-#### YARA Rule
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/yara_mixed_ext_vars.yar, author: Florian Roth (Nextron Systems)):
 
 ```yara
-rule BenignLabMarker {
-    meta:
-        description = "Detects a benign lab sample marker string for training"
-        author = "Training Author"
-        date = "2023-10-01"
-        reference = "https://yara.readthedocs.io/en/stable/writingrules.html"
-    strings:
-        $marker = "BenignLabMarker"
-    condition:
-        filesize < 1MB and $marker
+
+import "pe"
+import "math"
+
+rule Acrotray_Anomaly {
+   meta:
+      description = "Detects an acrotray.exe that does not contain the usual strings"
+      license = "Detection Rule License 1.1 https://github.com/Neo23x0/signature-base/blob/master/LICENSE"
+      author = "Florian Roth (Nextron Systems)"
+      score = 75
+      id = "e3fef644-e535-5137-ac98-2fd1b7ca4361"
+   strings:
+      $s1 = "PDF/X-3:2002" fullword wide
+      $s2 = "AcroTray - Adobe Acrobat Distiller helper application" fullword wide
+      $s3 = "MS Sans Serif" fullword wide
+      $s4 = "COOLTYPE.DLL" fullword ascii
+   condition:
+      uint16(0) == 0x5a4d and filesize < 3000KB
+      and (filename == "acrotray.exe" or filename == "AcroTray.exe")
+      and not all of ($s*)
 }
 ```
 
-#### Sigma Rule
+**Real-world context (MITRE T1071.001 -- Application Layer Protocol: Web Protocols):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1071/001/ -- real in-the-wild use includes Sandworm, APT18, APT19, APT28.
 
-```yaml
-title: Benign Lab Process Execution Detection
-logsource:
-    product: windows
-    category: process_creation
-detection:
-    selection:
-        Image|endswith: '\calc.exe'
-        CommandLine|contains: 'educational_lab'
-    condition: selection
-```
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-#### Reference Artifacts / IOCs
-
-| Type                  | Value                                                                 |
-|-----------------------|-----------------------------------------------------------------------|
-| SHA256 Hash           | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (example for benign file) |
-| Filename              | `lab_sample.docx`                                                     |
-| Host Artifact         | `C:\Users\LabUser\Desktop\lab_sample.docx`                           |
-| Network Artifact      | `hxxp://lab.example[.]com/training`                                   |
-
-**MITRE ATT&CK Techniques Referenced**  
-- T1203 – Exploitation for Client Execution (detection of malicious document opening)  
-- T1083 – File and Directory Discovery (detection of file access/retrieval)
-
-**Authoritative Sources**  
-- MITRE ATT&CK: https://attack.mitre.org/techniques/T1203/  
-- MITRE ATT&CK: https://attack.mitre.org/techniques/T1083/  
-- YARA documentation: https://yara.readthedocs.io/en/stable/writingrules.html  
-- Sigma specification: https://github.com/SigmaHQ/sigma-specification
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, or recognized project docs):

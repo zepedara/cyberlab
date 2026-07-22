@@ -213,47 +213,81 @@ When analyzing shellcode with **scdbg**, advanced emulation features can reveal 
 
 ### Detection Signatures & Reference Artifacts
 
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Potential CobaltStrike Service Installations - Registry** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_cobaltstrike_service_installs.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Potential CobaltStrike Service Installations - Registry
+id: 61a7697c-cb79-42a8-a2ff-5f0cdfae0130
+status: test
+description: |
+    Detects known malicious service installs that appear in cases in which a Cobalt Strike beacon elevates privileges or lateral movement.
+references:
+    - https://www.sans.org/webcasts/tech-tuesday-workshop-cobalt-strike-detection-log-analysis-119395
+author: Wojciech Lesicki
+date: 2021-06-29
+modified: 2024-03-25
+tags:
+    - attack.persistence
+    - attack.execution
+    - attack.privilege-escalation
+    - attack.lateral-movement
+    - attack.t1021.002
+    - attack.t1543.003
+    - attack.t1569.002
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection_key:
+        - TargetObject|contains: '\System\CurrentControlSet\Services'
+        - TargetObject|contains|all:
+              - '\System\ControlSet'
+              - '\Services'
+    selection_details:
+        - Details|contains|all:
+              - 'ADMIN$'
+              - '.exe'
+        - Details|contains|all:
+              - '%COMSPEC%'
+              - 'start'
+              - 'powershell'
+    condition: all of selection_*
+falsepositives:
+    - Unlikely
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/gen_ps1_shellcode.yar, author: Nick Carr, David Ledbetter):
+
 ```yara
-rule Shellcode_54Case_Benign {
-    meta:
-        description = "Detects benign shellcode sample from 54-shellcode-case lab"
-        author = "Training Module"
-        date = "2025-03-24"
-        reference = "https://attack.mitre.org/techniques/T1055/"
-    strings:
-        $sc1 = { 90 90 90 90 90 90 90 90 }  // NOP sled
-        $sc2 = "shellcode"                  // string hint
-        $sc3 = { 31 c0 50 68 2f 2f 73 }    // typical shellcode prefix
-    condition:
-        filesize < 10KB and any of ($sc1, $sc2, $sc3)
+rule Base64_PS1_Shellcode {
+   meta:
+      description = "Detects Base64 encoded PS1 Shellcode"
+      author = "Nick Carr, David Ledbetter"
+      reference = "https://twitter.com/ItsReallyNick/status/1062601684566843392"
+      date = "2018-11-14"
+      score = 65
+      id = "7c3cec3b-a192-5bfd-b4f1-22b1afeb717e"
+   strings:
+      $substring = "AAAAYInlM"
+      $pattern1 = "/OiCAAAAYInlM"
+      $pattern2 = "/OiJAAAAYInlM"
+   condition:
+      $substring and 1 of ($p*)
 }
 ```
 
-```yaml
-title: Benign Shellcode Execution from 54-shellcode-case Lab
-logsource:
-    product: windows
-    category: process_creation
-detection:
-    selection:
-        Image|endswith: '\rundll32.exe'
-        CommandLine|contains|all:
-            - 'shellcode'
-            - 'calc'
-    condition: selection
-```
+**Real-world context (MITRE T1027.007 -- Obfuscated Files or Information: Dynamic API Resolution):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1027/007/
 
-**Reference artifacts / IOCs**
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-| Artifact Type | Value |
-|---------------|-------|
-| SHA256 hash   | `2a7e8d9c9b3f4e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f` |
-| Filename      | `shellcode_lab_54.bin` |
-| Host artifact | Process injection via `CreateRemoteThread` to `notepad.exe` |
-| Network artifact (outbound) | `192[.]0[.]2[.]1:4444` (C2 simulation) |
-| Network artifact (domain)   | `shellcode[.]example[.]com` |
-| MITRE ATT&CK | T1055 (Process Injection) – [https://attack.mitre.org/techniques/T1055/](https://attack.mitre.org/techniques/T1055/) |
-
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

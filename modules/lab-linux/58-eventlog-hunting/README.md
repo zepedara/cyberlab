@@ -54,6 +54,80 @@ Hayabusa ranks detections by severity using Sigma rules; the highest hit corresp
 - **T1547.001** — Registry Run Keys / Startup Folder — persistence via run keys detectable in registry and logon events [MITRE ATT&CK T1547.001]
 - **T1562.001** — Impair Defenses: Disable or Modify Tools — stopping security services leaves event log traces [MITRE ATT&CK T1562.001]
 
+### Detection Signatures & Reference Artifacts
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- PowerShell as a Service in Registry** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_powershell_as_service.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: PowerShell as a Service in Registry
+id: 4a5f5a5e-ac01-474b-9b4e-d61298c9df1d
+status: test
+description: Detects that a powershell code is written to the registry as a service.
+references:
+    - https://speakerdeck.com/heirhabarov/hunting-for-powershell-abuse
+author: oscd.community, Natalia Shornikova
+date: 2020-10-06
+modified: 2023-08-17
+tags:
+    - attack.execution
+    - attack.t1569.002
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|contains: '\Services\'
+        TargetObject|endswith: '\ImagePath'
+        Details|contains:
+            - 'powershell'
+            - 'pwsh'
+    condition: selection
+falsepositives:
+    - Unknown
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/gen_xor_hunting.yar, author: Florian Roth):
+
+```yara
+rule SUSP_XORed_Mozilla_Oct19 {
+   meta:
+      old_rule_name = "SUSP_XORed_Mozilla"
+      description = "Detects suspicious single byte XORed keyword 'Mozilla/5.0' - it uses yara's XOR modifier and therefore cannot print the XOR key. You can use the CyberChef recipe linked in the reference field to brute force the used key."
+      author = "Florian Roth"
+      reference = "https://gchq.github.io/CyberChef/#recipe=XOR_Brute_Force()"
+      date = "2019-10-28"
+      modified = "2023-11-03"
+      score = 60
+      id = "71e5b399-c384-5330-ae52-4e0a806e7969"
+   strings:
+      $xo1 = "Mozilla/5.0" xor ascii wide
+      $xof1 = "Mozilla/5.0" ascii wide
+
+      $fpa1 = "Sentinel Labs" wide
+      $fpa2 = "<filter object at" ascii /* Norton Security */
+
+      $fpb1 = { 64 65 78 0a 30 33 35 } /* dex.035 */
+   condition:
+      $xo1 
+      and not $xof1 
+      and not 1 of ($fpa*)
+      and not $fpb1 at 0
+}
+```
+
+**Real-world context (MITRE T1059.001 -- Command and Scripting Interpreter: PowerShell):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1059/001/ -- real in-the-wild use includes Sandworm, Akira.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
+
 ## Sources
 - Hayabusa: https://github.com/Yamato-Security/hayabusa (Official documentation and rule set)
 - Chainsaw: https://github.com/WithSecureLabs/chainsaw (Official documentation and mappings)

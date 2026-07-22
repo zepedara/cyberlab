@@ -349,41 +349,90 @@ This trio supports detection of techniques like **T1048 (Exfiltration Over Alter
 
 ### Detection Signatures & Reference Artifacts
 
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- WSL Kali-Linux Usage** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_wsl_kali_linux_usage.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: WSL Kali-Linux Usage
+id: 6f1a11aa-4b8a-4b7f-9e13-4d3e4ff0e0d4
+status: experimental
+description: Detects the use of Kali Linux through Windows Subsystem for Linux
+references:
+    - https://medium.com/@redfanatic7/running-kali-linux-on-windows-51ad95166e6e
+    - https://learn.microsoft.com/en-us/windows/wsl/install
+author: Swachchhanda Shrawan Poudel (Nextron Systems)
+date: 2025-10-10
+tags:
+    - attack.stealth
+    - attack.t1202
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img_appdata:
+        - Image|contains|all:
+              - ':\Users\'
+              - '\AppData\Local\packages\KaliLinux'
+        - Image|contains|all:
+              - ':\Users\'
+              - '\AppData\Local\Microsoft\WindowsApps\kali.exe'
+    selection_img_windowsapps:
+        Image|contains: ':\Program Files\WindowsApps\KaliLinux.'
+        Image|endswith: '\kali.exe'
+    selection_kali_wsl_parent:
+        ParentImage|endswith:
+            - '\wsl.exe'
+            - '\wslhost.exe'
+    selection_kali_wsl_child:
+        - Image|contains:
+              - '\kali.exe'
+              - '\KaliLinux'
+        - CommandLine|contains:
+              - 'Kali.exe'
+              - 'Kali-linux'
+              - 'kalilinux'
+    filter_main_install_uninstall:
+        CommandLine|contains:
+            - ' -i '
+            - ' --install '
+            - ' --unregister '
+    condition: 1 of selection_img_* or all of selection_kali_* and not 1 of filter_main_*
+falsepositives:
+    - Legitimate installation or usage of Kali Linux WSL by administrators or security teams
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/apt_winnti_linux.yar, author: Silas Cutler (havex [@] chronicle.security), Chronicle Security):
+
 ```yara
-rule Linux_Triage_Script {
+rule APT_MAL_WinntiLinux_Dropper_AzazelFork_May19 : azazel_fork {
     meta:
-        author = "Training Module"
-        description = "Detects a benign Linux triage script for educational purposes"
-        hash = "a512b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f"
+        description = "Detection of Linux variant of Winnti"
+        author = "Silas Cutler (havex [@] chronicle.security), Chronicle Security"
+        version = "1.0"
+        date = "2019-05-15"
+        TLP = "White"
+        sha256 = "4741c2884d1ca3a40dadd3f3f61cb95a59b11f99a0f980dbadc663b85eb77a2a"
+        id = "d641de9a-e563-5067-b7e4-0aa83a087ed4"
     strings:
-        $s1 = "triage"
-        $s2 = "commands"
-        $s3 = "system_info"
+        $config_decr = { 48 89 45 F0 C7 45 EC 08 01 00 00 C7 45 FC 28 00 00 00 EB 31 8B 45 FC 48 63 D0 48 8B 45 F0 48 01 C2 8B 45 FC 48 63 C8 48 8B 45 F0 48 01 C8 0F B6 00 89 C1 8B 45 F8 89 C6 8B 45 FC 01 F0 31 C8 88 02 83 45 FC 01 }
+        $export1 = "our_sockets"
+        $export2 = "get_our_pids"
     condition:
-        filesize < 100KB and all of them
+        uint16(0) == 0x457f and all of them
 }
 ```
 
-```yaml
-title: Linux Triage Script Execution
-logsource:
-    product: linux
-    category: process_creation
-detection:
-    selection:
-        CommandLine|contains: 'triage'
-    condition: selection
-```
+**Real-world context (MITRE T1071.001 -- Application Layer Protocol: Web Protocols):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1071/001/ -- real in-the-wild use includes Sandworm, APT18, APT19, APT28.
 
-| **Reference artifacts / IOCs** | |
-|-------------------------------|-|
-| **sha256**                    | a512b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f |
-| **filename**                  | triage.sh |
-| **host artifacts**            | Process: bash `/tmp/triage.sh` |
-| **network artifacts**         | Connection to `192.0.2.1:443` (defanged) |
-| **MITRE ATT&CK**              | T1059.003 – Unix Shell |
-| **Reference**                 | https://attack.mitre.org/techniques/T1059/003/ |
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

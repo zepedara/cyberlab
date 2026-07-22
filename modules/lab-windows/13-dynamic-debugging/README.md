@@ -290,6 +290,85 @@ To evade detection, attackers may:
 - [FireEye: Debugger Evasion Techniques](https://www.fireeye.com/blog/threat-research/2020/08/debugger-evasion-techniques.html)
 - [NCC Group: Red Team Tactics for Dynamic Analysis](https://research.nccgroup.com/2021/03/11/red-team-tactics-for-dynamic-analysis/)
 
+### Detection Signatures & Reference Artifacts
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Potential Process Injection Via Msra.EXE** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_msra_process_injection.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Potential Process Injection Via Msra.EXE
+id: 744a188b-0415-4792-896f-11ddb0588dbc
+status: test
+description: Detects potential process injection via Microsoft Remote Asssistance (Msra.exe) by looking at suspicious child processes spawned from the aforementioned process. It has been a target used by many threat actors and used for discovery and persistence tactics
+references:
+    - https://www.microsoft.com/security/blog/2021/12/09/a-closer-look-at-qakbots-latest-building-blocks-and-how-to-knock-them-down/
+    - https://www.fortinet.com/content/dam/fortinet/assets/analyst-reports/ar-qakbot.pdf
+author: Alexander McDonald
+date: 2022-06-24
+modified: 2023-02-03
+tags:
+    - attack.privilege-escalation
+    - attack.stealth
+    - attack.t1055
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        ParentImage|endswith: '\msra.exe'
+        ParentCommandLine|endswith: 'msra.exe'
+        Image|endswith:
+            - '\arp.exe'
+            - '\cmd.exe'
+            - '\net.exe'
+            - '\netstat.exe'
+            - '\nslookup.exe'
+            - '\route.exe'
+            - '\schtasks.exe'
+            - '\whoami.exe'
+    condition: selection
+falsepositives:
+    - Legitimate use of Msra.exe
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/susp_office_template_injection.yar, author: Florian Roth):
+
+```yara
+rule EXPL_Office_TemplateInjection_Aug19 {
+   meta:
+      old_rule_name = "EXPL_Office_TemplateInjection"
+      description = "Detects possible template injections in Office documents, particularly those that load content from external sources"
+      author = "Florian Roth"
+      reference = "https://attack.mitre.org/techniques/T1221/"
+      date = "2019-08-22"
+      modified = "2025-03-20"
+      score = 75
+      hash = "f2bdf3716b39d29a9c6c3b7b3355e935594b8d8e9149a784a59dc2381fa1628a"
+      id = "2a7e1021-97be-510b-8826-d15ac06ed00e"
+   strings:
+      $x1 = /attachedTemplate" Target="http[s]?:\/\/[^"]{4,60}/ ascii
+
+      $fp1 = ".sharepoint.com"  // this could cause false negatives if the malicious template is hosted on sharepoint
+      $fp2 = ".office.com"  // this could cause false negatives if the malicious template is hosted on office.com
+   condition:
+      filesize < 20MB
+      and $x1
+      and not 1 of ($fp*)
+}
+```
+
+**Real-world context (MITRE T1140 -- Deobfuscate/Decode Files or Information):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1140/ -- real in-the-wild use includes APT19, APT28, APT38, APT39.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
+
 ## Sources
 - x64dbg official site — https://x64dbg.com/ ; docs — https://help.x64dbg.com/
 - x64dbg `bp` command reference — https://help.x64dbg.com/en/latest/commands/breakpoints/bp.html

@@ -308,38 +308,56 @@ Beyond basic macro extraction, `olevba` and `oledump` offer powerful flags for d
 - [OLE Tools GitHub: Advanced Usage](https://github.com/decalage
 
 ### Detection Signatures & Reference Artifacts
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/apt_scanbox_deeppanda.yar, author: Florian Roth (Nextron Systems)):
+
 ```yara
-rule OLETools_Sample {
-  meta:
-    description = "Detects a benign OLETools sample"
-    author = "Your Name"
-    date = "2023-12-01"
-  strings:
-    $oletools_header = { 00 00 00 00 00 00 00 00 }
-    $oletools_string = "OLETools"
-  condition:
-    filesize < 100KB and ($oletools_header at 0) and ($oletools_string)
+rule ScanBox_Malware_Generic {
+	meta:
+		description = "Scanbox Chinese Deep Panda APT Malware http://goo.gl/MUUfjv and http://goo.gl/WXUQcP"
+		license = "Detection Rule License 1.1 https://github.com/Neo23x0/signature-base/blob/master/LICENSE"
+		author = "Florian Roth (Nextron Systems)"
+		reference1 = "http://goo.gl/MUUfjv"
+		reference2 = "http://goo.gl/WXUQcP"
+		date = "2015/02/28"
+		hash1 = "8d168092d5601ebbaed24ec3caeef7454c48cf21366cd76560755eb33aff89e9"
+		hash2 = "d4be6c9117db9de21138ae26d1d0c3cfb38fd7a19fa07c828731fa2ac756ef8d"
+		hash3 = "3fe208273288fc4d8db1bf20078d550e321d9bc5b9ab80c93d79d2cb05cbf8c2"
+		id = "f7867e65-567f-530f-83d4-b5126021e523"
+	strings:
+		/* Sample 1 */
+		$s0 = "http://142.91.76.134/p.dat" fullword ascii
+		$s1 = "HttpDump 1.1" fullword ascii
+
+		/* Sample 2 */
+		$s3 = "SecureInput .exe" fullword wide
+		$s4 = "http://extcitrix.we11point.com/vpn/index.php?ref=1" fullword ascii
+
+		/* Sample 3 */
+		$s5 = "%SystemRoot%\\System32\\svchost.exe -k msupdate" fullword ascii
+		$s6 = "ServiceMaix" fullword ascii
+
+		/* Certificate and Keywords */
+		$x1 = "Management Support Team1" fullword ascii
+		$x2 = "DTOPTOOLZ Co.,Ltd.0" fullword ascii
+		$x3 = "SEOUL1" fullword ascii
+	condition:
+		( 1 of ($s*) and 2 of ($x*) ) or
+		( 3 of ($x*) )
 }
 ```
-```yaml
-title: OLETools Sample Detection
-logsource:
-  product: Windows Security Audit Log
-  category: Process Creation
-detection:
-  selection:
-    Image: 'C:\\\\Windows\\\\System32\\\\cmd.exe'
-  condition: selection and |contains|:{Image: 'oletools'}
-```
-**Reference artifacts / IOCs**
-| Type | Indicator | Description |
-| --- | --- | --- |
-| Hash | 4a4445532a2e2c2f2b2d2c21187a8e9f | SHA256 hash of the benign sample |
-| Filename | oletools_sample.exe | Name of the sample executable |
-| Host Artifact | 192.0.2.10 | IP address of the host where the sample was run |
-| Network Artifact | hxxp://example[.]com/oletools | URL where the sample was downloaded from |
-This detection content is related to the MITRE ATT&CK technique [T1115 - Scope](https://attack.mitre.org/techniques/T1115/) and can be used to detect and analyze the behavior of OLETools. For more information, refer to the [OLETools documentation](https://www.decalage.info/oletools).
 
+**Real-world context (MITRE T1204.002 -- User Execution: Malicious File):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1204/002/ -- real in-the-wild use includes Sandworm.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

@@ -339,42 +339,84 @@ Now reference artifacts table:
 To further enhance password cracking capabilities, it's crucial to explore additional features and commands in tools like hashcat and John the Ripper. Hashcat's mask attack (-a 3) allows for a customizable attack using a user-defined mask, which can be particularly useful when you have some knowledge about the password's structure. For example, `hashcat -m 0 -a 3 example.hash ?l?l?l?d` attempts to crack a hash using a mask that specifies a password composed of three lowercase letters followed by a digit. Hybrid modes (-a 6/7) combine dictionary and mask attacks, offering a powerful way to crack passwords that are based on dictionary words but with modifications. John the Ripper's --loopback and --single modes are also valuable, with --loopback allowing you to feed the output of one cracking mode back into another, and --single attempting to crack each password individually using a variety of methods. These techniques align with the goals of [T1625: Graphical User Interface](https://attack.mitre.org/techniques/T1625/) and [T1211: Exploitation for Credential Access](https://attack.mitre.org/techniques/T1211/), highlighting the importance of understanding and utilizing advanced password cracking methods for both offensive and defensive cybersecurity practices. For more detailed information and examples, refer to the official documentation at [https://www.hackingarticles.in/category/hashcat/](https://www.hackingarticles.in/category/hashcat/) and [https://www.openwall.com/john/doc/](https://www.openwall.com/john/doc/).
 
 ### Detection Signatures & Reference Artifacts
-To detect password cracking attempts, the following rules and indicators can be used:
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Password Set to Never Expire via WMI** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_wmi_password_never_expire.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Password Set to Never Expire via WMI
+id: 7864a175-3654-4824-9f0d-f0da18ab27c0
+status: experimental
+description: |
+    Detects the use of wmic.exe to modify user account settings and explicitly disable password expiration.
+references:
+    - https://www.huntress.com/blog/the-unwanted-guest
+author: "Daniel Koifman (KoifSec)"
+date: 2025-07-30
+tags:
+    - attack.privilege-escalation
+    - attack.execution
+    - attack.persistence
+    - attack.t1047
+    - attack.t1098
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:   # Example command simulated:  wmic  useraccount where name='guest' set passwordexpires=false
+        - Image|endswith: '\wmic.exe'
+        - OriginalFileName: 'wmic.exe'
+    selection_cli:
+        CommandLine|contains|all:
+            - 'useraccount'
+            - ' set '
+            - 'passwordexpires'
+            - 'false'
+    condition: all of selection_*
+falsepositives:
+    - Legitimate administrative activity
+level: medium
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/mal_passwordstate_backdoor.yar, author: Florian Roth (Nextron Systems)):
+
 ```yara
-rule Password_Cracking_Detection {
-  meta:
-    description = "Detects password cracking tools"
-    author = "Defensive Training"
-    date = "2023-12-01"
-  strings:
-    $a = "password" ascii
-    $b = "crack" ascii
-    $c = "hash" ascii
-  condition:
-    filesize < 10MB and ($a or $b or $c)
+rule MAL_Passwordstate_Moserware_Backdoor_Apr21_1 {
+   meta:
+      description = "Detects backdoor used in Passwordstate incident"
+      author = "Florian Roth (Nextron Systems)"
+      reference = "https://thehackernews.com/2021/04/passwordstate-password-manager-update.html"
+      date = "2021-04-25"
+      hash1 = "c2169ab4a39220d21709964d57e2eafe4b68c115061cbb64507cfbbddbe635c6"
+      hash2 = "f23f9c2aaf94147b2c5d4b39b56514cd67102d3293bdef85101e2c05ee1c3bf9"
+      id = "061de3ae-c404-5e4a-a16b-b3b208b1ae7f"
+   strings:
+      $x1 = "https://passwordstate-18ed2.kxcdn.com" wide
+
+      $s1 = " ProxyUserName, ProxyPassword FROM [SystemSettings]" wide fullword
+      $s2 = "PasswordstateService.Passwordstate.Crypto" wide
+      $s3 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.128 Safari" wide fullword
+
+      $op1 = { 00 4c 00 4e 00 43 00 4c 00 49 00 31 00 31 00 3b 00 00 17 }
+      $op2 = { 4c 00 49 00 31 00 31 00 3b 00 00 17 50 00 72 00 }
+      $op3 = { 61 00 74 00 65 00 2d 00 31 00 38 00 65 00 64 00 32 00 2e 00 6b 00 78 00 }
+   condition:
+      uint16(0) == 0x5a4d and
+      filesize < 200KB and
+      1 of ($x*) or 3 of them
 }
 ```
-```yaml
-title: Password Cracking Detection
-logsource:
-  product: windows
-  category: security
-detection:
-  selection:
-    PasswordCracking:
-      EventID: 4625
-      Keywords: 'Audit Failure'
-  condition:
-    selection and |contains|:{PasswordCracking: 'password'}
-```
-**Reference artifacts / IOCs**
-| Indicator | Description | Technique |
-| --- | --- | --- |
-| sha256: 4f3a5f4c2b1a6d7e8 | password_cracker.exe | [T1111: Password Cracking](https://attack.mitre.org/techniques/T1111), [T1204: User Execution](https://attack.mitre.org/techniques/T1204) |
-| filename: password_cracker.log | Log file containing cracked passwords | [T1111: Password Cracking](https://attack.mitre.org/techniques/T1111), [T1211: Exploitation for Credential Access](https://attack.mitre.org/techniques/T1211) |
-| host artifact: 192.0.2.10 | IP address of the host running the password cracker |  |
-| network artifact: hxxp://example[.]com/password_cracker | URL used to download the password cracker |  |
-For more information on YARA rules, visit the [official YARA documentation](https://yara.readthedocs.io/en/v4.0.0/). For more information on Sigma rules, visit the [official Sigma documentation](https://sigma-docs.github.io/). To learn more about password cracking techniques, visit the [MITRE ATT&CK website](https://attack.mitre.org/).
+
+**Real-world context (MITRE T1003.006 -- OS Credential Dumping: DCSync):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1003/006/ -- real in-the-wild use includes Scattered Spider, Mustang Panda, APT29.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):

@@ -285,52 +285,87 @@ Mastering Metasploit’s core workflow requires proficiency with its most powerf
 
 ### Detection Signatures & Reference Artifacts
 
-#### YARA Rule
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
 
-```yara
-rule Metasploit_Staged_Payload {
-    meta:
-        description = "Detects benign Metasploit staged payload artifacts for training"
-        author = "Training Module"
-        date = "2025-04-10"
-        reference = "https://attack.mitre.org/techniques/T1203/"
-    strings:
-        $s1 = "Meterpreter" ascii nocase
-        $s2 = "payload" ascii
-    condition:
-        filesize < 5MB and any of them
-}
-```
-
-#### Sigma Rule
+**Sigma rule -- Potential Meterpreter/CobaltStrike Activity** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_hktl_meterpreter_getsystem.yml; license: Detection Rule License / DRL):
 
 ```yaml
-title: Metasploit Payload Process Activity
+title: Potential Meterpreter/CobaltStrike Activity
+id: 15619216-e993-4721-b590-4c520615a67d
+status: test
+description: Detects the use of getsystem Meterpreter/Cobalt Strike command by detecting a specific service starting
+references:
+    - https://speakerdeck.com/heirhabarov/hunting-for-privilege-escalation-in-windows-environment
+    - https://blog.cobaltstrike.com/2014/04/02/what-happens-when-i-type-getsystem/
+author: Teymur Kheirkhabarov, Ecco, Florian Roth
+date: 2019-10-26
+modified: 2023-02-05
+tags:
+    - attack.privilege-escalation
+    - attack.stealth
+    - attack.t1134.001
+    - attack.t1134.002
 logsource:
     category: process_creation
     product: windows
 detection:
-    selection:
-        EventID: 4688
+    selection_img:
+        ParentImage|endswith: '\services.exe'
+    selection_technique_1:
+        # Examples:
+        #   Meterpreter  getsystem technique 1: cmd.exe /c echo 559891bb017 > \\.\pipe\5e120a
+        #   CobaltStrike getsystem technique 1b (expanded env var): %COMSPEC% /c echo 559891bb017 > \\.\pipe\5e120a
+        #   CobaltStrike getsystem technique 1: %COMSPEC% /c echo 559891bb017 > \\.\pipe\5e120a
+        CommandLine|contains|all:
+            - '/c'
+            - 'echo'
+            - '\pipe\'
         CommandLine|contains:
-            - 'payload'
-            - 'Meterpreter'
-    condition: selection
+            - 'cmd'
+            - '%COMSPEC%'
+    selection_technique_2:
+        # meterpreter getsystem technique 2: rundll32.exe C:\Users\test\AppData\Local\Temp\tmexsn.dll,a /p:tmexsn
+        CommandLine|contains|all:
+            - 'rundll32'
+            - '.dll,a'
+            - '/p:'
+    filter_defender:
+        CommandLine|contains: 'MpCmdRun'
+    condition: selection_img and 1 of selection_technique_* and not 1 of filter_*
+falsepositives:
+    - Commandlines containing components like cmd accidentally
+    - Jobs and services started with cmd
+level: high
 ```
 
-#### Reference Artifacts / IOCs
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/gen_metasploit_payloads.yar, author: Florian Roth (Nextron Systems)):
 
-| Artifact Type | Value |
-|---------------|-------|
-| SHA256 Hash | a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2 |
-| File Name | payload_x64.exe |
-| File Path | C:\Users\Admin\Downloads\payload.exe |
-| Network (Source) | 192.0.2.10 |
-| Network (Destination) | 203.0.113.20:4444 |
-| Domain (Defanged) | metasploit-staged[.]com |
-| MITRE ATT&CK | T1203 – Exploitation for Client Execution |
-| Source URL | [https://attack.mitre.org/techniques/T1203/](https://attack.mitre.org/techniques/T1203/) |
+```yara
+rule Msfpayloads_msf {
+   meta:
+      description = "Metasploit Payloads - file msf.sh"
+      author = "Florian Roth (Nextron Systems)"
+      reference = "Internal Research"
+      date = "2017-02-09"
+      modified = "2022-08-18"
+      hash1 = "320a01ec4e023fb5fbbaef963a2b57229e4f918847e5a49c7a3f631cb556e96c"
+      id = "c56dbb8e-1e03-5112-b2ef-a0adfd14dffa"
+   strings:
+      $s1 = "export buf=\\" ascii
+   condition:
+      filesize < 5MB and $s1
+}
+```
 
+**Real-world context (MITRE T1046 -- Network Service Discovery):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1046/ -- real in-the-wild use includes APT32, APT39, APT41.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

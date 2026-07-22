@@ -250,41 +250,55 @@ These capabilities directly support detection of **T1071.002 – Web Protocols**
 
 ### Detection Signatures & Reference Artifacts
 
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/apt_scanbox_deeppanda.yar, author: Florian Roth (Nextron Systems)):
+
 ```yara
-rule LabNetworkSniff_Sample
-{
-    meta:
-        description = "Detects a benign educational pcap sample used in Wireshark deep analysis training"
-        author = "Training Module"
-        reference = "https://attack.mitre.org/techniques/T1049/"
-    strings:
-        $s1 = "GET /lab-sample" ascii
-        $s2 = { 48 54 54 50 2f 31 2e 31 } // "HTTP/1.1" hex
-    condition:
-        filesize < 10MB and any of them
+rule ScanBox_Malware_Generic {
+	meta:
+		description = "Scanbox Chinese Deep Panda APT Malware http://goo.gl/MUUfjv and http://goo.gl/WXUQcP"
+		license = "Detection Rule License 1.1 https://github.com/Neo23x0/signature-base/blob/master/LICENSE"
+		author = "Florian Roth (Nextron Systems)"
+		reference1 = "http://goo.gl/MUUfjv"
+		reference2 = "http://goo.gl/WXUQcP"
+		date = "2015/02/28"
+		hash1 = "8d168092d5601ebbaed24ec3caeef7454c48cf21366cd76560755eb33aff89e9"
+		hash2 = "d4be6c9117db9de21138ae26d1d0c3cfb38fd7a19fa07c828731fa2ac756ef8d"
+		hash3 = "3fe208273288fc4d8db1bf20078d550e321d9bc5b9ab80c93d79d2cb05cbf8c2"
+		id = "f7867e65-567f-530f-83d4-b5126021e523"
+	strings:
+		/* Sample 1 */
+		$s0 = "http://142.91.76.134/p.dat" fullword ascii
+		$s1 = "HttpDump 1.1" fullword ascii
+
+		/* Sample 2 */
+		$s3 = "SecureInput .exe" fullword wide
+		$s4 = "http://extcitrix.we11point.com/vpn/index.php?ref=1" fullword ascii
+
+		/* Sample 3 */
+		$s5 = "%SystemRoot%\\System32\\svchost.exe -k msupdate" fullword ascii
+		$s6 = "ServiceMaix" fullword ascii
+
+		/* Certificate and Keywords */
+		$x1 = "Management Support Team1" fullword ascii
+		$x2 = "DTOPTOOLZ Co.,Ltd.0" fullword ascii
+		$x3 = "SEOUL1" fullword ascii
+	condition:
+		( 1 of ($s*) and 2 of ($x*) ) or
+		( 3 of ($x*) )
 }
 ```
 
-```yaml
-title: Benign Lab Sample - Wireshark Deep Analysis
-id: 9b3b1e6d-2a4f-4a8c-9c1d-5e7f8a9b0c1d
-logsource:
-    category: network
-    product: zeek
-detection:
-    selection:
-        http.uri|contains: '/lab-sample'
-    condition: selection
-```
+**Real-world context (MITRE T1071.004 -- Application Layer Protocol: DNS):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1071/004/ -- real in-the-wild use includes APT18, APT39, APT41, Cobalt Group.
 
-| **Type**       | **Indicator**                                                                 |
-|----------------|-------------------------------------------------------------------------------|
-| SHA256 hash    | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (example) |
-| Filename       | `deep_packet_capture.pcap`                                                    |
-| Network        | `192.0.2.10` (source IP), `203.0.113.5` (destination IP)                     |
-| Artifacts      | URI: `hxxp://192[.]0[.]2[.]1/lab-sample` (defanged)                          |
-| MITRE ATT&CK   | **T1049 - System Network Connections Discovery** (authoritative: https://attack.mitre.org/techniques/T1049/) |
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

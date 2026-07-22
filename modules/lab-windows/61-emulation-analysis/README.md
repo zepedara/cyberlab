@@ -617,6 +617,107 @@ Emulation-based analysis maps to the following **MITRE ATT&CK techniques** and *
 
 ---
 
+### Detection Signatures & Reference Artifacts
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Potential Shellcode Injection** (source: https://github.com/SigmaHQ/sigma/blob/master/rules-threat-hunting/windows/process_access/proc_access_win_susp_potential_shellcode_injection.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Potential Shellcode Injection
+id: 250ae82f-736e-4844-a68b-0b5e8cc887da
+status: test
+description: Detects potential shellcode injection as seen used by tools such as Metasploit's migrate and Empire's psinject.
+references:
+    - https://github.com/EmpireProject/PSInject
+author: Bhabesh Raj
+date: 2022-03-11
+modified: 2024-07-02
+tags:
+    - attack.privilege-escalation
+    - attack.stealth
+    - attack.t1055
+    - detection.threat-hunting
+logsource:
+    category: process_access
+    product: windows
+detection:
+    selection:
+        GrantedAccess:
+            - '0x147a'
+            - '0x1f3fff'
+        CallTrace|contains: 'UNKNOWN'
+    filter_main_wmiprvse:
+        SourceImage: 'C:\Windows\System32\Wbem\Wmiprvse.exe'
+        TargetImage: 'C:\Windows\system32\lsass.exe'
+    filter_optional_dell_folders:
+        # If dell software is installed we get matches like these
+        # Example 1:
+        #   SourceImage: C:\Program Files\Dell\SupportAssistAgent\bin\SupportAssistAgent.exe
+        #   TargetImage: C:\Program Files\Dell\TechHub\Dell.TechHub.exe
+        #   GrantedAccess: 0x1F3FFF
+        # Example 2:
+        #   SourceImage: C:\Program Files (x86)\Dell\UpdateService\DCF\Dell.DCF.UA.Bradbury.API.SubAgent.exe
+        #   TargetImage: C:\Program Files\Dell\TechHub\Dell.TechHub.exe
+        #   GrantedAccess: 0x1F3FFF
+        # Example 3:
+        #   SourceImage: C:\Program Files\Dell\TechHub\Dell.TechHub.exe
+        #   TargetImage: C:\Program Files (x86)\Dell\UpdateService\DCF\Dell.DCF.UA.Bradbury.API.SubAgent.exe
+        #   GrantedAccess: 0x1F3FFF
+        SourceImage|startswith:
+            - 'C:\Program Files\Dell\'
+            - 'C:\Program Files (x86)\Dell\'
+        TargetImage|startswith:
+            - 'C:\Program Files\Dell\'
+            - 'C:\Program Files (x86)\Dell\'
+    filter_optional_dell_specifc:
+        SourceImage: 'C:\Program Files (x86)\Dell\UpdateService\ServiceShell.exe'
+        TargetImage: 'C:\Windows\Explorer.EXE'
+    filter_optional_visual_studio:
+        SourceImage|startswith: 'C:\Program Files\Microsoft Visual Studio\'
+        TargetImage|startswith: 'C:\Program Files\Microsoft Visual Studio\'
+    condition: selection and not 1 of filter_main_* and not 1 of filter_optional_*
+falsepositives:
+    - Unknown
+level: medium
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/susp_office_template_injection.yar, author: Florian Roth):
+
+```yara
+rule EXPL_Office_TemplateInjection_Aug19 {
+   meta:
+      old_rule_name = "EXPL_Office_TemplateInjection"
+      description = "Detects possible template injections in Office documents, particularly those that load content from external sources"
+      author = "Florian Roth"
+      reference = "https://attack.mitre.org/techniques/T1221/"
+      date = "2019-08-22"
+      modified = "2025-03-20"
+      score = 75
+      hash = "f2bdf3716b39d29a9c6c3b7b3355e935594b8d8e9149a784a59dc2381fa1628a"
+      id = "2a7e1021-97be-510b-8826-d15ac06ed00e"
+   strings:
+      $x1 = /attachedTemplate" Target="http[s]?:\/\/[^"]{4,60}/ ascii
+
+      $fp1 = ".sharepoint.com"  // this could cause false negatives if the malicious template is hosted on sharepoint
+      $fp2 = ".office.com"  // this could cause false negatives if the malicious template is hosted on office.com
+   condition:
+      filesize < 20MB
+      and $x1
+      and not 1 of ($fp*)
+}
+```
+
+**Real-world context (MITRE T1071 -- Application Layer Protocol):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1071/
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
+
 ## Sources
 This module is grounded in **authoritative sources** for tool behavior, MITRE ATT&CK techniques, and detection logic. Below is a **claim-to-source mapping** for all factual assertions:
 

@@ -104,6 +104,97 @@ After initial foothold (e.g., via phishing or unpatched service), an attacker en
 - **T1207** – *Hiding of Objects (Kerberos service accounts)* – Defense Evasion (disabling AES to force RC4) [9]
 - **DFIR phases:** Reconnaissance (T1069, T1087, T1482), Credential Access (T1558.003/4), Privilege Escalation (T1098.002), Defense Evasion (T1207)
 
+### Detection Signatures & Reference Artifacts
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Suspicious Space Characters in TypedPaths Registry Path - FileFix** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_susp_typedpaths_space_characters.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Suspicious Space Characters in TypedPaths Registry Path - FileFix
+id: 8f2a5c3d-9e4b-4a7c-8d1f-2e5a6b9c3d7e
+related:
+    - id: 3ae9974a-eb09-4044-8e70-8980a50c12c8
+      type: similar
+status: experimental
+description: |
+    Detects the occurrence of numerous space characters in TypedPaths registry paths, which may indicate execution via phishing lures using file-fix techniques to hide malicious commands.
+references:
+    - https://expel.com/blog/cache-smuggling-when-a-picture-isnt-a-thousand-words/
+    - https://mrd0x.com/filefix-clickfix-alternative/
+author: Swachchhanda Shrawan Poudel (Nextron Systems)
+date: 2025-11-04
+tags:
+    - attack.execution
+    - attack.stealth
+    - attack.t1204.004
+    - attack.t1027.010
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection_key:
+        TargetObject|endswith: '\Software\Microsoft\Windows\CurrentVersion\Explorer\TypedPaths\url1'
+        Details|contains: '#'
+    selection_space_variation:
+        Details|contains:
+            - '            ' # En Quad (U+2000)
+            - '            ' # Em Quad (U+2001)
+            - '            ' # En Space (U+2002)
+            - '            ' # Em Space (U+2003)
+            - '            ' # Three-Per-Em Space (U+2004)
+            - '            ' # Four-Per-Em Space (U+2005)
+            - '            ' # Six-Per-Em Space (U+2006)
+            - '            ' # Figure Space (U+2007)
+            - '            ' # Punctuation Space (U+2008)
+            - '            ' # Thin Space (U+2009)
+            - '            ' # Hair Space (U+200A)
+            - '            ' # No-Break Space (U+00A0)
+            - '            ' # Normal space
+    condition: all of selection_*
+falsepositives:
+    - Unlikely
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/mal_ransom_esxi_attacks_feb23.yar, author: Florian Roth):
+
+```yara
+rule MAL_RANSOM_SH_ESXi_Attacks_Feb23_1 {
+   meta:
+      description = "Detects script used in ransomware attacks exploiting and encrypting ESXi servers - file encrypt.sh"
+      author = "Florian Roth"
+      reference = "https://www.bleepingcomputer.com/forums/t/782193/esxi-ransomware-help-and-support-topic-esxiargs-args-extension/page-14"
+      date = "2023-02-04"
+      score = 85
+      hash1 = "10c3b6b03a9bf105d264a8e7f30dcab0a6c59a414529b0af0a6bd9f1d2984459"
+      id = "7178dbe4-f573-5279-a23e-9bab8ae8b743"
+   strings:
+      $x1 = "/bin/find / -name *.log -exec /bin/rm -rf {} \\;" ascii fullword
+      $x2 = "/bin/touch -r /etc/vmware/rhttpproxy/config.xml /bin/hostd-probe.sh" ascii fullword
+      $x3 = "grep encrypt | /bin/grep -v grep | /bin/wc -l)" ascii fullword
+
+      $s1 = "## ENCRYPT" ascii fullword
+      $s2 = "/bin/find / -name *.log -exec /bin" ascii fullword
+   condition:
+      uint16(0) == 0x2123 and
+      filesize < 10KB and (
+         1 of ($x*)
+         or 2 of them
+      ) or 3 of them
+}
+```
+
+**Real-world context (MITRE T1558.003 -- Steal or Forge Kerberos Tickets: Kerberoasting):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1558/003/ -- real in-the-wild use includes FIN7.
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
+
 ## Sources
 1. BloodHound Installation – Kali Tools: https://www.kali.org/tools/bloodhound/
 2. BloodHound.py – GitHub: https://github.com/BloodHoundAD/BloodHound-Tools/tree/main/BloodHound.py

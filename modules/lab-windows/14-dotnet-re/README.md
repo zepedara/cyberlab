@@ -311,55 +311,48 @@ To avoid false conclusions, always:
 
 ### Detection Signatures & Reference Artifacts
 
-```yara
-rule DotNet_Lab_Sample {
-   meta:
-      description = "Benign .NET sample for educational reverse engineering laboratory"
-      author = "Training Module 14-dotnet-re"
-      date = "2025-04-01"
-      reference = "https://attack.mitre.org/techniques/T1204/002/"
-   strings:
-      $s1 = "System.Diagnostics" ascii wide nocase
-      $s2 = "Main(" ascii wide
-      $s3 = "Reflection" ascii wide nocase
-   condition:
-      filesize < 10KB and all of ($s1, $s2, $s3)
-}
-```
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Process Memory Dump Via Dotnet-Dump** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_dotnetdump_memory_dump.yml; license: Detection Rule License / DRL):
 
 ```yaml
-title: Benign .NET Lab Sample CommandLine Indicators
+title: Process Memory Dump Via Dotnet-Dump
+id: 53d8d3e1-ca33-4012-adf3-e05a4d652e34
+status: test
+description: |
+    Detects the execution of "dotnet-dump" with the "collect" flag. The execution could indicate potential process dumping of critical processes such as LSASS.
+references:
+    - https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-dump#dotnet-dump-collect
+    - https://twitter.com/bohops/status/1635288066909966338
+author: Nasreddine Bencherchali (Nextron Systems)
+date: 2023-03-14
+tags:
+    - attack.stealth
+    - attack.t1218
 logsource:
-   product: windows
-   category: process_creation
+    category: process_creation
+    product: windows
 detection:
-   selection:
-      Image|endswith: '\dotnet.exe'
-      CommandLine|contains|all:
-         - 'sample.dll'
-         - '--arg'
-   condition: selection
+    selection_img:
+        - Image|endswith: '\dotnet-dump.exe'
+        - OriginalFileName: 'dotnet-dump.dll'
+    selection_cli:
+        CommandLine|contains: 'collect'
+    condition: all of selection_*
+falsepositives:
+    - Process dumping is the expected behavior of the tool. So false positives are expected in legitimate usage. The PID/Process Name of the process being dumped needs to be investigated
+level: medium
 ```
 
-**Reference artifacts / IOCs**
+**Real-world context (MITRE T1105 -- Ingress Tool Transfer):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1105/ -- real in-the-wild use includes Sandworm.
 
-| Indicator Type | Value |
-|----------------|-------|
-| SHA256 | `a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1` |
-| Filename | `lab-sample.exe` |
-| File Path | `C:\Users\Student\Desktop\dotnet-re\lab-sample.exe` |
-| Network (defanged) | `hxxp://lab[.]example[.]com/reverse/sample.net` |
-| Network (defanged) | `192.0.2.20:4443` (benign education server) |
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-**MITRE ATT&CK Techniques:**
-- **T1204.002 User Execution: Malicious File** – The benign sample is executed to demonstrate how .NET payloads rely on user interaction.
-- **T1053.005 Scheduled Task/Job: Scheduled Task** – The training may simulate persistence using a scheduled task to re-run the sample; detection scripts monitor for unexpected task creation.
-
-**Authoritative References:**
-- [MITRE ATT&CK T1204.002 User Execution: Malicious File](https://attack.mitre.org/techniques/T1204/002/)
-- [MITRE ATT&CK T1053.005 Scheduled Task](https://attack.mitre.org/techniques/T1053/005/)
-- [YARA Documentation: Writing Rules](https://yara.readthedocs.io/en/stable/writingrules.html)
-- [Sigma Specification: Rule Format](https://github.com/SigmaHQ/sigma-specification)
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):

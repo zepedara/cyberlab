@@ -140,58 +140,80 @@ To further analyze malicious Office PDFs, it's crucial to understand the essenti
 
 ### Detection Signatures & Reference Artifacts
 
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Outlook Macro Execution Without Warning Setting Enabled** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_office_outlook_enable_macro_execution.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Outlook Macro Execution Without Warning Setting Enabled
+id: e3b50fa5-3c3f-444e-937b-0a99d33731cd
+status: test
+description: Detects the modification of Outlook security setting to allow unprompted execution of macros.
+references:
+    - https://www.mdsec.co.uk/2020/11/a-fresh-outlook-on-mail-based-persistence/
+    - https://speakerdeck.com/heirhabarov/hunting-for-persistence-via-microsoft-exchange-server-or-outlook?slide=53
+author: '@ScoubiMtl'
+date: 2021-04-05
+modified: 2023-08-17
+tags:
+    - attack.privilege-escalation
+    - attack.persistence
+    - attack.command-and-control
+    - attack.t1137
+    - attack.t1008
+    - attack.t1546
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|endswith: '\Outlook\Security\Level'
+        Details|contains: '0x00000001' # Enable all Macros
+    condition: selection
+falsepositives:
+    - Unlikely
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/general_officemacros.yar, author: Florian Roth (Nextron Systems)):
+
 ```yara
-rule Malicious_PDF_Indicators {
-    meta:
-        author = "Training Module"
-        description = "Detects common malicious indicators in a benign PDF sample"
-        reference = "https://attack.mitre.org/techniques/T1203/"
-    strings:
-        $pdf_header = "%PDF-1."
-        $js = "JavaScript"
-        $openaction = "/OpenAction"
-    condition:
-        filesize < 500KB and 1 of ($pdf_header, $js, $openaction)
+rule Office_AutoOpen_Macro {
+	meta:
+		description = "Detects an Microsoft Office file that contains the AutoOpen Macro function"
+		license = "Detection Rule License 1.1 https://github.com/Neo23x0/signature-base/blob/master/LICENSE"
+		author = "Florian Roth (Nextron Systems)"
+		date = "2015-05-28"
+		score = 40
+		hash1 = "4d00695d5011427efc33c9722c61ced2"
+		hash2 = "63f6b20cb39630b13c14823874bd3743"
+		hash3 = "66e67c2d84af85a569a04042141164e6"
+		hash4 = "a3035716fe9173703941876c2bde9d98"
+		hash5 = "7c06cab49b9332962625b16f15708345"
+		hash6 = "bfc30332b7b91572bfe712b656ea8a0c"
+		hash7 = "25285b8fe2c41bd54079c92c1b761381"
+		id = "9774d96c-4d15-5a54-8fe2-e06372d9c4ec"
+	strings:
+		$s1 = "AutoOpen" ascii fullword
+		$s2 = "Macros" wide fullword
+	condition:
+		(
+			uint32be(0) == 0xd0cf11e0 or 	// DOC, PPT, XLS
+			uint32be(0) == 0x504b0304		// DOCX, PPTX, XLSX (PKZIP)
+		)
+		and all of ($s*) and filesize < 300000
 }
 ```
 
-```yaml
-title: Suspicious PDF File Creation with Scripting Artifacts
-logsource:
-    product: windows
-    category: file_event
-detection:
-    selection:
-        TargetFilename|endswith: '.pdf'
-        TargetFilename|contains|any:
-            - 'javascript'
-            - 'openaction'
-    condition: selection
-```
+**Real-world context (MITRE T1027 -- Obfuscated Files or Information):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1027/ -- real in-the-wild use includes Sandworm.
 
-**Reference artifacts / IOCs**
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-| Indicator Type | Value |
-|----------------|-------|
-| SHA256 hash | `c9f0f8fb0a1e5a3d7b2c4d6e8f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8` |
-| Filename | `invoice.pdf` |
-| Host artifact | PDF header `%PDF-1.7` |
-| Network artifact | `hxxp://training[.]example[.]com/sample.pdf` (defanged) |
-| IP address (documentation) | `198.51.100.55` |
-
-**MITRE ATT&CK Techniques Covered**
-
-- **T1203** – Exploitation for Client Execution  
-  (URL: https://attack.mitre.org/techniques/T1203/)
-- **T1036.005** – Masquerading: Match Legitimate Name or Location  
-  (URL: https://attack.mitre.org/techniques/T1036/005/)
-
-**Authoritative Source URLs**
-
-- YARA Documentation: https://yara.readthedocs.io/
-- Sigma Specification: https://github.com/SigmaHQ/sigma-specification
-- MITRE ATT&CK Technique T1203: https://attack.mitre.org/techniques/T1203/
-- MITRE ATT&CK Technique T1036.005: https://attack.mitre.org/techniques/T1036/005/
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 

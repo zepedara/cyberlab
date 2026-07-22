@@ -253,83 +253,61 @@ capa -j /malware/sample.exe  # JSON output
 
 ### Detection Signatures & Reference Artifacts
 
-Below are defensive detection signatures and reference artifacts for identifying benign Ghidra scripting activity in a lab environment.
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
 
----
-
-```yara
-rule GhidraScript_BenignLabSample {
-    meta:
-        description = "Detects benign Ghidra Python scripting artifacts in a lab environment"
-        author = "Defensive Training Module"
-        reference = "https://ghidra-sre.org/"
-        date = "2024-05-20"
-        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
-        mitre_attack = "T1059.001 Command and Scripting Interpreter: PowerShell"
-
-    strings:
-        $ghidra_head = "GhidraScript" nocase
-        $python_import = "import ghidra" nocase
-        $script_header = "# Ghidra Python Script" nocase
-        $api_call = "currentProgram.getFunctionManager()" nocase
-        $comment = "// Benign lab script" nocase
-        $script_name = "LabAnalysisScript.py" nocase
-
-    condition:
-        filesize < 50KB and (
-            $ghidra_head or
-            $python_import or
-            $script_header or
-            $api_call or
-            all of ($comment, $script_name)
-        )
-}
-```
-
----
+**Sigma rule -- Suspicious Scripting in a WMI Consumer** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/wmi_event/sysmon_wmi_susp_scripting.yml; license: Detection Rule License / DRL):
 
 ```yaml
-title: Benign Ghidra Python Script Execution
-id: 1a2b3c4d-5e6f-7890-1234-567890abcdef
-status: experimental
-description: Detects benign Ghidra Python script execution in a lab environment
-author: Defensive Training Module
-date: 2024/05/20
+title: Suspicious Scripting in a WMI Consumer
+id: fe21810c-2a8c-478f-8dd3-5a287fb2a0e0
+status: test
+description: Detects suspicious commands that are related to scripting/powershell in WMI Event Consumers
+references:
+    - https://in.security/an-intro-into-abusing-and-identifying-wmi-event-subscriptions-for-persistence/
+    - https://github.com/Neo23x0/signature-base/blob/615bf1f6bac3c1bdc417025c40c073e6c2771a76/yara/gen_susp_lnk_files.yar#L19
+    - https://github.com/RiccardoAncarani/LiquidSnake
+author: Florian Roth (Nextron Systems), Jonhnathan Ribeiro
+date: 2019-04-15
+modified: 2023-09-09
+tags:
+    - attack.execution
+    - attack.t1059.005
 logsource:
     product: windows
-    category: process_creation
+    category: wmi_event
 detection:
-    selection:
-        Image|endswith: '\python.exe'
-        CommandLine|contains:
-            - 'ghidra'
-            - 'LabAnalysisScript.py'
-            - 'currentProgram.getFunctionManager()'
-    condition: selection
+    selection_destination:
+        - Destination|contains|all:
+              - 'new-object'
+              - 'net.webclient'
+              - '.downloadstring'
+        - Destination|contains|all:
+              - 'new-object'
+              - 'net.webclient'
+              - '.downloadfile'
+        - Destination|contains:
+              - ' iex('
+              - ' -nop '
+              - ' -noprofile '
+              - ' -decode '
+              - ' -enc '
+              - 'WScript.Shell'
+              - 'System.Security.Cryptography.FromBase64Transform'
+    condition: selection_destination
 falsepositives:
-    - Legitimate Ghidra scripting in a lab environment
-level: informational
-tags:
-    - attack.t1059.001
-    - attack.execution
+    - Legitimate administrative scripts
+level: high
 ```
 
----
+**Real-world context (MITRE T1027 -- Obfuscated Files or Information):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1027/ -- real in-the-wild use includes Sandworm.
 
-**Reference artifacts / IOCs**
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
-| SHA256 Hash | Filename | Host/Network Artifacts |
-|-------------|----------|------------------------|
-| `a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef` | `LabAnalysisScript.py` | Execution via `C:\ghidra\support\analyzeHeadless.bat` on `192.0.2.10` |
-| `b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef1` | `ghidra_scripts.log` | Log file at `C:\Users\LabUser\ghidra_scripts.log` containing benign API calls |
-| N/A | N/A | Network connection to `hxxp://example[.]com/ghidra-docs` (documentation only) |
-
-**MITRE ATT&CK Technique:**
-- [T1059.001 Command and Scripting Interpreter: PowerShell](https://attack.mitre.org/techniques/T1059/001/)
-
-**Authoritative Source:**
-- [Ghidra Official Documentation](https://ghidra-sre.org/)
-
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

@@ -250,77 +250,72 @@ For practical workflows: [REMnux PDF Analysis Guide](https://docs.remnux.org/ana
 
 ### Detection Signatures & Reference Artifacts
 
-Below are defensive detection signatures and reference artifacts for analyzing benign PDF samples in a lab environment.
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
 
----
+**Sigma rule -- Suspicious Application Allowed Through Exploit Guard** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_exploit_guard_susp_allowed_apps.yml; license: Detection Rule License / DRL):
 
-#### **YARA Rule**
+```yaml
+title: Suspicious Application Allowed Through Exploit Guard
+id: 42205c73-75c8-4a63-9db1-e3782e06fda0
+status: test
+description: Detects applications being added to the "allowed applications" list of exploit guard in order to bypass controlled folder settings
+references:
+    - https://www.microsoft.com/security/blog/2017/10/23/windows-defender-exploit-guard-reduce-the-attack-surface-against-next-generation-malware/
+author: Nasreddine Bencherchali (Nextron Systems)
+date: 2022-08-05
+modified: 2023-08-17
+tags:
+    - attack.defense-impairment
+    - attack.t1685
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection_key:
+        TargetObject|contains: 'SOFTWARE\Microsoft\Windows Defender\Windows Defender Exploit Guard\Controlled Folder Access\AllowedApplications'
+    selection_paths:
+        TargetObject|contains:
+            # Add more paths you don't allow in your org
+            - '\Users\Public\'
+            - '\AppData\Local\Temp\'
+            - '\Desktop\'
+            - '\PerfLogs\'
+            - '\Windows\Temp\'
+    condition: all of selection_*
+falsepositives:
+    - Unlikely
+level: high
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/lotusblossom_notepad_exploitation.yar, author: X__Junior):
+
 ```yara
-rule Lab_PDF_Benign_Sample {
-    meta:
-        description = "Detects benign lab PDF sample with embedded JavaScript (educational use only)"
-        author = "Defensive Lab Training"
-        reference = "https://example[.]com/lab-resources"
-        date = "2024-05-20"
-        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
-        mitre_attack = "T1059.007 Command and Scripting Interpreter: JavaScript"
-
-    strings:
-        $pdf_header = { 25 50 44 46 }  // "%PDF"
-        $js_marker = "/JavaScript" nocase
-        $js_code = "app.alert" nocase
-        $obj_ref = "/Type /Action" nocase
-        $stream_start = "stream" nocase
-        $stream_end = "endstream" nocase
-
-    condition:
-        uint32(0) == 0x46445025 and  // "%PDF" magic header
-        filesize < 5MB and
-        all of ($pdf_header, $js_marker) and
-        2 of ($js_code, $obj_ref, $stream_start, $stream_end)
+rule MAL_Chrysalis_DllLoader_Feb26 {
+   meta:
+      description = "Detects DLL used to load Chrysalis backdoor, seen being used in the compromise of the infrastructure hosting Notepad++ by Chinese APT group Lotus Blossom"
+      author = "X__Junior"
+      date = "2026-02-02"
+      reference = "https://www.rapid7.com/blog/post/tr-chrysalis-backdoor-dive-into-lotus-blossoms-toolkit/"
+      hash = "3bdc4c0637591533f1d4198a72a33426c01f69bd2e15ceee547866f65e26b7ad"
+      score = 80
+      id = "a2bf8cde-36a5-565d-9257-f1a4b2d67adc"
+   strings:
+      $op1 = { 33 D2 8B C1 F7 F6 0F B6 C1 03 55 ?? 6B C0 ?? 32 02 88 04 0F 41 83 F9 ?? 72 }
+      $op2 = { 0F B6 04 31 41 33 C2 69 D0 ?? ?? ?? ?? 3B CB 72 }
+   condition:
+      uint16(0) == 0x5a4d and all of them
 }
 ```
 
----
+**Real-world context (MITRE T1566.001 -- Phishing: Spearphishing Attachment):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1566/001/ -- real in-the-wild use includes Sandworm.
 
-#### **Sigma Rule**
-```yaml
-title: Benign PDF with Embedded JavaScript (Lab Sample)
-id: 1a2b3c4d-5e6f-7890-1234-567890abcdef
-status: experimental
-description: Detects benign lab PDF files containing embedded JavaScript (educational use only)
-author: Defensive Lab Training
-date: 2024/05/20
-references:
-    - https://example[.]com/lab-resources
-logsource:
-    product: windows
-    category: file_event
-detection:
-    selection:
-        TargetFilename|endswith: '.pdf'
-        Hashes|contains: 'SHA256=a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef'
-    condition: selection
-falsepositives:
-    - Legitimate PDFs with embedded JavaScript (e.g., forms)
-level: informational
-tags:
-    - attack.t1059.007  # Command and Scripting Interpreter: JavaScript
-```
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
----
-
-#### **Reference Artifacts / IOCs**
-
-| **Indicator Type**       | **Value**                                                                 |
-|--------------------------|---------------------------------------------------------------------------|
-| **SHA256 Hash**          | `a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef`        |
-| **Filename**             | `Lab_Sample_Benign_JS.pdf`                                                |
-| **Host Artifact**        | `C:\Users\Public\Downloads\Lab_Sample_Benign_JS.pdf`                      |
-| **Network Artifact**     | `hxxp://192.0.2.100/lab-resources/Lab_Sample_Benign_JS.pdf` (documentation IP) |
-| **MITRE ATT&CK Technique** | [T1059.007 Command and Scripting Interpreter: JavaScript](https://attack.mitre.org/techniques/T1059/007/) |
-| **Authoritative Source** | [Adobe PDF Reference (ISO 32000-1)](https://www.adobe.com/content/dam/acom/en/devnet/pdf/pdfs/PDF32000_1.pdf) |
-
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ### Essential Commands & Features
 

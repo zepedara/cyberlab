@@ -319,81 +319,64 @@ Below are **critical but often overlooked** commands and flags for `foremost` an
 
 ### Detection Signatures & Reference Artifacts
 
-Below are defensive detection signatures and reference artifacts for identifying benign file carving activities in a lab environment.
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
 
----
+**Sigma rule -- Sysmon File Executable Creation Detected** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/sysmon/sysmon_file_executable_detected.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Sysmon File Executable Creation Detected
+id: 693a44e9-7f26-4cb6-b787-214867672d3a
+status: test
+description: Triggers on any Sysmon "FileExecutableDetected" event, which triggers every time a PE that is monitored by the config is created.
+references:
+    - https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+    - https://medium.com/@olafhartong/sysmon-15-0-file-executable-detected-40fd64349f36
+author: frack113
+date: 2023-07-20
+tags:
+    - attack.defense-impairment
+logsource:
+    product: windows
+    service: sysmon
+detection:
+    selection:
+        EventID: 29  # this is fine, we want to match any FileExecutableDetected event
+    condition: selection
+falsepositives:
+    - Unlikely
+level: medium
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/vul_jquery_fileupload_cve_2018_9206.yar, author: Florian Roth (Nextron Systems)):
 
 ```yara
-rule Lab_Benign_FileCarving_Signature {
-    meta:
-        description = "Detects benign file carving activity in lab samples (e.g., carved PNG headers)"
-        author = "Defensive Training Module"
-        reference = "https://github.com/VirusTotal/yara"
-        date = "2024-05-20"
-        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
-
-    strings:
-        $png_header = { 89 50 4E 47 0D 0A 1A 0A }  // PNG file signature
-        $jpeg_soi = { FF D8 FF }                  // JPEG Start of Image
-        $zip_header = "PK\x03\x04"                // ZIP file signature
-        $carve_marker = "CARVED_BY_LAB_TOOL"      // Benign carving tool marker
-        $tool_name = "LabCarver v1.0"             // Benign tool identifier
-        $output_dir = "C:\\Lab\\CarvedFiles"      // Expected output directory
-
-    condition:
-        filesize < 10MB and (
-            $png_header or $jpeg_soi or $zip_header or
-            $carve_marker or $tool_name or $output_dir
-        )
+rule VUL_JQuery_FileUpload_CVE_2018_9206 {
+   meta:
+      description = "Detects JQuery File Upload vulnerability CVE-2018-9206"
+      author = "Florian Roth (Nextron Systems)"
+      reference = "https://www.zdnet.com/article/zero-day-in-popular-jquery-plugin-actively-exploited-for-at-least-three-years/"
+      reference2 = "https://github.com/blueimp/jQuery-File-Upload/commit/aeb47e51c67df8a504b7726595576c1c66b5dc2f"
+      reference3 = "https://blogs.akamai.com/sitr/2018/10/having-the-security-rug-pulled-out-from-under-you.html"
+      date = "2018-10-19"
+      id = "20bac44c-0e5a-5561-9fd8-a71cd2d8590a"
+   strings:
+      $s1 = "error_reporting(E_ALL | E_STRICT);" fullword ascii
+      $s2 = "require('UploadHandler.php');" fullword ascii
+      $s3 = "$upload_handler = new UploadHandler();" fullword ascii
+   condition:
+      all of them
 }
 ```
 
----
+**Real-world context (MITRE T1074 -- Data Staged):** see the documented Procedure Examples at https://attack.mitre.org/techniques/T1074/ -- real in-the-wild use includes Scattered Spider, Volt Typhoon, Wizard Spider.
 
-```yaml
-title: Benign File Carving Activity Detected
-id: 1a2b3c4d-5e6f-7890-1234-56789abcdef0
-status: experimental
-description: Detects benign file carving activity in a lab environment (e.g., carved files or tool usage)
-author: Defensive Training Module
-date: 2024/05/20
-logsource:
-    product: windows
-    category: file_event
-detection:
-    selection:
-        TargetFilename|endswith:
-            - '.png'
-            - '.jpg'
-            - '.jpeg'
-            - '.zip'
-            - '\\Lab\\CarvedFiles\\'  # Expected output directory
-        Image|endswith:
-            - '\\LabCarver.exe'       # Benign carving tool
-    condition: selection
-falsepositives:
-    - Legitimate file recovery tools
-level: informational
-```
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
 
----
-
-**Reference artifacts / IOCs**
-
-| **Indicator Type**       | **Value**                                                                 | **Description**                                  |
-|--------------------------|---------------------------------------------------------------------------|--------------------------------------------------|
-| SHA256 Hash              | `a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef`       | Benign lab sample (carved PNG file)              |
-| Filename                 | `LabCarver.exe`                                                           | Benign file carving tool                         |
-| Host Artifact            | `C:\Lab\CarvedFiles\recovered_1.png`                                      | Expected output path for carved files            |
-| Network Artifact (Defanged)| `hxxp://192[.]0[.]2[.]10/labcarver/download`                              | Benign tool download URL (documentation IP)      |
-
-**MITRE ATT&CK Techniques Covered:**
-- [T1005 - Data from Local System](https://attack.mitre.org/techniques/T1005/)
-- [T1560 - Archive Collected Data](https://attack.mitre.org/techniques/T1560/)
-
-**Authoritative Sources:**
-- [MITRE ATT&CK: T1005 - Data from Local System](https://attack.mitre.org/techniques/T1005/)
-- [Sigma Rule Documentation](https://github.com/SigmaHQ/sigma)
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
 
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):

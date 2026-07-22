@@ -275,6 +275,79 @@ Analysts often trust file timestamps at face value, missing timestomping (T1070.
 - NIST Special Publication 800‑86 – Guide to Integrating Forensic Techniques into Incident Response: https://csrc.nist.gov/publications/detail/sp/800-86/revised/final
 - MITRE ATT&CK Technique T1070.006 – Timestomp: https://attack.mitre.org/techniques/T1070/006/
 
+### Detection Signatures & Reference Artifacts
+
+Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
+
+**Sigma rule -- Bad Opsec Powershell Code Artifacts** (source: https://github.com/SigmaHQ/sigma/blob/master/rules/windows/powershell/powershell_module/posh_pm_bad_opsec_artifacts.yml; license: Detection Rule License / DRL):
+
+```yaml
+title: Bad Opsec Powershell Code Artifacts
+id: 8d31a8ce-46b5-4dd6-bdc3-680931f1db86
+related:
+    - id: 73e733cc-1ace-3212-a107-ff2523cc9fc3
+      type: derived
+status: test
+description: |
+    focuses on trivial artifacts observed in variants of prevalent offensive ps1 payloads, including
+    Cobalt Strike Beacon, PoshC2, Powerview, Letmein, Empire, Powersploit, and other attack payloads
+    that often undergo minimal changes by attackers due to bad opsec.
+references:
+    - https://newtonpaul.com/analysing-fileless-malware-cobalt-strike-beacon/
+    - https://labs.sentinelone.com/top-tier-russian-organized-cybercrime-group-unveils-fileless-stealthy-powertrick-backdoor-for-high-value-targets/
+    - https://www.mdeditor.tw/pl/pgRt
+author: 'ok @securonix invrep_de, oscd.community'
+date: 2020-10-09
+modified: 2022-12-25
+tags:
+    - attack.execution
+    - attack.t1059.001
+logsource:
+    product: windows
+    category: ps_module
+    definition: 0ad03ef1-f21b-4a79-8ce8-e6900c54b65b
+detection:
+    selection_4103:
+        Payload|contains:
+            - '$DoIt'
+            - 'harmj0y'
+            - 'mattifestation'
+            - '_RastaMouse'
+            - 'tifkin_'
+            - '0xdeadbeef'
+    condition: selection_4103
+falsepositives:
+    - 'Moderate-to-low; Despite the shorter length/lower entropy for some of these, because of high specificity, fp appears to be fairly limited in many environments.'
+level: critical
+```
+
+**YARA rule** (source: https://github.com/Neo23x0/signature-base/blob/master/yara/expl_libssh_cve_2023_2283_jun23.yar, author: Florian Roth):
+
+```yara
+rule HKTL_EXPL_POC_LibSSH_Auth_Bypass_CVE_2023_2283_Jun23_1 {
+   meta:
+      description = "Detects POC code used in attacks against libssh vulnerability CVE-2023-2283"
+      author = "Florian Roth"
+      reference = "https://github.com/github/securitylab/tree/1786eaae7f90d87ce633c46bbaa0691d2f9bf449/SecurityExploits/libssh/pubkey-auth-bypass-CVE-2023-2283"
+      date = "2023-06-08"
+      score = 85
+      id = "e72eba33-686f-5fca-bca3-2b875d1ec224"
+   strings:
+      $s1 = "nprocs = %d" ascii fullword
+      $s2 = "fork failed: %s" ascii fullword
+   condition:
+      uint16(0) == 0x457f and all of them
+}
+```
+
+**Reference artifacts (illustrative benign lab values -- generate real hashes locally):**
+
+| Type | Value |
+|---|---|
+| host IOC | 192.0.2.10 (RFC5737 documentation range) |
+| network IOC | hxxp://example[.]com/benign (defanged) |
+| sample hash | benign lab sample -- create one and run `sha256sum` |
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn, MITRE ATT&CK, or recognized project docs):
 
