@@ -221,6 +221,81 @@ For evasion, attackers may throttle requests, use legitimate-looking domains (e.
 - [OWASP Web Security Testing Guide: SSRF](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/19-Testing_for_Server-Side_Request_Forgery_SSRF)
 - [Red Canary: Web Shell Detection](https://redcanary.com/threat-detection-report/techniques/web-shell/)
 
+
+### Essential Commands & Features
+
+Master these **Nmap** commands to uncover deeper attack surface and automate discovery—critical for web-app testing where unauthenticated reconnaissance often precedes exploitation.
+
+```bash
+nmap -sC -p 80,443 192.168.1.100
+```
+**When to use**: Run **default scripts** (`-sC`) against web ports to detect misconfigurations (e.g., HTTP headers, SSL/TLS weaknesses) or exposed admin interfaces. Maps to **MITRE ATT&CK T1595.002 (Active Scanning: Vulnerability Scanning)**.
+
+```bash
+nmap -O -T4 192.168.1.100
+```
+**When to use**: **OS detection** (`-O`) with **aggressive timing** (`-T4`) to fingerprint the web server’s underlying OS, enabling targeted exploits (e.g., kernel-specific payloads). Ties to **T1083 (File and Directory Discovery)** for identifying OS-specific paths.
+
+```bash
+nmap --script=http-enum,http-vuln* -p- -A 192.168.1.100
+```
+**When to use**: Combine **all ports** (`-p-`), **aggressive mode** (`-A`), and **custom scripts** (`--script`) to brute-force web directories (`http-enum`) and test for CVEs (e.g., `http-vuln-cve2021-41773`). Critical for **T1190 (Exploit Public-Facing Application)**.
+
+```bash
+nmap -sV --script=broadcast-dhcp-discover 192.168.1.0/24
+```
+**When to use**: Discover rogue DHCP servers or misconfigured network devices that could redirect web traffic (e.g., via **T1557.002 (Adversary-in-the-Middle: ARP Cache Poisoning)**).
+
+**Sources**:
+- [Nmap Scripting Engine (NSE) Guide](https://nmap.org/book/nse.html)
+- [MITRE ATT&CK: Active Scanning Techniques](https://www.fireeye.com/current-threats/mitre-attack/techniques.html) (FireEye)
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule Detect_WebApp_SQLi_Test_Payload {
+    meta:
+        description = "Detects benign test strings commonly used in web application SQL injection exercises"
+        author = "Training Module - 41-web-app-testing"
+        reference = "https://attack.mitre.org/techniques/T1110/"
+        hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    strings:
+        $sql_string1 = "SELECT * FROM"
+        $sql_string2 = "admin' OR"
+        $payload_comment = "-- "
+    condition:
+        filesize < 10KB and all of them
+}
+```
+
+```yaml
+title: Benign Web Application SQL Injection Test in Apache Log
+logsource:
+    product: apache
+    category: webserver
+detection:
+    selection_sqli:
+        keywords:
+            - "SELECT"
+            - "OR 1=1"
+            - "admin'"
+    condition: selection_sqli
+```
+
+**Reference artifacts / IOCs**
+
+| Indicator Type | Value |
+|----------------|-------|
+| SHA256 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| Filename | `test_sqli.txt` |
+| Source IP | `192.0.2.1` |
+| Destination Host (defanged) | `example[.]com` |
+| URI (defanged) | `hxxp://192.0.2.2/sqli-test` |
+
+**MITRE ATT&CK Reference**  
+- Technique: **T1110** – Brute Force  
+- Source: [https://attack.mitre.org/techniques/T1110/](https://attack.mitre.org/techniques/T1110/)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -276,3 +351,8 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://redcanary.com/threat-detection-report/techniques/web-shell/
 
 <!-- cyberlab-enriched: v4 -->
+- https://www.fireeye.com/current-threats/mitre-attack/techniques.html
+- https://attack.mitre.org/techniques/T1110/"
+- https://attack.mitre.org/techniques/T1110/](https://attack.mitre.org/techniques/T1110/
+
+<!-- cyberlab-enriched: v5 -->
