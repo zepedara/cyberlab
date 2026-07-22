@@ -30,33 +30,33 @@ Expected output: FLOSS prints a version banner (e.g. `floss 3.x`); capa prints i
 > Nuance: `capa --version` prints only the capa version string; the loaded **rule set** and **signature** counts are printed at the top of a normal analysis run (or shown by `capa --help` for the rule-path options). This matches capa's documented CLI behavior in the capa repository.
 
 ## Guided walkthrough
+
 1. List every string category FLOSS supports so you know what you can filter on. This tells you which `--only`/`--no` filters exist before you commit to a long emulation run.
 ```powershell
 floss --help
 ```
 Expected: usage text showing analysis-selection options. In FLOSS 3.x these are expressed as `--only {static,stack,tight,decoded}` and `--no {static,stack,tight,decoded}`, plus output-format flags such as `--json`. (FLOSS 2.0 renamed the old per-type flags to this unified `--only/--no` form — see the FLOSS README and CHANGELOG.)  
-**Why:** Knowing the available filters lets you scope the analysis to only the string types you need, avoiding unnecessary emulation of static strings when you are interested in obfuscated content.
+**Why:** Knowing the available filters lets you scope the analysis to only the string types you need, avoiding unnecessary emulation of static strings when you are interested in obfuscated content. This is particularly useful when analyzing malware that employs anti-analysis techniques, such as code obfuscation or anti-debugging, which can be identified using techniques like [T1497: Defacement](https://attack.mitre.org/techniques/T1497/) to modify or disrupt system files and artifacts.
 
 2. Run a full FLOSS pass on the benign sample and let it print static + de-obfuscated strings. A full pass runs the emulator, so it is slower than plain `strings`; the payoff is the decoded/stack output.
 ```powershell
 floss .\exercise\sample.exe
 ```
 Expected: sections titled `FLOSS STATIC STRINGS`, `FLOSS STACK STRINGS`, `FLOSS TIGHT STRINGS`, and `FLOSS DECODED STRINGS`. The **static** section is what plain `strings` would also show (clear-text ASCII/UTF-16LE runs). The **stack**, **tight**, and **decoded** sections are the value-add: they contain text that only exists after the program builds or decodes it in memory, so it is invisible to `strings`. Why the distinction matters: stack strings are assembled character-by-character on the stack, tight strings are produced by tight decode loops FLOSS recognizes, and decoded strings are the output of decoding subroutines FLOSS emulates.  
-**Why:** A full emulation pass reveals hidden strings that static analysis misses, giving you actionable indicators (C2, mutexes, file paths) that would otherwise require dynamic execution.
+**Why:** A full emulation pass reveals hidden strings that static analysis misses, giving you actionable indicators (C2, mutexes, file paths) that would otherwise require dynamic execution. For more information on how to analyze and understand these indicators, refer to the [Cybersecurity and Infrastructure Security Agency (CISA) Alerts](https://www.cisa.gov/uscert/alerts) and the [SANS Institute's InfoSec Reading Room](https://www.sans.org/reading-room).
 
 3. Emit machine-readable JSON and restrict to only the interesting decoded/stack strings. Filtering with `--only` skips the analysis passes you do not need, which shortens runtime and produces a smaller report to attach to a ticket.
 ```powershell
 floss --json --only decoded stack .\exercise\sample.exe > .\exercise\floss.json
 ```
 Expected: a JSON document containing a `strings` object with `decoded_strings` and `stack_strings` arrays (and empty/omitted arrays for the passes you excluded). The exact JSON schema is defined by FLOSS's `results.py` in the repository; treat the field names there as authoritative.  
-**Why:** JSON output enables easy ingestion into ticketing systems, SIEMs, or automated pipelines; filtering reduces noise and focuses on the most relevant artifacts.
+**Why:** JSON output enables easy ingestion into ticketing systems, SIEMs, or automated pipelines; filtering reduces noise and focuses on the most relevant artifacts. This output can also be used to inform the development of detection rules, such as those utilizing [T1484: Domain Policy Modification](https://attack.mitre.org/techniques/T1484/), which involves modifying domain policies to subvert security controls.
 
 4. Ask capa what the sample can do and get ATT&CK mappings. capa does not run the sample — it analyzes the disassembly/features statically and matches them against its rule set.
 ```powershell
 capa .\exercise\sample.exe
 ```
-Expected: capability tables plus `ATT&CK` and `MBC` (Malware Behavior Catalog) columns linking matched rules to technique IDs. Nuance: capa reports **capabilities inferred from code features**, not proof of execution — a matched rule means the code *contains* the pattern (e.g., an XOR decode loop), not that the behavior necessarily runs. Use `-v`/`-vv` for the matching logic and the addresses of the features that triggered each rule (documented in the capa README).  
-**Why:** Static capability mapping helps prioritize triage, identify relevant MITRE techniques, and guide detection engineering without the risk of executing potentially malicious code.
+Expected: capability tables plus `ATT&CK` and `MBC` (Malware Behavior Catalog) columns linking matched rules to technique IDs. Nuance: capa reports **capabilities inferred from code features**, not proof of execution — a matched rule means the code *contains* the pattern (e.g., an XOR decode loop), not that the behavior necessarily runs. Use `-v`
 
 ## Hands-on exercise
 Use the sample in this module's `exercise/` directory.
@@ -92,18 +92,19 @@ cl /nologo /Fe:.\exercise\sample.exe .\exercise\sample.c
 > Note on optimization: whether the compiler stores `HELLO` on the stack versus folding it into `.rdata` depends on optimization flags. Building with the default (unoptimized) `cl` invocation above keeps the byte-by-byte stack construction that FLOSS reports as a stack string. If aggressive optimization coalesces it into a literal, it will appear as a static string instead — record what you actually observe.
 
 ## SOC analyst perspective
-A defender uses FLOSS during triage to pull indicators (C2 domains, mutex names, dropped file paths) that would stay hidden from a plain `strings` sweep, then feeds those decoded strings into Security Onion as pivots.
+
+A defender uses FLOSS during triage to pull indicators (C2 domains, mutex names, dropped file paths) that would stay hidden from a plain `strings` sweep, then feeds those decoded strings into Security Onion as pivots. Unlike `strings` which only scans the on-disk byte stream, FLOSS performs lightweight static analysis to emulate the decode stubs malware authors insert—XOR loops, AES/RC4 key schedules, or custom decode algorithms. FLOSS hooks API calls such as `VirtualAlloc` to capture buffer allocations and scans those buffers after the decode routine returns, revealing the strings the writer intended. This mechanism is why FLOSS recovers indicators that static byte scans miss and aligns directly with the runtime deobfuscation behavior described in T1140.
 
 Concrete detection/hunt logic and pivots:
-- **Decoded domain → DNS:** search Zeek `dns.log` (`query` field) in Security Onion for a decoded FQDN; correlate to endpoints via the `id.orig_h` field. Zeek log field references are documented at docs.zeek.org.
-- **Decoded URI/host → HTTP:** pivot on Zeek `http.log` (`host`, `uri`, `user_agent`) and Zeek `conn.log` (`id.resp_h`, `id.resp_p`) for the destination a decoded C2 string points to.
-- **Decoded indicator → Suricata:** hunt Suricata alerts (surfaced in Security Onion / Elastic) or author a rule matching the decoded URI path or host header; Suricata rule syntax is documented at suricata.readthedocs.io.
-- **Elastic pivot:** in Security Onion's Kibana/Hunt interface, search the decoded string across `event.dataset` values (`zeek.dns`, `zeek.http`, `zeek.conn`) to unify network evidence — Security Onion's data model and Hunt workflow are documented at docs.securityonion.net.
+- **Decoded domain → DNS:** search Zeek `dns.log` (`query` field) in Security Onion for a decoded FQDN; correlate to endpoints via the `id.orig_h` field. Zeek log field references are documented at docs.zeek.org. The hunt works because the decoded domain is the actual FQDN the malware resolves at runtime, not its obfuscated on-disk form.
+- **Decoded URI/host → HTTP:** pivot on Zeek `http.log` (`host`, `uri`, `user_agent`) and Zeek `conn.log` (`id.resp_h`, `id.resp_p`) for the destination a decoded C2 string points to. Malware commonly builds HTTP request lines dynamically from decoded config blobs; matching on the decoded URI directly surfaces the true C2 destination.
+- **Decoded indicator → Suricata:** hunt Suricata alerts (surfaced in Security Onion / Elastic) or author a rule matching the decoded URI path or host header; Suricata rule syntax is documented at suricata.readthedocs.io. Because the encoded on-disk config evades static pattern matching, the decoded string provides the exact wire-format signature needed to write a rule that fires on actual traffic.
+- **Elastic pivot:** in Security Onion's Kibana/Hunt interface, search the decoded string across `event.dataset` values (`zeek.dns`, `zeek.http`, `zeek.conn`) to unify network evidence — Security Onion's data model and Hunt workflow are documented at docs.securityonion.net. Cross-dataset search is effective because the same decoded indicator may appear across multiple protocol logs as malware communicates through different channels.
 - **Host‑based pivots:**  
-  - Search Windows Security Event ID 4688 (process creation) or Sysmon Event ID 1 for a decoded string appearing in the `CommandLine` field (e.g., a decoded C2 URL passed as an argument).  
-  - Correlate decoded mutex or file‑path strings with Sysmon Event ID 11 (file create) or Event ID 12 (registry create/write) to spot persistence or dropper artifacts.  
+  - Search Windows Security Event ID 4688 (process creation) or Sysmon Event ID 1 for a decoded string appearing in the `CommandLine` field (e.g., a decoded C2 URL passed as an argument). Malware that invokes a child process often passes decoded strings as parameters, leaving a trace in process creation logs.  
+  - Correlate decoded mutex or file‑path strings with Sysmon Event ID 11 (file create) or Event ID 12 (registry create/write) to spot persistence or dropper artifacts. Decoded mutex names frequently map to T1547.001 — Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder — where malware writes decoded Run key paths to establish persistence.  
   - Use Elasticsearch query strings such as `process.command_line:"*decoded-string*"` or `winlog.event_data.CommandLine:*decoded-string*` to hunt across endpoints.  
-  Sources: Microsoft Learn for Sysmon and Windows Event ID 4688, Zeek and Suricata docs, Security Onion documentation.
+  Sources: Microsoft Learn for Sysmon and Windows Event ID 4688, Zeek and Suricata docs, Security Onion documentation, and the FLOSS project documentation at https://github.com/mandiant/flare-floss.
 
 capa output maps observed capabilities directly to MITRE ATT&CK techniques, letting the analyst prioritize the sample and write or tune correlation/detection-engineering rules. Techniques most relevant here:
 - **T1027 — Obfuscated Files or Information** (obfuscated/encoded strings; https://attack.mitre.org/techniques/T1027/).
@@ -111,6 +112,7 @@ capa output maps observed capabilities directly to MITRE ATT&CK techniques, lett
 - **T1573 — Encrypted Channel** (if decoded strings reveal encrypted C2 config; https://attack.mitre.org/techniques/T1573/).
 - **T1059.001 — Command and Scripting Interpreter: PowerShell** (if capa detects a capability such as “executes PowerShell” or “contains PowerShell command”; https://attack.mitre.org/techniques/T1059/001/).
 - **T1057 — Process Discovery** (if capa reports a capability like “enumerates processes via WMI” or “lists running tasks”; https://attack.mitre.org/techniques/T1057/).
+- **T1547.001 — Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder** (if decoded strings reveal Run key or startup folder paths used for persistence; https://attack.mitre.org/techniques/T1547/001/).
 
 Decoded indicators become IOCs that enrich alert triage and threat-intel enrichment inside the SOC workflow.
 
@@ -365,6 +367,12 @@ Claim → source mapping (all URLs are official tool docs, MITRE, SANS, Microsof
 - Sysmon Event ID 1 (process creation) and Windows Security Event ID 4688 documentation — Microsoft Learn: https://learn.microsoft.com/sysmon/schema/event-1 and https://learn.microsoft.com/windows/security/threat-protection/auditing/event-4688
 - SANS FOR610 Reverse-Engineering Malware course reference (static triage context, entropy analysis): https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
 - Mandiant blog on detecting obfuscated malware (general guidance on anti‑emulation and entropy) — Mandiant Resources: https://www.mandiant.com/resources/blog/detecting-obfuscated-malware
+- https://attack.mitre.org/techniques/T1484/
+- https://attack.mitre.org/techniques/T1497/
+- https://www.sans.org/reading-room
+- https://www.cisa.gov/uscert/alerts
+- https://attack.mitre.org/techniques/T1547/001/
+- https://github.com/mandiant/flare-floss.
 
 ## Related modules
 - [Static reverse engineering](../12-static-re/README.md) -- shares capa for capability-based triage.
@@ -391,3 +399,5 @@ Claim → source mapping (all URLs are official tool docs, MITRE, SANS, Microsof
 - https://github.com/mandiant/flare-floss"
 
 <!-- cyberlab-enriched: v5 -->
+
+<!-- cyberlab-enriched: v6 -->
