@@ -326,6 +326,49 @@ detection:
 - **Technique:** T1547 – Boot or Logon Autostart Execution  
 - **Authoritative Source:** https://attack.mitre.org/techniques/T1547/
 
+
+### Essential Commands & Features
+
+Binwalk’s advanced flags unlock deeper firmware analysis, particularly for obfuscated or nested artifacts. Below are three **critical but often omitted** commands with concrete use cases:
+
+1. **`-M` (Matryoshka Recursive Scan)**
+   Recursively scans extracted files for embedded payloads, ideal for multi-layered firmware (e.g., bootloaders with nested filesystems).
+   **Example:**
+   ```bash
+   binwalk -Me firmware.bin
+   ```
+   **When to use:** Detect hidden components in adversary-modified firmware (e.g., [T1553.004: Install Root Certificate](https://attack.mitre.org/techniques/T1553/004/)) or supply-chain attacks ([T1587.001: Malware](https://attack.mitre.org/techniques/T1587/001/)).
+
+2. **`-A` (Opcode Scan)**
+   Identifies executable code (e.g., ARM/MIPS binaries) by scanning for CPU opcodes, useful for spotting backdoors in stripped firmware.
+   **Example:**
+   ```bash
+   binwalk -A firmware.bin
+   ```
+   **When to use:** Uncover hardcoded implants or shellcode (e.g., [T1059.006: Python](https://attack.mitre.org/techniques/T1059/006/) in embedded scripts).
+
+3. **`--dd` (Custom Extraction Rules)**
+   Extracts files matching user-defined criteria (e.g., specific file types or entropy ranges), bypassing default filters.
+   **Example:**
+   ```bash
+   binwalk --dd='zip:.*' firmware.bin
+   ```
+   **When to use:** Recover obfuscated archives (e.g., [T1027.006: HTML Smuggling](https://attack.mitre.org/techniques/T1027/006/)) or encrypted payloads.
+
+**Sources:**
+- Binwalk Wiki: [https://github.com/ReFirmLabs/binwalk/wiki](https://github.com/ReFirmLabs/binwalk/wiki)
+- NSA Cybersecurity Technical Report: [https://media.defense.gov/2022/Jun/07/2003012355/-1/-1/0/CTR_EMBEDDED_FIRMWARE_ANALYSIS.PDF](https://media.defense.gov/2022/Jun/07/2003012355/-1/-1/0/CTR_EMBEDDED_FIRMWARE_ANALYSIS.PDF)
+
+### Common Pitfalls & Result Validation
+
+Analysts often misinterpret `binwalk` results due to **false positives** in entropy scans or misaligned file signatures. A common mistake is assuming every detected file system (e.g., SquashFS, CramFS) is legitimate—attackers may embed **malicious payloads** disguised as benign firmware components (e.g., [T1553.005: Subvert Trust Controls: Mark-of-the-Web Bypass](https://attack.mitre.org/techniques/T1553/005/)). Always validate findings by cross-referencing extracted files with known-good firmware hashes or static analysis tools like `strings` or `Ghidra`.
+
+Another pitfall is **ignoring compressed or encrypted blobs**—these may hide adversary implants (e.g., [T1027.008: Obfuscated Files or Information: Stripped Payloads](https://attack.mitre.org/techniques/T1027/008/)). Use `binwalk -e` to recursively extract nested layers, then verify file integrity with `file` and `binwalk -A` to check for executable code. False conclusions arise when analysts overlook **firmware update mechanisms** (e.g., unsigned updates or hardcoded credentials), which are prime targets for persistence. Always document extraction steps and correlate findings with firmware version history to avoid misattribution.
+
+**Sources:**
+- [CERT/CC: Firmware Analysis Methodology](https://insights.sei.cmu.edu/library/firmware-analysis-methodology/)
+- [OWASP: Firmware Security Testing](https://owasp.org/www-project-firmware-security-testing-guide/)
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -395,3 +438,15 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - https://attack.mitre.org/techniques/T1547/
 
 <!-- cyberlab-enriched: v5 -->
+- https://attack.mitre.org/techniques/T1553/004/
+- https://attack.mitre.org/techniques/T1587/001/
+- https://attack.mitre.org/techniques/T1059/006/
+- https://attack.mitre.org/techniques/T1027/006/
+- https://github.com/ReFirmLabs/binwalk/wiki](https://github.com/ReFirmLabs/binwalk/wiki
+- https://media.defense.gov/2022/Jun/07/2003012355/-1/-1/0/CTR_EMBEDDED_FIRMWARE_ANALYSIS.PDF](https://media.defense.gov/2022/Jun/07/2003012355/-1/-1/0/CTR_EMBEDDED_FIRMWARE_ANALYSIS.PDF
+- https://attack.mitre.org/techniques/T1553/005/
+- https://attack.mitre.org/techniques/T1027/008/
+- https://insights.sei.cmu.edu/library/firmware-analysis-methodology/
+- https://owasp.org/www-project-firmware-security-testing-guide/
+
+<!-- cyberlab-enriched: v6 -->
