@@ -277,6 +277,76 @@ Once disk artifacts are recovered, pivot to **threat hunting** by correlating fi
 - [MITRE ATT&CK: T1033](https://attack.mitre.org/techniques/T1033/)
 - [SANS DFIR: Hunting DLL Side-Loading](https://www.sans.org/blog/hunting-dll-side-loading-with-sysmon/)
 
+
+### Detection Signatures & Reference Artifacts
+
+#### YARA Rule
+```yara
+rule Benign_SamDumpIndicator {
+    meta:
+        description = "Detects benign lab file containing SAM hive reference strings"
+        author = "Training Module"
+        reference = "https://yara.readthedocs.io/en/stable/writingrules.html"
+        date = "2025-03-27"
+    strings:
+        $s1 = "sam_hive"  // benign indicator (≥6 chars)
+        $s2 = "dump_creds"  // benign indicator (≥6 chars)
+    condition:
+        filesize < 1MB and ($s1 or $s2)
+}
+```
+
+#### Sigma Rule
+```yaml
+title: Benign Sam Dump Tool Process Creation
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        Image|endswith: '\python.exe'
+        CommandLine|contains: 'sam_hive'
+    condition: selection
+```
+
+#### Reference artifacts / IOCs
+| Indicator | Value |
+|-----------|-------|
+| SHA256    | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| Filename  | `sam_dump_tool.py` |
+| Host artifact | File path: `C:\Users\Admin\Desktop\sam_dump_tool.py` |
+| Host artifact | Registry key accessed: `HKEY_LOCAL_MACHINE\SAM` |
+| Network artifact | Connection to `192.0.2.1` (documentation IP) |
+
+**MITRE ATT&CK Techniques Covered:**  
+- [T1560.001 - Archive via Utility](https://attack.mitre.org/techniques/T1560/001/)  
+- [T1003 - OS Credential Dumping](https://attack.mitre.org/techniques/T1003/)
+
+**Authoritative Sources:**  
+- [YARA Rules Documentation](https://yara.readthedocs.io/en/stable/writingrules.html)  
+- [Sigma Specification](https://github.com/SigmaHQ/sigma-specification)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an attacker’s standpoint, disk forensics artifacts are both a treasure trove and a liability. Adversaries frequently abuse **T1083 (File and Directory Discovery)** to locate sensitive files (e.g., `NTUSER.DAT`, `WebCacheV01.dat`, or `Amcache.hve`) before exfiltration or lateral movement. They may also leverage **T1552.001 (Unsecured Credentials: Credentials In Files)** to extract plaintext passwords or hashes from registry hives, browser databases, or `lsass.dmp` files. To evade detection, attackers often:
+
+- **Obfuscate or encrypt payloads** (e.g., embedding malware in alternate data streams or using `T1027.002 (Obfuscated Files or Information: Software Packing)`) to bypass signature-based detection.
+- **Timestomp artifacts** (e.g., `$MFT` entries or registry keys) using tools like `SetMACE` to disrupt timeline analysis.
+- **Leverage volume shadow copies** to recover deleted files or roll back system state, complicating forensic recovery.
+
+Artifacts left behind include:
+- **Modified timestamps** in `$MFT` or `$LogFile` (e.g., from `T1070.006 (Indicator Removal: Timestomp)`).
+- **Registry hive modifications** (e.g., `UserAssist` or `Shellbags` keys altered via `T1059.003 (Command and Scripting Interpreter: Windows Command Shell)`).
+- **Deleted file remnants** in unallocated space or `$I30` indices, recoverable via carving tools like `scalpel`.
+
+Evasion considerations:
+- **Avoid writing to disk** where possible (e.g., using `T1055 (Process Injection)` for in-memory execution).
+- **Use legitimate admin tools** (e.g., `robocopy` or `diskshadow`) to blend with normal activity.
+
+**Sources:**
+- [MITRE ATT&CK: T1083 (File and Directory Discovery)](https://attack.mitre.org/techniques/T1083/)
+- [DFIR Review: Adversary Abuse of Volume Shadow Copies](https://www.dfir.review/2021/03/15/adversary-abuse-of-volume-shadow-copies/)
+
 ## Sources
 Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK, SANS, or recognized vendor/project sites):
 
@@ -340,3 +410,12 @@ Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK,
 - https://www.sans.org/blog/hunting-dll-side-loading-with-sysmon/
 
 <!-- cyberlab-enriched: v5 -->
+- https://yara.readthedocs.io/en/stable/writingrules.html"
+- https://attack.mitre.org/techniques/T1560/001/
+- https://attack.mitre.org/techniques/T1003/
+- https://yara.readthedocs.io/en/stable/writingrules.html
+- https://github.com/SigmaHQ/sigma-specification
+- https://attack.mitre.org/techniques/T1083/
+- https://www.dfir.review/2021/03/15/adversary-abuse-of-volume-shadow-copies/
+
+<!-- cyberlab-enriched: v6 -->
