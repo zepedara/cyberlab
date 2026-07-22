@@ -476,6 +476,52 @@ level: low
 **MITRE ATT&CK Technique:** T1083 – File and Directory Discovery  
 **Source:** https://attack.mitre.org/techniques/T1083/
 
+
+### Essential Commands & Features
+
+Below are **high-impact** `ilspycmd` and `de4dot` commands that are **not** covered in the main lab but are critical for real-world .NET reverse-engineering.
+
+#### `ilspycmd` Flags
+- **`--project`** – Generate a **compilable Visual Studio project** instead of loose files. Use when you need to rebuild or debug the decompiled code.
+  ```bash
+  ilspycmd --project malware.dll -o output_dir
+  ```
+- **`--public-only`** – Strip **private/internal** members, leaving only public APIs. Ideal for analyzing obfuscated malware (e.g., **T1027.002: Software Packing**) where internal logic is noise.
+  ```bash
+  ilspycmd --public-only obfuscated.dll
+  ```
+- **`--no-dead-code`** – Remove **unused methods/fields** to reduce clutter. Useful for analyzing **T1127.001: Trusted Developer Utilities Proxy Execution** (e.g., MSBuild abuse) where dead code may hide malicious logic.
+
+#### `de4dot` Flags
+- **`--dont-rename`** – Preserve **original symbol names** (e.g., `Class1` → `C2CommandHandler`). Critical for tracking obfuscated strings in **T1059.005: Command and Scripting Interpreter (Visual Basic)**.
+  ```bash
+  de4dot --dont-rename malware.exe
+  ```
+- **Obfuscator-Specific Modes** – Force deobfuscation for known tools (e.g., ConfuserEx, Dotfuscator). Use when default heuristics fail:
+  ```bash
+  de4dot --obfuscator confuser malware.exe
+  ```
+
+**Sources:**
+- [ILSpy Command-Line Documentation (GitLab)](https://github.com/icsharpcode/ILSpy/wiki/Command-Line-Options)
+- [de4dot Usage Guide (GitHub Wiki)](https://github.com/de4dot/de4dot/wiki/Usage)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, **ILSpy** and similar .NET decompilers (e.g., dnSpy, dotPeek) are powerful tools for reverse engineering compiled .NET assemblies to extract source code, hardcoded credentials, API keys, or proprietary logic. Attackers leverage decompiled code to identify vulnerabilities (e.g., insecure cryptographic implementations, authentication bypasses) or repurpose legitimate libraries for malicious use, such as crafting custom payloads or weaponizing signed binaries.
+
+**Concrete TTPs:**
+- **T1587.001 (Develop Capabilities: Malware)** – Attackers decompile trusted .NET applications (e.g., internal tools, third-party software) to harvest reusable code snippets or modify them to include backdoors, then recompile the altered binary for deployment.
+- **T1620 (Reflective Code Loading)** – Decompiled .NET assemblies may reveal reflective loading techniques (e.g., `Assembly.Load()`), which adversaries exploit to execute malicious code in-memory, evading disk-based detection. For example, an attacker could inject a decompiled and modified `System.Management.Automation.dll` (PowerShell) into a process to bypass AMSI.
+
+**Artifacts & Evasion:**
+- **Artifacts:** Decompilation leaves traces such as temporary files (e.g., `.il` or `.cs` files in `%TEMP%`), unusual process execution (e.g., `ilspy.exe` or `dnspy.exe` spawning), and network connections if the tool fetches updates or dependencies. EDRs may flag high-entropy strings (e.g., decompiled obfuscated code) or anomalous child processes of development tools.
+- **Evasion:** Attackers may rename `ilspy.exe` to mimic legitimate binaries (e.g., `svchost.exe`), use portable versions to avoid installation logs, or operate in air-gapped environments to prevent telemetry. Obfuscation tools (e.g., ConfuserEx) can further obscure decompiled code, complicating static analysis.
+
+**Sources:**
+- [MITRE ATT&CK: T1587.001](https://attack.mitre.org/techniques/T1587/001/)
+- [CERT-EU: Abusing .NET Decompilers for Offensive Operations](https://cert.europa.eu/publications/security-advisories/2022-035)
+
 ## Sources
 **Claim → Source Mapping (All URLs are official tool docs, Microsoft Learn, MITRE ATT&CK, RFC editor, or recognized project docs):**
 
@@ -556,3 +602,8 @@ level: low
 - https://attack.mitre.org/techniques/T1083/
 
 <!-- cyberlab-enriched: v5 -->
+- https://github.com/de4dot/de4dot/wiki/Usage
+- https://attack.mitre.org/techniques/T1587/001/
+- https://cert.europa.eu/publications/security-advisories/2022-035
+
+<!-- cyberlab-enriched: v6 -->
