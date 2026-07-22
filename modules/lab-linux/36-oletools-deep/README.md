@@ -340,6 +340,51 @@ detection:
 | Network Artifact | hxxp://example[.]com/oletools | URL where the sample was downloaded from |
 This detection content is related to the MITRE ATT&CK technique [T1115 - Scope](https://attack.mitre.org/techniques/T1115/) and can be used to detect and analyze the behavior of OLETools. For more information, refer to the [OLETools documentation](https://www.decalage.info/oletools).
 
+
+### Essential Commands & Features
+
+The `oledump` and `olevba` tools offer powerful flags to extract and analyze malicious Office documents. Below are the most useful commands not yet covered, with concrete examples and their tactical applications:
+
+1. **`oledump.py -s <stream>` (Select Stream)**
+   Isolate a specific OLE stream for focused analysis (e.g., VBA macros). Critical when dealing with multi-stream documents.
+   *Example:* `oledump.py -s 8 malicious.doc` (extracts stream 8).
+   *Use Case:* Targets **T1137.001 (Office Application Startup: Office Template Macros)** by pinpointing embedded macros in non-default streams.
+
+2. **`oledump.py -v` (Verbose VBA)**
+   Decompress and display VBA source code with metadata (e.g., line numbers, module names). Essential for manual code review.
+   *Example:* `oledump.py -v -s 8 malicious.doc` (shows VBA in stream 8).
+   *Use Case:* Detects **T1027.007 (Obfuscated Files or Information: Dynamic API Resolution)** by revealing obfuscated API calls.
+
+3. **`oledump.py -d` (Dump Raw)**
+   Export raw stream data (e.g., binary payloads) for further analysis. Useful for extracting embedded executables.
+   *Example:* `oledump.py -d -s 5 malicious.xls > payload.bin` (dumps stream 5 to a file).
+   *Use Case:* Uncovers **T1106 (Native API)** by exposing shellcode or PE files.
+
+4. **`olevba --decode` (Deobfuscate VBA)**
+   Automatically decodes common obfuscation techniques (e.g., string concatenation, base64). Reduces manual effort.
+   *Example:* `olevba --decode malicious.doc` (deobfuscates all VBA macros).
+   *Use Case:* Counters **T1027.006 (HTML Smuggling)** by revealing hidden URLs or payloads.
+
+**Sources:**
+- [Didier Stevens’ oledump Documentation](https://blog.didierstevens.com/programs/oledump-py/)
+- [REMnux Tools Guide: olevba](https://docs.remnux.org/discover-the-tools/analyze+documents+and+scripts/olevba)
+
+### Adversary Emulation & Red-Team Perspective
+
+Attackers leverage **oletools** to dissect malicious Office documents during reconnaissance, enabling precise payload staging and evasion. A common tactic involves extracting embedded OLE objects (e.g., macros, scripts, or executables) to analyze their structure and identify detection gaps (e.g., obfuscated VBA or unusual storage locations). For example, `olevba` can decode obfuscated macros to reveal hardcoded C2 domains or shellcode, which attackers then refine to bypass static signatures (e.g., replacing `CreateObject("WScript.Shell")` with `GetObject("winmgmts:")` to evade keyword-based detections).
+
+**Concrete TTPs:**
+- **T1036.005: Match Legitimate Name or Location (Masquerading)** – Attackers rename extracted payloads (e.g., `svchost.exe` in `%TEMP%`) or repackage them into benign-looking OLE containers (e.g., Excel add-ins) to blend with legitimate traffic.
+- **T1564.003: Hidden Window (Hide Artifacts)** – Extracted scripts are executed via `wscript.exe` with the `/B` flag to suppress GUI pop-ups, minimizing user visibility. `oleid` may flag suspicious streams (e.g., `OLE10Native`), but attackers split payloads across multiple streams or use `oleobj` to embed them in non-standard OLE fields (e.g., `Equation Native`).
+
+**Artifacts & Evasion:**
+- **Artifacts:** Temporary files (e.g., `~$document.doc`), `olevba` logs (if run locally), and registry keys for macro execution (e.g., `HKCU\Software\Microsoft\Office\<version>\Word\Security\Trusted Documents`). Network artifacts include HTTP requests to C2 domains extracted from deobfuscated macros.
+- **Evasion:** Attackers avoid `oletools` entirely by using in-memory extraction (e.g., PowerShell’s `Expand-Archive` on OLE streams) or encrypting payloads with AES-256, leaving only a decryption stub in the macro. They may also abuse **T1127: Trusted Developer Utilities Proxy Execution** (e.g., `MSBuild.exe`) to compile payloads post-extraction, avoiding disk-based detections.
+
+**Sources:**
+- [FireEye: OLE Embedded Objects Analysis](https://www.fireeye.com/blog/threat-research/2018/09/apt10-targeting-japanese-corporations-using-updated-ttps.html)
+- [NCC Group: Office Macro Obfuscation Techniques](https://research.nccgroup.com/2020/01/20/office-macro-obfuscation/)
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -388,3 +433,8 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - https://attack.mitre.org/techniques/T1115/
 
 <!-- cyberlab-enriched: v5 -->
+- https://docs.remnux.org/discover-the-tools/analyze+documents+and+scripts/olevba
+- https://www.fireeye.com/blog/threat-research/2018/09/apt10-targeting-japanese-corporations-using-updated-ttps.html
+- https://research.nccgroup.com/2020/01/20/office-macro-obfuscation/
+
+<!-- cyberlab-enriched: v6 -->
