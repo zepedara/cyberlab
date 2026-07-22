@@ -235,6 +235,88 @@ From an adversary’s perspective, process memory is a goldmine for credential t
 - [CrowdStrike: Process Injection Techniques](https://www.crowdstrike.com/blog/process-injection-techniques/)
 - [NCC Group: Memory Forensics for Incident Response](https://research.nccgroup.com/2021/01/28/memory-forensics-for-incident-response/)
 
+
+### Essential Commands & Features
+
+Beyond the basics, `pe-sieve` and `HollowsHunter` offer powerful flags that streamline detection and forensics. Use `pe-sieve --dump-mode shellcode` to extract only shellcode payloads from injected memory, ideal when suspecting reflective DLL or shellcode injection (covers T1564.001 **Hide Artifacts: Hidden Files and Directories** by recovering shellcode hidden in unbacked regions). Example:
+```bash
+pe-sieve /pid 1234 --dump-mode shellcode --json output.json --quiet
+```
+The `--json` flag produces structured output for SIEM integration, while `--quiet` suppresses console noise for automated runs.
+
+For `HollowsHunter`, enable `--unique_dir` to save each scan dump into a timestamped subdirectory, preventing overwrites during concurrent investigations. The `--loop` flag continuously monitors a process (e.g., every 30 seconds) to capture memory changes—critical for detecting post-exploitation activity like T1070.004 **Indicator Removal on Host: File Deletion** when an attacker cleans artifacts. Example:
+```bash
+HollowsHunter /pid 5678 --unique_dir --loop --json_output results.json
+```
+`--json_output` generates machine‑parseable evidence for automated analysis.
+
+These flags extend detection to lateral movement and defense evasion scenarios not covered by earlier commands.
+
+**References**  
+- MITRE ATT&CK: [Hide Artifacts: Hidden Files and Directories](https://attack.mitre.org/techniques/T1564/001/)  
+- PE‑sieve docs: [GitHub – pe‑sieve README](https://github.com/hasherezade/pe-sieve)
+
+### Detection Signatures & Reference Artifacts
+
+#### YARA Rule
+
+```yara
+rule ProcessMemoryLab_BenignDump {
+  meta:
+    description = "Detects benign process memory dump sample used in defensive training"
+    author = "Training Module - 16-process-memory"
+    date = "2025-04-11"
+    reference = "hxxps://github[.]com/training/lab-samples"
+    hash = "a1b2c3d4e5f6789012345678abcdefa123456789abcdef0123456789abcdef0"
+  strings:
+    $s1 = "PROCESS_MEMORY_LAB_SAMPLE"
+  condition:
+    filesize < 1MB and $s1
+}
+```
+
+#### Sigma Rule
+
+```yaml
+title: Process Memory Lab Sample Execution Detection
+status: test
+description: Detects execution of a benign lab sample designed for process memory analysis training
+author: Training Module - 16-process-memory
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains: "process_memory_lab_sample.exe"
+  condition: selection
+falsepositives:
+  - None expected for this specific lab sample
+level: low
+tags:
+  - attack.t1204.002
+  - attack.t1569.002
+```
+
+#### Reference Artifacts / IOCs
+
+| Indicator Type | Value |
+|----------------|-------|
+| SHA256 Hash | `a1b2c3d4e5f6789012345678abcdefa123456789abcdef0123456789abcdef0` |
+| Filename | `process_memory_lab_sample.exe` |
+| Host Artifact | `C:\Lab\samples\process_memory_dump.dmp` |
+| Network Artifact (IP) | `192.0.2.100` (documentation range, defanged) |
+| Network Artifact (Domain) | `lab-memory-training[.]com` |
+
+#### MITRE ATT&CK Coverage
+
+- **T1204.002** – User Execution: Malicious File  
+- **T1569.002** – System Services: Service Execution  
+
+#### Authoritative Sources
+
+- https://attack.mitre.org/techniques/T1204/002/
+- https://attack.mitre.org/techniques/T1569/002/
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -285,3 +367,8 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://research.nccgroup.com/2021/01/28/memory-forensics-for-incident-response/
 
 <!-- cyberlab-enriched: v5 -->
+- https://attack.mitre.org/techniques/T1564/001/
+- https://attack.mitre.org/techniques/T1204/002/
+- https://attack.mitre.org/techniques/T1569/002/
+
+<!-- cyberlab-enriched: v6 -->
