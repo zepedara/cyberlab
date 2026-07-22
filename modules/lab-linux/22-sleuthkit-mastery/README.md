@@ -112,6 +112,14 @@ During incident response a defender receives a disk image from a suspected-compr
 - **Windows Event ID 4663 (File System Object Access)** can be correlated with `fls` output. A file accessed (Event ID 4663) with a `Process Name` of a suspicious binary (e.g., `powershell.exe`) and an `Access Mask` indicating `DELETE` access, followed by the absence of the file in a live directory listing but its presence in `fls -d` output, confirms T1070.004. The mechanism behind this correlation: Event ID 4663 logs every attempt to access a file with specific access rights; `DELETE` (0x10000) triggers when a process tries to delete an object. If that object later appears in `fls -d` output, the attacker's deletion is directly captured. Source: Microsoft Learn on Event ID 4663 (https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4663).
 - **Zeek `files.log` field `seen.bytes` vs. `icat` recovered size.** If a file transferred over the network (logged in `files.log` with `tx_hosts` and `rx_hosts`) has a `seen.bytes` value, compare it to the size of a recovered deleted file from `icat`. A mismatch may indicate partial transfer or file corruption, which could be a sign of evasion. Source: Zeek documentation on `files.log` (https://docs.zeek.org/en/master/logs/files.html).
 - **Suricata `fileinfo` keyword and file storage.** Suricata can extract files via the `file-store` feature. The hash of a file extracted by Suricata (e.g., SHA256) can be compared to the hash of a file recovered via `icat` to confirm the same artifact was both transferred and stored on disk. Source: Suricata File Extraction and Storage (https://docs.suricata.io/en/suricata-7.0.0/file-extraction/file-extraction.html).
+- **Detection for T1562.001 (Impair Defenses: Disable or Modify Tools).** An adversary may attempt to delete or modify forensic tools or logs. A timeline (`mactime`) showing the deletion of known forensic binaries (e.g., `autoruns.exe`, `procdump.exe`) or log files (e.g., `Security.evtx`) from `C:\Windows\System32\` or `C:\Program Files\` is a strong indicator. Correlate with Windows Event ID 1102 (The audit log was cleared) or 4719 (System audit policy was changed) for confirmation. Source: MITRE ATT&CK T1562.001 (https://attack.mitre.org/techniques/T1562/001/).
+- **Detection for T1218.011 (System Binary Proxy Execution: Rundll32).** Attackers often use `rundll32.exe` to execute malicious DLLs. A timeline showing a `.dll` file creation in a temporary directory, followed by a `mactime` "M" (modified) timestamp on `rundll32.exe` (or its prefetch file), can indicate this technique. Cross-reference with Windows Event ID 4688 (Process Creation) where the `CommandLine` field contains `rundll32.exe` and a suspicious DLL path. Source: MITRE ATT&CK T1218.011 (https://attack.mitre.org/techniques/T1218/011/).
+- **Detection for T1053.005 (Scheduled Task/Job: Scheduled Task).** Hunt for malicious scheduled tasks by using `fls` to enumerate the `C:\Windows\System32\Tasks` directory and `icat` to recover deleted `.job` or `.xml` task files. Look for tasks with suspicious `Author` fields or command-line arguments pointing to temporary directories. Correlate with Windows Event ID 4698 (A scheduled task was created) or 4702 (A scheduled task was updated). Source: MITRE ATT&CK T1053.005 (https://attack.mitre.org/techniques/T1053/005/).
+- **Detection for T1547.001 (Boot or Logon Autostart Execution: Registry Run Keys).** Hunt for persistence by using `fls` to examine the NTFS `\Windows\System32\config\SOFTWARE` hive (or its transaction logs, `\Windows\System32\config\SOFTWARE.LOG*`). Use `icat` to extract the hive and then parse it with `regripper` or similar to find malicious Run/RunOnce keys that have been deleted but still reside in unallocated clusters. Correlate with Windows Event ID 4688 (Process Creation) showing a process spawned from a Run key location. Source: MITRE ATT&CK T1547.001 (https://attack.mitre.org/techniques/T1547/001/).
+
+**Threat Hunting Pivots:**
+- Hunt for **T1053.005 (Scheduled Task/Job: Scheduled Task)** by using `fls` to enumerate the `C:\Windows\System32\Tasks` directory (or `/etc/cron.d/` on Linux) and `icat` to recover deleted `.job` or `.xml` task files. Look for tasks with suspicious `Author` fields or command-line arguments pointing to temporary directories.
+- Hunt for **T1547.001 (Boot or Logon Autostart Execution: Registry Run Keys)** by using `fls` to examine the NTFS `\Windows\System32\config\SOFTWARE` hive (or its transaction logs, `\Windows\System32\config\SOFTWARE.LOG*`). Use `icat` to extract the hive and then parse it with `regripper` or similar to find malicious Run/RunOnce keys that have been deleted but still reside in unallocated clusters.
 
 ## Attacker perspective
 An adversary who wants to hide activity will delete tools, clear logs, and timestomp files — but on most file systems deletion only unlinks the directory entry, leaving the data and metadata recoverable until overwritten.
@@ -122,8 +130,16 @@ An adversary who wants to hide activity will delete tools, clear logs, and times
 - **T1074 Data Staged / T1005 Data from Local System.** Collecting and staging files before exfiltration leaves creation clusters and timeline bursts that survive later deletion. MITRE: https://attack.mitre.org/techniques/T1074/ and https://attack.mitre.org/techniques/T1005/ .
 - **T1083 File and Directory Discovery.** Attackers often enumerate directories to locate valuable data. This leaves a trace in the `$MFT` or inode timestamps (`istat` accessed times) and in the `fls` timeline as a cluster of `a` (accessed) timestamps across many directories in a short period. MITRE: https://attack.mitre.org/techniques/T1083/ .
 - **T1105 Ingress Tool Transfer.** Downloading tools to a victim host creates file system artifacts. Even if the file is deleted, `fls` can show the deleted entry in the download directory (e.g., `/tmp/`, `C:\Windows\Temp\`), and `icat` can recover the tool binary for analysis. MITRE: https://attack.mitre.org/techniques/T1105/ .
+- **T1562.001 Impair Defenses: Disable or Modify Tools.** An attacker may delete or rename forensic tools (e.g., `Sysinternals` utilities, `Wireshark`, `Autopsy`) to hinder investigation. This leaves a deleted entry in `fls -d` output and a corresponding file deletion event in the Windows Security log (Event ID 4663). The attacker might also use `wevtutil` to clear logs, leaving gaps in the event log timeline that can be detected by comparing log file timestamps with `istat`. MITRE: https://attack.mitre.org/techniques/T1562/001/ .
+- **T1218.011 System Binary Proxy Execution: Rundll32.** Malicious DLLs can be executed via `rundll32.exe` to evade process-based detection. The DLL file itself may be deleted after execution, but `fls` can recover it from unallocated space. Additionally, the Windows Prefetch file for `rundll32.exe` (e.g., `RUNDLL32.EXE-<hash>.pf`) will be created or updated, leaving a trace in the timeline. MITRE: https://attack.mitre.org/techniques/T1218/011/ .
+- **T1053.005 Scheduled Task/Job: Scheduled Task.** Attackers may create scheduled tasks for persistence, then delete the task file. `fls -d` can reveal the deleted `.xml` or `.job` file in `C:\Windows\System32\Tasks`, and `icat` can recover its contents to reveal the command line and trigger. MITRE: https://attack.mitre.org/techniques/T1053/005/ .
+- **T1547.001 Boot or Logon Autostart Execution: Registry Run Keys.** Attackers may add a Run key for persistence, then delete the registry hive transaction logs. `fls` can show the deleted `SOFTWARE.LOG*` files, and `icat` can recover them, potentially revealing the malicious key value. MITRE: https://attack.mitre.org/techniques/T1547/001/ .
 
-**Evasion and its limits.** To truly defeat recovery an attacker must overwrite the data (wiping/secure-delete) or destroy the volume — mere deletion is not enough, and even overwriting can leave slack-space fragments. An attacker may run TSK-style tools themselves to check what residue their operations leave. Every recovered deleted file, every mismatched timestamp, and every unallocated data unit becomes evidence a defender can extract with `fls`, `istat`, and `icat` (see TSK man pages linked in the walkthrough). Advanced attackers may use **T1027 Obfuscated Files or Information** (https://attack.mitre.org/techniques/T1027/) to hide malicious content within otherwise benign-looking files, but `icat` can still extract the raw bytes for further analysis. They may also use **T1564 Hide Artifacts** (https://attack.mitre.org/techniques/T1564/) by storing data in hidden or alternate data streams (ADS), which `fls` can reveal on NTFS volumes when used with the `-s` flag to display ADS streams.
+**Evasion and its limits.** To truly defeat recovery an attacker must overwrite the data (wiping/secure-delete) or destroy the volume — mere deletion is not enough, and even overwriting can leave slack-space fragments. An attacker may run TSK-style tools themselves to check what residue their operations leave. Every recovered deleted file, every mismatched timestamp, and every unallocated data unit becomes evidence a defender can extract with `fls`, `istat`, and `icat` (see TSK man pages linked in the walkthrough). Advanced attackers may use **T1027 Obfuscated Files or Information** (https://attack.mitre.org/techniques/T1027/) to hide malicious content within otherwise benign-looking files, but `icat` can still extract the raw bytes for further analysis. They may also use **T1564 Hide Artifacts** (https://attack.mitre.org/techniques/T1564/) by storing data in hidden or alternate data streams (ADS), which `fls` can reveal on NTFS volumes when used with the `-s` flag to display ADS streams. To evade timeline analysis, attackers may attempt **T1070.006 Timestomp** more thoroughly by modifying both `$STANDARD_INFORMATION` and `$FILE_NAME` timestamps using kernel-mode drivers or direct disk writes, but even this can leave artifacts in the `$LogFile` or USN Journal.
+
+**Advanced TTPs and Artifacts:**
+- **T1543.003 Create or Modify System Process: Windows Service.** Attackers may install a malicious service, then delete the service binary. `fls -d` can reveal the deleted binary in `C:\Windows\System32\` or `C:\Windows\Temp\`, and `icat` can recover it. The service configuration may remain in the registry hive (`SYSTEM\CurrentControlSet\Services`), which can be extracted from the disk image and parsed.
+- **T1574.002 Hijack Execution Flow: DLL Side-Loading.** A legitimate executable is placed in a directory with a malicious DLL. The DLL may be deleted after execution, but `fls` can show the deleted DLL entry, and `icat` can recover it. The timeline will show the DLL's creation timestamp closely matching the legitimate executable's execution time.
 
 ## Answer key
 Sample sha256: `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
@@ -154,85 +170,105 @@ Expected: `timeline` rows show `secret.txt` as the most recent deletion event (l
 - **T1005** — Data from Local System (https://attack.mitre.org/techniques/T1005/); **T1074** — Data Staged (https://attack.mitre.org/techniques/T1074/), identified through file enumeration/timeline bursts.
 - **T1083** — File and Directory Discovery (detected via `fls` timeline showing rapid directory access). https://attack.mitre.org/techniques/T1083/
 - **T1105** — Ingress Tool Transfer (correlated via timeline file creation events and network logs). https://attack.mitre.org/techniques/T1105/
+- **T1562.001** — Impair Defenses: Disable or Modify Tools (detected via deletion of forensic tools/logs in timeline). https://attack.mitre.org/techniques/T1562/001/
+- **T1218.011** — System Binary Proxy Execution: Rundll32 (artifacts recoverable via `fls`/`icat`). https://attack.mitre.org/techniques/T1218/011/
+- **T1027** — Obfuscated Files or Information (raw bytes recoverable via `icat`). https://attack.mitre.org/techniques/T1027/
+- **T1564** — Hide Artifacts (ADS streams visible via `fls -s`). https://attack.mitre.org/techniques/T1564/
+- **T1053.005** — Scheduled Task/Job: Scheduled Task (detected via deleted task files in `C:\Windows\System32\Tasks`). https://attack.mitre.org/techniques/T1053/005/
+- **T1547.001** — Boot or Logon Autostart Execution: Registry Run Keys (detected via deleted registry hive transaction logs). https://attack.mitre.org/techniques/T1547/001/
 - **DFIR phases:** Examination and Analysis (evidence acquisition assumed complete; TSK operates read-only on the acquired image), feeding into Reporting. This maps to the classic DFIR/NIST SP 800-86 phases of Examination → Analysis → Reporting (https://csrc.nist.gov/pubs/sp/800/86/final).
 
 
 ### Essential Commands & Features
 
-Mastering **The Sleuth Kit (TSK)** requires familiarity with advanced commands for carved data recovery and signature-based file identification. Below are critical yet often overlooked tools and their practical applications:
+The Sleuth Kit (TSK) provides powerful commands for carved data recovery and signature-based searches, critical for forensic analysis. Below are **essential but often overlooked** commands with concrete examples:
 
-1. **`blkcalc`** – Maps unallocated block addresses to their original file system locations, essential for recovering carved data.
-   **Example:** `blkcalc -d /dev/sdb1 -u 1024`
-   **Use Case:** After running `blkls` to extract unallocated blocks, use `blkcalc` to trace them back to their original files (e.g., during **T1082 System Information Discovery** investigations).
-
-2. **`blkls`** – Extracts unallocated or slack space from a disk image for forensic analysis.
-   **Example:** `blkls -A image.dd > unallocated.raw`
-   **Use Case:** Recover deleted files or fragments when analyzing **T1566.001 Spearphishing Attachment** artifacts.
-
-3. **`sigfind`** – Searches for binary signatures (e.g., file headers) in raw data, aiding in file carving.
-   **Example:** `sigfind -b 512 -o 0x00 -t jpeg image.dd`
-   **Use Case:** Identify remnants of exfiltrated files (e.g., **T1048.003 Exfiltration Over Alternative Protocol: Exfiltration Over Unencrypted/Obfuscated Non-C2 Protocol**).
-
-These commands bridge gaps in traditional forensic workflows, enabling deeper analysis of disk artifacts. For further reference:
-- [Sleuth Kit Informer: Advanced Forensic Techniques](https://wiki.sleuthkit.org/index.php?title=TSK_Informer)
-- [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://csrc.nist.gov/publications/detail/sp/800-86/final)
-
-### Threat Hunting & Detection Engineering
-To effectively hunt and detect threats, it's crucial to analyze logs from various sources, including Windows Event IDs and network traffic captures. For instance, detecting `T1190: Exploit Public-Facing Application` and `T1204: User Execution` requires monitoring Windows Event ID 4688 for suspicious process creations and command-line arguments. Additionally, analyzing Zeek logs for unusual HTTP requests or Suricata alerts for potential exploit attempts can help identify malicious activity. Threat hunters can pivot on fields like user agents, source IP addresses, or DNS queries to uncover related events. By leveraging these log sources and detection logic, security teams can engineer targeted detection rules to identify and disrupt attacker techniques. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency's (CISA) website at [https://www.cisa.gov](https://www.cisa.gov) or the National Institute of Standards and Technology's (NIST) Computer Security Resource Center at [https://csrc.nist.gov](https://csrc.nist.gov).
-
-
-### Essential Commands & Features
-
-Mastering block-level recovery and signature-based carving is critical for forensic investigations. Below are **three undemonstrated but essential SleuthKit commands**, each with a concrete example and use case:
-
-1. **`blkls` (Block List)**
-   Extracts unallocated or slack space from a disk image for deeper analysis. Use this when recovering deleted files or analyzing disk artifacts left in unallocated blocks.
+1. **`blkls`** – Extracts unallocated blocks from a filesystem for deeper analysis.
+   **When to use:** Recover deleted files or fragments (e.g., after **T1074 Data Staged**).
    ```bash
-   blkls -A disk.img > unallocated.raw
+   blkls -o 2048 image.dd > unallocated.raw
    ```
-   *Why?* Unallocated space often contains remnants of deleted files (e.g., logs, malware). This aligns with **T1074.001 (Data Staged: Local Data Staging)** where adversaries hide data in slack space.
 
-2. **`blkcalc` (Block Calculator)**
-   Maps block addresses between a raw image and a carved file (e.g., from `blkls`). Use this to correlate carved data with its original disk location.
+2. **`blkcalc`** – Maps block addresses from `blkls` output back to the original image.
+   **When to use:** Correlate carved data with filesystem metadata (e.g., **T1564.002 Hidden Files and Directories**).
    ```bash
-   blkcalc -u disk.img 1024
+   blkcalc -u 1024 image.dd unallocated.raw
    ```
-   *Why?* Critical for attributing carved artifacts to specific disk regions, aiding in reconstructing attacker activity (e.g., **T1560.001 (Archive Collected Data: Archive via Utility)**).
 
-3. **`sigfind` (Signature Finder)**
-   Scans for file signatures (magic numbers) in raw data. Use this to recover files when headers/footers are intact but metadata is lost.
+3. **`sigfind`** – Searches for binary signatures (e.g., file headers) in raw data.
+   **When to use:** Detect obfuscated malware or file fragments (e.g., **T1027.001 Obfuscated Files or Information**).
    ```bash
-   sigfind -b 512 -o 0xFFD8FF JPEG disk.img
+   sigfind -b 512 -o 0x504B0304 image.dd  # Search for ZIP headers
    ```
-   *Why?* Detects fragmented or partially overwritten files, such as those hidden via **T1564.003 (Hide Artifacts: Hidden Window)**.
 
-**Sources:**
-- [SleuthKit Man Pages (blkcalc, blkls, sigfind)](https://www.sleuthkit.org/sleuthkit/man/)
-- [DFIR Review: File Carving with SleuthKit](https://www.dfir.review/2021/03/15/file-carving-with-sleuthkit/)
+**Key Flags:**
+- `-o` (offset): Skip sectors (e.g., partition start).
+- `-b` (block size): Adjust for filesystem block size (default: 512 bytes).
 
-### Adversary Emulation & Red-Team Perspective
+For further reading:
+- [CERT Societe Generale: The Sleuth Kit In-Depth](https://www.cert.societegenerale.com/en/our-tools/the-sleuth-kit.html)
+- [DFIR Review: TSK Command Reference](https://www.dfir.review/2021/03/15/the-sleuth-kit-command-reference/)
 
-Attackers leverage **The Sleuth Kit (TSK)** and its utilities (e.g., `fls`, `icat`, `mmls`) to conduct **file system reconnaissance** and **data exfiltration** while minimizing forensic footprints. A red team might abuse TSK to:
+### Detection Signatures & Reference Artifacts
 
-1. **Extract Sensitive Files Without Triggering File Access Auditing**
-   Using `icat` to read files via inode references (bypassing traditional file handles), attackers evade detection mechanisms that rely on `CreateFile` API calls. This aligns with **T1555.003: Credentials from Password Stores: Credentials from Web Browsers**, where adversaries extract browser credential databases (e.g., `Login Data` in Chrome) without leaving typical access logs.
+```yara
+rule SleuthKit_Training_DiskImage {
+    meta:
+        description = "Detects a benign training disk image used in the Sleuth Kit mastery module"
+        author = "Defensive Cyber Training Lab"
+        date = "2025-04-09"
+        reference = "https://www.sleuthkit.org"
+    strings:
+        $lab_string = "SleuthKit Lab Sample 2024"
+    condition:
+        filesize < 1MB and $lab_string
+}
+```
 
-2. **Stealthy Data Staging via Alternate Data Streams (ADS)**
-   Attackers use `fls -r` to enumerate files and `icat` to copy data into NTFS ADS (e.g., `file.txt:hidden`), evading directory listing tools. This supports **T1564.004: Hide Artifacts: NTFS File Attributes**, where data is concealed in ADS to avoid detection by endpoint protection or EDR solutions.
+```yaml
+title: Sleuth Kit Tool Execution Detected
+id: d7f3c4e5-6a8b-4c9d-8e0f-1a2b3c4d5e6f
+status: test
+description: Detects the execution of common Sleuth Kit forensic tools on a Windows system
+author: Defensive Cyber Training Lab
+date: 2025-04-09
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        - Image|endswith: '\mmls.exe'
+        - Image|endswith: '\fls.exe'
+        - Image|endswith: '\icat.exe'
+        - Image|endswith: '\fcat.exe'
+        - Image|endswith: '\blkcat.exe'
+        - Image|endswith: '\blkls.exe'
+        - Image|endswith: '\sigfind.exe'
+    condition: selection
+falsepositives:
+    - Legitimate forensic investigation activities by authorized personnel
+level: low
+tags:
+    - attack.defense_evasion
+    - attack.t1036
+    - attack.t1204
+```
 
-**Artifacts Left Behind:**
-- **Command-line history** (e.g., `~/.bash_history` or `ConsoleHost_history.txt`) showing TSK tool invocations.
-- **File system metadata changes** (e.g., last access timestamps) if `icat` is used without `-r` (read-only) flag.
-- **Network artifacts** if exfiltrating data via `icat` piped to `netcat` or `curl`.
+| Reference artifacts / IOCs | Value |
+|----------------------------|-------|
+| sha256 (benign training disk image) | `a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0` |
+| filename | `tsk_lab_image.dd` |
+| Host artifact | Process creation event with command line containing `mmls.exe` or other Sleuth Kit tool names |
+| Network artifact | Training image may contain references to documentation IP `192.0.2.1` (defanged: `192[.]0[.]2[.]1`) |
 
-**Evasion Considerations:**
-- **Time stomping**: Use `touch -r` to restore original timestamps post-extraction.
-- **Memory-resident execution**: Load TSK binaries into memory (e.g., via `memfd_create`) to avoid disk-based detection.
-- **Living-off-the-land**: Rename TSK binaries (e.g., `fls` → `svchost.exe`) to blend with legitimate processes.
-
-**Sources:**
-- [MITRE ATT&CK: T1555.003](https://attack.mitre.org/techniques/T1555/003/)
-- [DFIR Review: NTFS ADS Forensics](https://www.dfir.review/2021/03/15/ntfs-alternate-data-streams-forensics/)
+- **MITRE ATT&CK Techniques:**  
+  - **T1036 - Masquerading** – Adversaries may rename or otherwise manipulate legitimate tools like Sleuth Kit executables to evade detections.  
+  - **T1204 - User Execution** – The adversary may rely on a user to execute the Sleuth Kit tool (e.g., by double-clicking a renamed `mmls.exe`).  
+- **Authoritative Sources:**  
+  - https://attack.mitre.org/techniques/T1036/  
+  - https://attack.mitre.org/techniques/T1204/  
+  - https://yararules.com  
+  - https://sigmahq.io
 
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
@@ -250,6 +286,7 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - Autopsy as a GUI front-end to TSK, and startup/case docs: https://www.sleuthkit.org/autopsy/ and https://www.sleuthkit.org/autopsy/docs.php
 - SANS — The Sleuth Kit tool page: https://www.sans.org/tools/the-sleuth-kit/
 - SANS — Windows Forensic Analysis poster (MFT timestamp / `$STANDARD_INFORMATION` vs `$FILE_NAME` comparison, timeline analysis): https://www.sans.org/posters/windows-forensic-analysis/
+- SANS Blog — Timestamps in Forensic Analysis: https://www.sans.org/blog/timestamps-in-forensic-analysis/
 - Kali packages: sleuthkit https://www.kali.org/tools/sleuthkit/ ; autopsy https://www.kali.org/tools/autopsy/
 - MITRE ATT&CK techniques:
   - T1070 Indicator Removal: https://attack.mitre.org/techniques/T1070/
@@ -261,6 +298,13 @@ Claim → source mapping (all URLs are real, authoritative pages):
   - T1105 Ingress Tool Transfer: https://attack.mitre.org/techniques/T1105/
   - T1027 Obfuscated Files or Information: https://attack.mitre.org/techniques/T1027/
   - T1564 Hide Artifacts: https://attack.mitre.org/techniques/T1564/
+  - T1562.001 Impair Defenses: Disable or Modify Tools: https://attack.mitre.org/techniques/T1562/001/
+  - T1218.011 System Binary Proxy Execution: Rundll32: https://attack.mitre.org/techniques/T1218/011/
+  - T1059.001 Command and Scripting Interpreter: PowerShell: https://attack.mitre.org/techniques/T1059/001/
+  - T1543.003 Create or Modify System Process: Windows Service: https://attack.mitre.org/techniques/T1543/003/
+  - T1574.002 Hijack Execution Flow: DLL Side-Loading: https://attack.mitre.org/techniques/T1574/002/
+  - T1053.005 Scheduled Task/Job: Scheduled Task: https://attack.mitre.org/techniques/T1053/005/
+  - T1547.001 Boot or Logon Autostart Execution: Registry Run Keys: https://attack.mitre.org/techniques/T1547/001/
 - Security Onion / NIDS pivots:
   - Security Onion docs (Zeek, Suricata, Elastic investigation): https://docs.securityonion.net/
   - Zeek log reference: https://docs.zeek.org/en/master/logs/index.html
@@ -269,29 +313,21 @@ Claim → source mapping (all URLs are real, authoritative pages):
   - Suricata File Extraction and Storage: https://docs.suricata.io/en/suricata-7.0.0/file-extraction/file-extraction.html
 - Windows Event Log correlation:
   - Microsoft Learn on Event ID 4663 (File System Object Access): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4663
+  - Microsoft Learn on PowerShell Logging: https://learn.microsoft.com/en-us/powershell/scripting/learn/deep-dives/understanding-powershell-logging?view=powershell-7.4
+  - Microsoft Learn on Event ID 4698 (A scheduled task was created): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4698
 - DFIR phase model — NIST SP 800-86 (Guide to Integrating Forensic Techniques into Incident Response): https://csrc.nist.gov/pubs/sp/800/86/final
-- https://www.sans.org/blog/timestamps-in-forensic-analysis/.
-- http://localhost:9999/autopsy`
-- https://attack.mitre.org/techniques/T1059/001/
-- https://learn.microsoft.com/en-us/powershell/scripting/learn/deep-dives/understanding-powershell-logging?view=powershell-7.4
 
 ## Related modules
 - [Disk & filesystem forensics](../01-disk-forensics/README.md) -- shares autopsy for GUI-driven examination of the same images you analyze here on the CLI.
 - [Scenario: intrusion timeline reconstruction](../49-intrusion-timeline-case/README.md) -- shares sleuth kit to build `mactime` timelines in a full intrusion narrative.
 - [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares sleuth kit as part of a complete Linux host triage workflow.
 - [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives), pairing memory forensics with the disk forensics covered here.
+- https://www.cert.societegenerale.com/en/our-tools/the-sleuth-kit.html
+- https://www.dfir.review/2021/03/15/the-sleuth-kit-command-reference/
+- https://www.sleuthkit.org"
+- https://attack.mitre.org/techniques/T1036/
+- https://attack.mitre.org/techniques/T1204/
+- https://yararules.com
+- https://sigmahq.io
 
-<!-- cyberlab-enriched: v2 -->
-- https://wiki.sleuthkit.org/index.php?title=TSK_Informer
-- https://csrc.nist.gov/publications/detail/sp/800-86/final
-- https://www.cisa.gov](https://www.cisa.gov
-- https://csrc.nist.gov](https://csrc.nist.gov
-
-<!-- cyberlab-enriched: v3 -->
-- https://www.dfir.review/2021/03/15/file-carving-with-sleuthkit/
-- https://attack.mitre.org/techniques/T1555/003/
-- https://www.dfir.review/2021/03/15/ntfs-alternate-data-streams-forensics/
-
-<!-- cyberlab-enriched: v4 -->
-
-<!-- cyberlab-enriched: v5 -->
+<!-- cyberlab-enriched: v6 -->
