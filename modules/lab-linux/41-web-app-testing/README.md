@@ -328,8 +328,10 @@ rule WEBSHELL_ASPX_XslTransform_Aug21 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `41_web_app_testing_benign_sample.txt` |
+| sample sha256 | `8c8720738769a362a168666239755a49245853c643b2815e695b498d222e48a7` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 41-web-app-testing -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 Beyond basic port scanning, Nmap’s most powerful features for web application testing remain undemonstrated. The following flags and NSE scripts are indispensable.

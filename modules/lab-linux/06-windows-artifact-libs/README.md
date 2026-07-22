@@ -346,8 +346,10 @@ rule HKTL_EXPL_POC_LibSSH_Auth_Bypass_CVE_2023_2283_Jun23_1 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `06_windows_artifact_libs_benign_sample.txt` |
+| sample sha256 | `2c30ba7646fc4b90115484de608a076dfafcd72ec0632ad2c0c95eeff034644c` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 06-windows-artifact-libs -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1070 (Indicator Removal)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1070/

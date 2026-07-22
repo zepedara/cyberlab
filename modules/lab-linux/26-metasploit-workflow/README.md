@@ -365,8 +365,10 @@ rule Msfpayloads_msf {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `26_metasploit_workflow_benign_sample.txt` |
+| sample sha256 | `0fd22b53ee70b0ebf7cdec9dcd506807a4901456c8f50acb9ad1c8e12019ffca` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 26-metasploit-workflow -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 Beyond basic scanning and module loading, effective Metasploit workflow requires mastering exploit execution, payload switching, and post-exploitation modules. Use `exploit` (or `exploit -j` to launch as a background job) to execute an exploit; `check` probes whether a target is vulnerable without exploitation. When setting a payload, `set payload windows/x64/meterpreter/reverse_tcp` is common. To switch payloads mid-session, `sessions -u <ID>` upgrades a shell to Meterpreter.

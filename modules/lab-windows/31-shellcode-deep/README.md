@@ -268,8 +268,10 @@ rule Base64_PS1_Shellcode {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `31_shellcode_deep_benign_sample.txt` |
+| sample sha256 | `e6eb5af0b2cb7fb6792612a941714043772bd445445f85e73d3d9ba9c9b073ee` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 31-shellcode-deep -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1055 (Process Injection)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1055/

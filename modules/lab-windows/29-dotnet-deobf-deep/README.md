@@ -407,8 +407,10 @@ rule ScanBox_Malware_Generic {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `29_dotnet_deobf_deep_benign_sample.txt` |
+| sample sha256 | `63e06949e67cbae1574426139c28878026752e54119e14372b0060199f75b120` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 29-dotnet-deobf-deep -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1027 (Obfuscated Files or Information)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1027/

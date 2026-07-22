@@ -126,8 +126,10 @@ rule SUSP_XORed_Mozilla_Oct19 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `58_eventlog_hunting_benign_sample.txt` |
+| sample sha256 | `6171324390a6c83f5273e7be538336ba454da3e0ebade67a48a23991392e0c35` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 58-eventlog-hunting -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1059.001 (Command and Scripting Interpreter: PowerShell)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1059/001/

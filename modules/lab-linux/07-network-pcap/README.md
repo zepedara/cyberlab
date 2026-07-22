@@ -340,8 +340,10 @@ rule CobaltStrike_Resources_Artifact32_and_Resources_Dropper_v1_49_to_v3_14
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `07_network_pcap_benign_sample.txt` |
+| sample sha256 | `68d25a1ac7207c9ec22cbf19580edfd500a70bf361584beede4cca7765b61ae9` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 07-network-pcap -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1040 (Network Sniffing)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1040/

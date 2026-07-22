@@ -307,8 +307,10 @@ level: high
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `27_ghidra_scripting_benign_sample.txt` |
+| sample sha256 | `b7a9e950dd6800c1c7e3a27209bc499cc7c5f5b24bee35c95d4dffa68c271eb3` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 27-ghidra-scripting -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 #### Ghidra Headless Batch Mode (`-process`)

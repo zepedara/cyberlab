@@ -287,8 +287,10 @@ rule Base64_PS1_Shellcode {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `54_shellcode_case_benign_sample.txt` |
+| sample sha256 | `860c2abc84d65ec960cdee8e50d659b669114e59981b7338868b78fa84e454be` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 54-shellcode-case -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 To maximize `scdbg`'s analytical power, leverage these undemonstrated but critical commands for deeper shellcode inspection:

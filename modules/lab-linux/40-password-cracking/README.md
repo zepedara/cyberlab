@@ -416,8 +416,10 @@ rule MAL_Passwordstate_Moserware_Backdoor_Apr21_1 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `40_password_cracking_benign_sample.txt` |
+| sample sha256 | `3d0aae9b1e11915647b6550655395c70cb8b53848b5209eb1ce4d845ac304c66` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 40-password-cracking -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1110.002 (Brute Force: Password Cracking)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1110/002/

@@ -362,8 +362,10 @@ rule Persistence_Agent_MacOS {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `49_intrusion_timeline_case_benign_sample.txt` |
+| sample sha256 | `dadd427cf9df86c0b3f38857d5b25a7acc366d2c78c9d5374369bcdee4bd2af7` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 49-intrusion-timeline-case -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1547 (Boot or Logon Autostart Execution)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1547/

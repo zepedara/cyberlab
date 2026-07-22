@@ -298,8 +298,10 @@ rule ScanBox_Malware_Generic {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `24_wireshark_deep_benign_sample.txt` |
+| sample sha256 | `44ebe4bbe6f74ca0e33c4f9be08791148d4be72216db4a68cf58856309586b46` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 24-wireshark-deep -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 #### **TShark: Advanced Filters & Analysis**

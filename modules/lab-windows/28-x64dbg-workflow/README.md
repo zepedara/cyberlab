@@ -332,8 +332,10 @@ level: medium
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `28_x64dbg_workflow_benign_sample.txt` |
+| sample sha256 | `f6e8eb45d009f97d0610007ab72b0751c7b19c9029de09ca51e766631722479c` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 28-x64dbg-workflow -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 Mastering **conditional breakpoints** and **memory search** in x64dbg accelerates API tracing and Original Entry Point (OEP) discovery—critical for analyzing packed malware (e.g., **T1027.001: Software Packing**) or detecting process injection (e.g., **T1055.002: Portable Executable Injection**).

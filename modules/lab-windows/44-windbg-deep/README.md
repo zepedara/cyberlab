@@ -289,8 +289,10 @@ rule ScanBox_Malware_Generic {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `44_windbg_deep_benign_sample.txt` |
+| sample sha256 | `97df202bc324a4f636f33cd385001e37d08d62c170169a7bf00e655387484c96` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 44-windbg-deep -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 Master these power commands to accelerate analysis of stealthy malware behaviors. In WinDbg, `!exchain` dumps the structured exception handling (SEH) chain, revealing attempts to overwrite exception handlers—common in T1059.003 (Windows Command Shell) abuse. *Example:* `!exchain` displays the current thread's SEH list. Use `.childdbg` to enable child process debugging with `.childdbg 1`; critical for tracing T1204.001 (User Execution: Malicious Link) that spawns payloads (e.g., macro downloads). `.writemem` extracts memory regions: `.writemem c:\dump.bin 0x400000 0x401000` dumps a page. `dx` (Data Model eXaminer) queries structured data: `dx @$curprocess.KernelObject.Process` shows process details. `.shell` runs external tools: `.shell -ci "!process 0 0" findstr /i malware` pipes debugger output to a host command.

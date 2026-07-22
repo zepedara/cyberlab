@@ -376,8 +376,10 @@ rule VUL_JQuery_FileUpload_CVE_2018_9206 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `05_file_carving_benign_sample.txt` |
+| sample sha256 | `37f864b18abcc4f664808898db439c7f9e47146495a152722513737a54cf98f5` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 05-file-carving -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1074 (Data Staged)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1074/

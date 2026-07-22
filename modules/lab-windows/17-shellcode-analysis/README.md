@@ -356,8 +356,10 @@ rule Base64_PS1_Shellcode {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `17_shellcode_analysis_benign_sample.txt` |
+| sample sha256 | `4846cfbee9cf21f6db4adc018621204363d72d1ead308e5bc2c9339054ee9f4d` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 17-shellcode-analysis -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1059 (Command and Scripting Interpreter)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1059/

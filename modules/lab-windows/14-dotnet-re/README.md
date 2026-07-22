@@ -352,8 +352,10 @@ level: medium
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `14_dotnet_re_benign_sample.txt` |
+| sample sha256 | `36bff675a8c652e196f8307e0bdabb51404c5ff95c18bde69081fc4d87f75734` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 14-dotnet-re -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1027 (Obfuscated Files or Information)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1027/

@@ -342,8 +342,10 @@ rule ScanBox_Malware_Generic {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `30_pe_static_deep_benign_sample.txt` |
+| sample sha256 | `a09ecfb019c2af5e5ba0900b1448927bb5423d1f86ac8bc47c612473ea4e526c` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 30-pe-static-deep -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 PE-bear’s advanced static analysis capabilities extend beyond basic header inspection. Below are **critical but often overlooked features**, each demonstrated with a concrete example and use case:

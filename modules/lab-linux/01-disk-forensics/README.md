@@ -343,8 +343,10 @@ level: medium
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `01_disk_forensics_benign_sample.txt` |
+| sample sha256 | `2efd2b7473a216916c65c8ff94999fba7a391239268426357a9da2f351188ae4` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 01-disk-forensics -- for detection-rule testing only
+' |
 ### Adversary Emulation & Red-Team Perspective
 
 From an attacker’s standpoint, disk forensics artifacts are both a treasure trove and a liability. Adversaries frequently abuse **T1083 (File and Directory Discovery)** to locate sensitive files (e.g., `NTUSER.DAT`, `WebCacheV01.dat`, or `Amcache.hve`) before exfiltration or lateral movement. They may also leverage **T1552.001 (Unsecured Credentials: Credentials In Files)** to extract plaintext passwords or hashes from registry hives, browser databases, or `lsass.dmp` files. To evade detection, attackers often:

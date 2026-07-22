@@ -286,8 +286,9 @@ level: low
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `eicar.com` |
+| sample sha256 | `275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f` |
+| reproduce sample | the EICAR standard anti-virus test string |
 ### Essential Commands & Features
 
 To elevate your ClamAV scanning, master the `clamd` daemon and `clamdscan` client for rapid, repeated scans. Configure `clamd.conf` (set `TCPSocket 3310`), start the daemon with `systemctl start clamav-daemon`, then scan using `clamdscan --fdpass /target/dir` – the daemon stays loaded, reducing signature reload overhead. For one-off scans with actions, use `clamscan` with `--bell` to audibly alert on detection, `--move=/quarantine` to relocate infected files (preserving forensics), and `--remove` to delete them (use with caution). Example: `clamscan --bell --move=/tmp/infected -r /home/user/downloads`. For YARA, employ the `yara` command with a compiled rule set: `yara -s suspicious.yar target.exe` prints matching strings. Use YARA to detect custom patterns that ClamAV misses, such as specific registry modifications tied to T1564.001 (Hide Artifacts: Hidden Files and Directories) or anomalous DLL loads indicating T1574.001 (Hijack Execution Flow: DLL Search Order Hijacking). Combine `clamdscan` with YARA in a pipeline: `yara rules.yar /path/to/file | grep "malware" && clamdscan /path/to/file`.

@@ -306,8 +306,9 @@ rule TweetablePolyglotPng {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `eicar.com` |
+| sample sha256 | `275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f` |
+| reproduce sample | the EICAR standard anti-virus test string |
 ### Adversary Emulation & Evasion
 
 Adversaries frequently employ **packers** (e.g., UPX, custom) and **anti-analysis techniques** to evade detection, aligning with MITRE ATT&CK techniques such as **[T1027.008: Obfuscated Files or Information: Stripped Payloads](https://attack.mitre.org/techniques/T1027/008/)** and **[T1622: Debugger Evasion](https://attack.mitre.org/techniques/T1622/)**. These methods obscure malicious payloads, rename executable sections, or manipulate headers to thwart static analysis.

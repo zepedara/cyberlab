@@ -329,8 +329,10 @@ level: medium
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `33_binwalk_firmware_benign_sample.txt` |
+| sample sha256 | `b3590c419f2850d0d96e170d30a2d6a967efe67c811d8c9848ff97da681a9e86` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 33-binwalk-firmware -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 Binwalk’s advanced flags unlock deeper firmware analysis, particularly for obfuscated or nested artifacts. Below are three **critical but often omitted** commands with concrete use cases:

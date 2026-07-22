@@ -382,8 +382,10 @@ rule EXPL_Office_TemplateInjection_Aug19 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `39_frida_tracing_benign_sample.txt` |
+| sample sha256 | `0154ee496b86147be94e4f288c94b2c6c78eaf08e2c1fdb80ee6a5cfb8bbec60` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 39-frida-tracing -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 Frida’s advanced APIs and flags unlock deeper runtime inspection and automation. Below are **undocumented but critical** commands for memory manipulation, pointer arithmetic, and non-interactive hooking—key for analyzing obfuscated malware (e.g., **T1127.001: Trusted Developer Utilities Proxy Execution**) or unpacking custom encryption (e.g., **T1027.009: Obfuscated Files or Information: Embedded Payloads**).

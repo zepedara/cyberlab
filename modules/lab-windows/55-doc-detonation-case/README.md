@@ -300,8 +300,10 @@ rule MAL_Fake_Document_Software_Indicators_Nov23 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `55_doc_detonation_case_benign_sample.txt` |
+| sample sha256 | `8c524e940acd8d92e1d596e97b92206d73ece921ae8801d8d451899d4e8ce886` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 55-doc-detonation-case -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 To further enhance the 55-doc-detonation-case analysis, it's crucial to understand additional commands and features of FakeNet-NG and Wireshark. For FakeNet-NG, the `--config` flag allows for customization of the simulation environment, such as specifying the IP address range for the fake network. For example, `FakeNet-NG.exe --config fake_net_config.txt` loads a custom configuration from a file. The `--dns`, `--http`, and `--ssl` flags enable DNS, HTTP, and SSL/TLS protocol simulation, respectively. These features are particularly useful when analyzing malware that utilizes these protocols, as seen in techniques like [T1588.001, "Obfuscated Files or Information"](https://attack.mitre.org/techniques/T1588/001/) and [T1595, "Active Scanning"](https://attack.mitre.org/techniques/T1595/). In Wireshark, the 'Follow TCP Stream' feature allows for in-depth analysis of a specific TCP conversation, while the IO Graph feature provides a visual representation of network traffic patterns. These tools are essential for identifying and understanding complex network interactions. For more information on utilizing these features, refer to the official [FakeNet-NG GitHub repository](https://github.com/mandiant/FakeNet-NG) and the [Wireshark User's Guide](https://www.wireshark.org/docs/wsug_html_chunked/).
 

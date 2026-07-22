@@ -315,8 +315,10 @@ rule MAL_Chrysalis_DllLoader_Feb26 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `37_pdf_analysis_benign_sample.txt` |
+| sample sha256 | `c37bae0b9ffa4e0fb5f5040340d209345ee32b403f1f2dc4c4910d9f6e065403` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 37-pdf-analysis -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 Beyond the basic operations, `pdf-parser` offers advanced flags for deep inspection. Use **`-f`** to display cross-references (xref table) for mapping object relationships; e.g., `pdf-parser -f suspicious.pdf` reveals references critical for detecting obfuscated objects. The **`-w`** flag triggers raw stream decompression without formatting, ideal for extracting embedded scripts: `pdf-parser -w -o 5 document.pdf` outputs unformatted stream content for object 5. Flag **`-c`** lists only compressed objects, highlighting potential packed payloads: `pdf-parser -c file.pdf`. Use **`-e`** to extract selected objects to separate files, essential for isolating suspicious streams: `pdf-parser -e -o 3 -d extracted.bin sample.pdf`. The **`-r`** flag recursively parses objects, following all references to reveal hidden chains: `pdf-parser -r report.pdf`.  

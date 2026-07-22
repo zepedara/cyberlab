@@ -385,8 +385,10 @@ rule PowerShell_Case_Anomaly {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `52_unpacking_case_benign_sample.txt` |
+| sample sha256 | `8ae4cb3cc47425351027016e8760adf2f446086d3f01fa16f1c400a5d9b70554` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 52-unpacking-case -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 Dynamic unpacking in x64dbg demands precise control over execution—features not yet covered in this module. Three critical capabilities for breakpoint management and code tracing are `SetBPX`, conditional breakpoints, and the `Trace` commands.

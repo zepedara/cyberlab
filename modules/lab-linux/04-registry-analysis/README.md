@@ -548,8 +548,10 @@ rule SUSP_VCRuntime_Sideloading_Indicators_Aug23 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `04_registry_analysis_benign_sample.txt` |
+| sample sha256 | `e87e2dbd43eca938fecd8093f784f445ba5487b125674a691d05817a7fda9f5c` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 04-registry-analysis -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1547 (Boot or Logon Autostart Execution)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1547/

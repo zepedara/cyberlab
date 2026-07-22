@@ -377,8 +377,10 @@ rule TweetablePolyglotPng {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `12_static_re_benign_sample.txt` |
+| sample sha256 | `b7963716bbe805d11107225e4ffc09caafe99197ff86274b00959b944525be62` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 12-static-re -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1027 (Obfuscated Files or Information)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1027/

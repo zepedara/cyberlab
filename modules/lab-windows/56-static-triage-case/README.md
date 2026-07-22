@@ -333,8 +333,9 @@ rule PowerShell_Case_Anomaly {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `eicar.com` |
+| sample sha256 | `275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f` |
+| reproduce sample | the EICAR standard anti-virus test string |
 ### Essential Commands & Features
 
 When automating static triage with **DIE (Detect It Easy) console (`diec.exe`)**, the following undemonstrated commands and flags are critical for scripting and deeper analysis. These enable structured output, recursive scanning, and entropy visualization—key for detecting obfuscation and packed binaries (e.g., **T1027.001: Obfuscated Files or Information** and **T1553.004: Install Root Certificate**).

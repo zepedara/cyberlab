@@ -535,8 +535,10 @@ rule Mimikatz_Strings {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `11_offensive_kali_benign_sample.txt` |
+| sample sha256 | `cac8c278177d0949f6546222add062e5a5e20e69c65f8f2c4ee0585c6c1469bf` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 11-offensive-kali -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1046 (Network Service Discovery)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1046/

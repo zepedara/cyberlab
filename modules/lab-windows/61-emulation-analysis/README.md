@@ -716,8 +716,10 @@ rule EXPL_Office_TemplateInjection_Aug19 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `61_emulation_analysis_benign_sample.txt` |
+| sample sha256 | `eaa42a0e9c410fcb718dfac22f7f1a0fe679f8bfcabac2eb7756b1e44435dd3c` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 61-emulation-analysis -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1106 (Native API)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1106/

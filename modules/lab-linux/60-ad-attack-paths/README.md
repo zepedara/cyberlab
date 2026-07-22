@@ -193,8 +193,10 @@ rule MAL_RANSOM_SH_ESXi_Attacks_Feb23_1 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `60_ad_attack_paths_benign_sample.txt` |
+| sample sha256 | `2788ecbaa84b6e0e38f5cb8dc82f55f7383d85cd6819470a96ed582fa61a3f81` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 60-ad-attack-paths -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1558.003 (Steal or Forge Kerberos Tickets: Kerberoasting)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1558/003/

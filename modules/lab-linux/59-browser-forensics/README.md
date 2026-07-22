@@ -147,8 +147,10 @@ level: low
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `59_browser_forensics_benign_sample.txt` |
+| sample sha256 | `4c952c7d583cc3e5c8f811dcd806d5290ffae34e0e5e4779ac78edd0b1001a59` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 59-browser-forensics -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1539 (Steal Web Session Cookie)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1539/

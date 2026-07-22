@@ -357,8 +357,10 @@ rule ScanBox_Malware_Generic {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `36_oletools_deep_benign_sample.txt` |
+| sample sha256 | `87cb8e0b667310efb003e0ee78708839d4d3444e0459ee27f74e9c8c62e5f2b2` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 36-oletools-deep -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 The `oledump` and `olevba` tools offer powerful flags to extract and analyze malicious Office documents. Below are the most useful commands not yet covered, with concrete examples and their tactical applications:

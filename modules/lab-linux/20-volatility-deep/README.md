@@ -350,8 +350,10 @@ rule ScanBox_Malware_Generic {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `20_volatility_deep_benign_sample.txt` |
+| sample sha256 | `318bc240c803f985858b300303202295439ab7d4b28dd996a59182110cb62d13` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 20-volatility-deep -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1055 (Process Injection)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1055/

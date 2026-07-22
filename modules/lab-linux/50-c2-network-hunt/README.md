@@ -350,8 +350,10 @@ rule SUSP_XORed_Mozilla_Oct19 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `50_c2_network_hunt_benign_sample.txt` |
+| sample sha256 | `9aed2cef68490eed48e0ecd2a7052efc75081918013d32a467a9053954b425a3` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 50-c2-network-hunt -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1071 (Application Layer Protocol)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1071/

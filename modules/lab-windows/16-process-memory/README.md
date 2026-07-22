@@ -327,8 +327,10 @@ rule EXPL_Office_TemplateInjection_Aug19 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `16_process_memory_benign_sample.txt` |
+| sample sha256 | `82e1a2dd52fe4aa207addd55499ab9e5fe758adf3251e96adf9d95daaa43b22f` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 16-process-memory -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1055 (Process Injection)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1055/

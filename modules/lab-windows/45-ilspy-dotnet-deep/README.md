@@ -509,8 +509,10 @@ rule ScanBox_Malware_Generic {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `45_ilspy_dotnet_deep_benign_sample.txt` |
+| sample sha256 | `5064744e37c49be312a3ee2fe22dc07dada2f821eae499213f46956543e41896` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 45-ilspy-dotnet-deep -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 Below are **high-impact** `ilspycmd` and `de4dot` commands that are **not** covered in the main lab but are critical for real-world .NET reverse-engineering.

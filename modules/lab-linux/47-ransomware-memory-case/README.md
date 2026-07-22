@@ -322,8 +322,10 @@ rule EXPL_Office_TemplateInjection_Aug19 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `47_ransomware_memory_case_benign_sample.txt` |
+| sample sha256 | `04067343db7f6d87429fbc422a2335c32ffbf76e5d346cb5d10f72b73f7fc96d` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 47-ransomware-memory-case -- for detection-rule testing only
+' |
 ### Adversary Emulation & Red-Team Perspective
 
 From a red-team perspective, ransomware operators exploit memory-resident techniques to evade traditional file-based detection and maintain persistence during encryption. A common tactic involves **process hollowing (T1055.012: Process Hollowing)**, where the attacker spawns a legitimate process (e.g., `svchost.exe`) in a suspended state, hollows out its memory, and injects malicious shellcode to execute ransomware payloads directly in memory. This avoids writing the payload to disk, reducing forensic artifacts. Another prevalent technique is **reflective code loading (T1406.001: Reflective Code Loading)**, where the ransomware binary is loaded directly into memory without relying on the Windows loader, further obscuring its execution.

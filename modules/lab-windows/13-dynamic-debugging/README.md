@@ -367,8 +367,10 @@ rule EXPL_Office_TemplateInjection_Aug19 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `13_dynamic_debugging_benign_sample.txt` |
+| sample sha256 | `da90e00a97a19eff3c87466f4e1c6ef1cc36adb45fff9e6b2f66e9976c522bfc` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 13-dynamic-debugging -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1140 (Deobfuscate/Decode Files or Information)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1140/

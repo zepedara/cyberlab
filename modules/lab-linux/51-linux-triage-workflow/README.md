@@ -432,8 +432,10 @@ rule APT_MAL_WinntiLinux_Dropper_AzazelFork_May19 : azazel_fork {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `51_linux_triage_workflow_benign_sample.txt` |
+| sample sha256 | `b22a4f30620e79ed2adceda9d58d8ad44f78208c72e9bfb35a5f2bf5d79779ab` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 51-linux-triage-workflow -- for detection-rule testing only
+' |
 ### Essential Commands & Features
 
 When triaging Linux systems, **The Sleuth Kit (TSK)** provides powerful block-level analysis capabilities that are critical for uncovering hidden artifacts. Below are three **undemonstrated but essential** commands for deep forensic inspection:

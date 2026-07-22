@@ -294,8 +294,10 @@ rule EXPL_Office_TemplateInjection_Aug19 {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `38_network_emulation_benign_sample.txt` |
+| sample sha256 | `3b38ebe1171254bb4938de4affb3bc0ffed48ab59b6d6146891d0e1daa497c07` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 38-network-emulation -- for detection-rule testing only
+' |
 ### Common Pitfalls & Result Validation
 
 When emulating adversary network behavior, analysts often misconfigure tools or misinterpret results, leading to false negatives or positives. A frequent mistake is **overlooking protocol-specific nuances**—for example, assuming HTTP traffic in an emulation matches real-world C2 (Command and Control) patterns (e.g., **T1071.002: Application Layer Protocol: File Transfer Protocols**). Many tools default to plaintext or non-standard ports, which modern defenses (like NGFWs) may flag as anomalous. Validate findings by cross-referencing emulated traffic with known adversary techniques, such as **T1568.001: Dynamic Resolution: Fast Flux DNS**, where rapid DNS A-record changes are expected. Use packet capture (PCAP) analysis to confirm protocol compliance and timing consistency.

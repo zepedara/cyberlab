@@ -343,8 +343,10 @@ rule Office_AutoOpen_Macro {
 |---|---|
 | host IOC | 192.0.2.10 (RFC5737 documentation range) |
 | network IOC | hxxp://example[.]com/benign (defanged) |
-| sample hash | benign lab sample -- create one and run `sha256sum` |
-
+| sample filename | `10_malicious_documents_benign_sample.txt` |
+| sample sha256 | `4aad7c48b2327b84302ba048291fa48f2e5fff69104c744185f533f7e7c71b5f` |
+| reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 10-malicious-documents -- for detection-rule testing only
+' |
 ### Real-World Case Study
 This technique is documented in **real** intrusions. Rather than a hypothetical scenario, study the authoritative case data below:
 - **MITRE ATT&CK T1566.001 (Phishing: Spearphishing Attachment)** — real-world Procedure Examples with named campaigns and citations: https://attack.mitre.org/techniques/T1566/001/
