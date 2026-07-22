@@ -274,6 +274,26 @@ level: low
 - Technique: T1059.005 – Visual Basic for Applications
 - Source: https://attack.mitre.org/techniques/T1059/005/
 
+
+### Essential Commands & Features
+To further enhance the 55-doc-detonation-case analysis, it's crucial to understand additional commands and features of FakeNet-NG and Wireshark. For FakeNet-NG, the `--config` flag allows for customization of the simulation environment, such as specifying the IP address range for the fake network. For example, `FakeNet-NG.exe --config fake_net_config.txt` loads a custom configuration from a file. The `--dns`, `--http`, and `--ssl` flags enable DNS, HTTP, and SSL/TLS protocol simulation, respectively. These features are particularly useful when analyzing malware that utilizes these protocols, as seen in techniques like [T1588.001, "Obfuscated Files or Information"](https://attack.mitre.org/techniques/T1588/001/) and [T1595, "Active Scanning"](https://attack.mitre.org/techniques/T1595/). In Wireshark, the 'Follow TCP Stream' feature allows for in-depth analysis of a specific TCP conversation, while the IO Graph feature provides a visual representation of network traffic patterns. These tools are essential for identifying and understanding complex network interactions. For more information on utilizing these features, refer to the official [FakeNet-NG GitHub repository](https://github.com/mandiant/FakeNet-NG) and the [Wireshark User's Guide](https://www.wireshark.org/docs/wsug_html_chunked/).
+
+### Common Pitfalls & Result Validation
+
+Analysts often misinterpret document detonation results due to **over-reliance on sandbox defaults** or **ignoring evasion techniques**. A frequent mistake is failing to account for **delayed execution** (e.g., malicious macros triggering only after user interaction), which may not manifest in short-lived sandbox sessions. Another pitfall is **false negatives from environment-aware malware** (e.g., checking for virtualization artifacts before executing payloads). To validate findings, cross-reference detonation logs with network traffic (e.g., Wireshark/Zeek) and endpoint telemetry (e.g., Sysmon) to confirm artifacts like **unexpected process spawning** or **C2 beaconing**.
+
+Avoid false conclusions by:
+1. **Testing multiple sandbox configurations** (e.g., varying OS versions, user privileges) to detect environment-specific behaviors.
+2. **Correlating detonation results with MITRE ATT&CK techniques** such as:
+   - **[T1059.003: Windows Command Shell](https://attack.mitre.org/techniques/T1059/003/)** (e.g., `cmd.exe` spawning from Office processes).
+   - **[T1555: Credentials from Password Stores](https://attack.mitre.org/techniques/T1555/)** (e.g., `lsass.exe` memory scraping post-detonation).
+
+For deeper validation, use **manual static analysis** (e.g., OLEVBA for macros) to confirm automated sandbox findings. Always document discrepancies between expected and observed behaviors to refine detection rules.
+
+**Sources:**
+- [CISA: Malware Analysis and Reporting](https://www.cisa.gov/resources-tools/services/malware-analysis)
+- [Mandiant: Sandbox Evasion Techniques](https://www.mandiant.com/resources/blog/sandbox-evasion-techniques)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -319,3 +339,13 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://attack.mitre.org/techniques/T1059/005/
 
 <!-- cyberlab-enriched: v5 -->
+- https://attack.mitre.org/techniques/T1588/001/
+- https://attack.mitre.org/techniques/T1595/
+- https://github.com/mandiant/FakeNet-NG
+- https://www.wireshark.org/docs/wsug_html_chunked/
+- https://attack.mitre.org/techniques/T1059/003/
+- https://attack.mitre.org/techniques/T1555/
+- https://www.cisa.gov/resources-tools/services/malware-analysis
+- https://www.mandiant.com/resources/blog/sandbox-evasion-techniques
+
+<!-- cyberlab-enriched: v6 -->
