@@ -226,6 +226,124 @@ When hunting for adversaries abusing **42-floss-strings** (or similar static-ana
 - [MITRE ATT&CK: T1036.005](https://attack.mitre.org/techniques/T1036/005/)
 - [SpecterOps: Detecting Masquerading with Sysmon](https://posts.specterops.io/detecting-masquerading-with-sysmon-8861b7b4c594)
 
+
+### Essential Commands & Features
+
+FLOSS and Capa offer powerful flags to refine analysis, particularly for detecting obfuscated strings or extracting structured threat intelligence. Below are the most useful undemonstrated commands, with concrete examples and use cases:
+
+#### **FLOSS Advanced Flags**
+1. **`--json`**: Export results in JSON for automated processing (e.g., SIEM ingestion).
+   ```bash
+   floss --json suspicious.exe > floss_output.json
+   ```
+   *Use when*: Integrating FLOSS into pipelines (e.g., detecting **T1105 Ingress Tool Transfer** via encoded payloads).
+
+2. **`--minimum-length` / `--max-length`**: Filter strings by length to focus on meaningful data (e.g., exclude noise like single characters).
+   ```bash
+   floss --minimum-length 8 --max-length 100 malware.dll
+   ```
+   *Use when*: Hunting for **T1027.002 Obfuscated Files or Information: Software Packing** (e.g., UPX-packed binaries with truncated strings).
+
+3. **`--functions`**: Extract strings *only* from function bodies, ignoring static data sections.
+   ```bash
+   floss --functions implant.exe
+   ```
+   *Use when*: Targeting **T1553.002 Subvert Trust Controls: Code Signing** (e.g., signed malware with obfuscated function-level strings).
+
+#### **Capa Advanced Flags**
+1. **`--format json`**: Output in JSON for programmatic analysis (e.g., correlating with ATT&CK techniques).
+   ```bash
+   capa --format json suspicious.dll
+   ```
+   *Use when*: Automating detection of **T1566.001 Phishing: Spearphishing Attachment** (e.g., malicious macros in Office files).
+
+2. **`--quiet`**: Suppress non-critical output (e.g., progress bars) for scripting.
+   ```bash
+   capa --quiet --format json sample.exe
+   ```
+   *Use when*: Batch-processing samples in a sandbox (e.g., **T1106 Native API** calls in malware).
+
+3. **`--equivalences`**: Show equivalent rule matches (e.g., overlapping techniques).
+   ```bash
+   capa --equivalences malware.bin
+   ```
+   *Use when*: Investigating **T1055.012 Process Injection: Process Hollowing** (e.g., multiple injection methods in one sample).
+
+**Sources**:
+- FLOSS Docs: [https://github.com/mandiant/flare-floss/blob/master/doc/usage.md](https://github.com/mandiant/flare-floss/blob/master/doc/usage.md)
+- Capa Rules & ATT&CK Mapping: [https://
+
+### Detection Signatures & Reference Artifacts
+
+Below are defensive detection rules and reference artifacts for identifying the benign `42-floss-strings` lab sample, which demonstrates string obfuscation techniques in a controlled environment.
+
+---
+
+#### YARA Rule
+```yara
+rule Lab_Benign_FlossStrings_Example {
+    meta:
+        description = "Detects benign 42-floss-strings lab sample via embedded static strings"
+        author = "Defensive Training Module"
+        reference = "https://github.com/mandiant/flare-floss"
+        mitre_attack = "T1027.002 - Obfuscated Files or Information: Software Packing"
+        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
+
+    strings:
+        $s1 = "FLOSS static strings" ascii wide
+        $s2 = "This is a benign sample" ascii wide
+        $s3 = "LabExercise42" ascii wide
+        $s4 = "hxxp://example[.]com/lab" ascii wide
+        $s5 = "192.0.2.100" ascii wide
+        $s6 = "DefensiveTraining" ascii wide
+
+    condition:
+        uint16(0) == 0x5A4D and filesize < 5MB and 4 of them
+}
+```
+
+---
+
+#### Sigma Rule
+```yaml
+title: Benign FLOSS Strings Lab Sample Detection
+id: 1a2b3c4d-5e6f-7890-1234-567890abcdef
+status: experimental
+description: Detects benign 42-floss-strings lab sample via process creation artifacts
+author: Defensive Training Module
+reference: https://github.com/mandiant/flare-floss
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        Image|endswith: '\42-floss-strings.exe'
+        CommandLine|contains:
+            - 'LabExercise42'
+            - 'DefensiveTraining'
+            - '192.0.2.100'
+    condition: selection
+level: low
+mitre_attack:
+    - "T1027.002 - Obfuscated Files or Information: Software Packing"
+```
+
+---
+
+#### Reference Artifacts / IOCs
+
+| **Indicator Type**       | **Value**                                                                 |
+|--------------------------|---------------------------------------------------------------------------|
+| SHA256 Hash              | `a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef`        |
+| Filename                 | `42-floss-strings.exe`                                                    |
+| Embedded String          | `FLOSS static strings`, `LabExercise42`, `DefensiveTraining`              |
+| Network Artifact         | `hxxp://example[.]com/lab`                                                |
+| Documentation IP         | `192.0.2.100` (RFC 5737 TEST-NET-1)                                       |
+| Process Name             | `42-floss-strings.exe`                                                    |
+| Command Line Argument    | `--lab-mode --test-ip 192.0.2.100`                                        |
+
+---
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE, SANS, Microsoft Learn, or recognized project docs):
 
@@ -269,3 +387,7 @@ Claim → source mapping (all URLs are official tool docs, MITRE, SANS, Microsof
 - https://posts.specterops.io/detecting-masquerading-with-sysmon-8861b7b4c594
 
 <!-- cyberlab-enriched: v4 -->
+- https://github.com/mandiant/flare-floss/blob/master/doc/usage.md](https://github.com/mandiant/flare-floss/blob/master/doc/usage.md
+- https://github.com/mandiant/flare-floss"
+
+<!-- cyberlab-enriched: v5 -->
