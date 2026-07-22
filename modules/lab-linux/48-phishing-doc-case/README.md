@@ -223,6 +223,93 @@ When analyzing phishing documents in the `48-phishing-doc-case`, analysts often 
 - [CERT-EU: Phishing Document Analysis Guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Phishing.pdf)
 - [NIST SP 800-83: Guide to Malware Incident Prevention and Handling](https://csrc.nist.gov/publications/detail/sp/800-83/rev-1/final)
 
+
+### Essential Commands & Features
+
+When analyzing malicious documents, leveraging advanced tool features can uncover hidden behaviors. Below are **undemonstrated but critical** commands for `olevba`, `oledump`, and `pdf-parser`, with concrete examples and use cases.
+
+#### **`olevba` Advanced Features**
+- **`--decode`**: Decodes obfuscated strings (e.g., base64, hex) in macros. Use when macros contain encoded payloads (e.g., **T1132.001: Data Encoding: Standard Encoding**).
+  ```bash
+  olevba --decode suspicious.doc
+  ```
+- **`--deobfuscate`**: Simplifies obfuscated VBA code (e.g., string concatenation, junk code). Critical for **T1027.006: Obfuscated Files or Information: HTML Smuggling**.
+  ```bash
+  olevba --deobfuscate malicious.xls
+  ```
+
+#### **`oledump` Stream Extraction**
+- **`-s <stream>`**: Extracts a specific OLE stream (e.g., macros, embedded objects). Use when `olevba` fails to parse streams.
+  ```bash
+  oledump.py -s 8 suspicious.doc  # Extract stream 8
+  ```
+- **`-d`**: Decodes extracted streams (e.g., base64, hex). Pair with `-s` to analyze encoded payloads.
+  ```bash
+  oledump.py -s 8 -d malicious.doc
+  ```
+
+#### **`pdf-parser` Search Functionality**
+- **`--search <string>`**: Locates specific keywords (e.g., `/JavaScript`, `/OpenAction`) in PDFs. Essential for **T1203: Exploitation for Client Execution**.
+  ```bash
+  pdf-parser --search "/JavaScript" exploit.pdf
+  ```
+
+**Sources**:
+- [Didier Stevens’ Tools Documentation](https://blog.didierstevens.com/programs/pdf-tools/)
+- [REMnux Tool Reference](https://docs.remnux.org/discover-the-tools/analyze+documents)
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule PhishingDoc_Lab_Sample {
+    meta:
+        description = "Detects benign phishing training document (lab sample only)"
+        author = "Defensive Training Module"
+        reference = "Educational use only"
+        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
+    strings:
+        $s1 = "This document is for training purposes only" ascii wide
+        $s2 = "phishing-awareness-training" ascii wide
+        $s3 = "example[.]com" ascii wide
+        $s4 = "192.0.2.100" ascii wide
+        $s5 = "DoNotEnableMacros" ascii wide
+        $s6 = "SecurityTeam@organization" ascii wide
+    condition:
+        filesize < 500KB and 4 of them
+}
+```
+
+```yaml
+title: Suspicious Phishing Training Document Macros
+id: 1a2b3c4d-5e6f-7890-1234-567890abcdef
+status: experimental
+description: Detects benign phishing training document with embedded macros (lab sample only)
+author: Defensive Training Module
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        Image|endswith: '\WINWORD.EXE'
+        CommandLine|contains: 'phishing-awareness-training.docm'
+    condition: selection
+falsepositives:
+    - Legitimate security training documents
+level: informational
+```
+
+**Reference artifacts / IOCs**
+
+| SHA256 Hash | Filename | Host/Network Artifacts |
+|-------------|----------|------------------------|
+| a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef | phishing-awareness-training.docm | - C:\Users\Public\Downloads\phishing-awareness-training.docm<br>- hxxp://192.0.2.100/training/phishing-awareness-training.docm<br>- example[.]com (document metadata) |
+
+**MITRE ATT&CK Technique:**
+T1566.002 - Phishing: Spearphishing Link
+
+**Authoritative Source:**
+[MITRE ATT&CK - T1566.002](https://attack.mitre.org/techniques/T1566/002/)
+
 ## Sources
 Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK, Microsoft Learn, or SANS):
 
@@ -256,3 +343,7 @@ Claim → source mapping (all URLs are official tool/project docs, MITRE ATT&CK,
 - https://csrc.nist.gov/publications/detail/sp/800-83/rev-1/final
 
 <!-- cyberlab-enriched: v4 -->
+- https://docs.remnux.org/discover-the-tools/analyze+documents
+- https://attack.mitre.org/techniques/T1566/002/
+
+<!-- cyberlab-enriched: v5 -->
