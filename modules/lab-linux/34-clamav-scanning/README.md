@@ -285,6 +285,32 @@ detection:
 - [MITRE ATT&CK T1036](https://attack.mitre.org/techniques/T1036/)
 - [ClamAV Test File Documentation](https://docs.clamav.net/manual/Usage/Scanning.html#test-file)
 
+
+### Essential Commands & Features
+
+To elevate your ClamAV scanning, master the `clamd` daemon and `clamdscan` client for rapid, repeated scans. Configure `clamd.conf` (set `TCPSocket 3310`), start the daemon with `systemctl start clamav-daemon`, then scan using `clamdscan --fdpass /target/dir` – the daemon stays loaded, reducing signature reload overhead. For one-off scans with actions, use `clamscan` with `--bell` to audibly alert on detection, `--move=/quarantine` to relocate infected files (preserving forensics), and `--remove` to delete them (use with caution). Example: `clamscan --bell --move=/tmp/infected -r /home/user/downloads`. For YARA, employ the `yara` command with a compiled rule set: `yara -s suspicious.yar target.exe` prints matching strings. Use YARA to detect custom patterns that ClamAV misses, such as specific registry modifications tied to T1564.001 (Hide Artifacts: Hidden Files and Directories) or anomalous DLL loads indicating T1574.001 (Hijack Execution Flow: DLL Search Order Hijacking). Combine `clamdscan` with YARA in a pipeline: `yara rules.yar /path/to/file | grep "malware" && clamdscan /path/to/file`.
+
+**Authoritative References:**
+- Debian man page for `clamdscan`: https://manpages.debian.org/buster/clamav/clamdscan.1.en.html
+- YARA official documentation: https://virustotal.github.io/yara/
+
+### Common Pitfalls & Result Validation
+
+Analysts often misinterpret ClamAV scan results due to **over-reliance on default signatures** or **misconfigured scan parameters**, leading to false negatives or positives. A frequent mistake is failing to update signatures (`freshclam`) before scanning, which misses recent threats. Another pitfall is ignoring **contextual validation**—e.g., flagging benign files (like `eicar.com`) as malicious without cross-referencing with other tools (e.g., YARA rules or VirusTotal). Additionally, analysts may overlook **obfuscated payloads** (e.g., [T1027.005: Indicator Removal from Tools](https://attack.mitre.org/techniques/T1027/005/)) or **packed executables**, which ClamAV might not detect without heuristic analysis (`--detect-pua`).
+
+To validate findings:
+1. **Cross-check with YARA**: Use custom rules to confirm ClamAV hits (e.g., for [T1553.004: Install Root Certificate](https://attack.mitre.org/techniques/T1553/004/)).
+2. **Inspect file entropy**: High entropy suggests packing/encryption (use `binwalk` or `peframe`).
+3. **Review logs**: Check `clamscan --verbose` output for skipped files or errors.
+
+Avoid false conclusions by:
+- Testing with known samples (e.g., [EICAR](https://www.eicar.org/)).
+- Combining ClamAV with behavioral analysis (e.g., sandboxing).
+
+**Sources**:
+- [ClamAV False Positive Guide](https://blog.clamav.net/2021/04/false-positive-management-in-clamav.html)
+- [MITRE ATT&CK: Defense Evasion Techniques](https://attack.mitre.org/tactics/TA0005/)
+
 ## Sources
 Claim-to-source mapping (all URLs are official/authoritative):
 
@@ -345,3 +371,12 @@ Claim-to-source mapping (all URLs are official/authoritative):
 - https://docs.clamav.net/manual/Usage/Scanning.html#test-file
 
 <!-- cyberlab-enriched: v5 -->
+- https://manpages.debian.org/buster/clamav/clamdscan.1.en.html
+- https://virustotal.github.io/yara/
+- https://attack.mitre.org/techniques/T1027/005/
+- https://attack.mitre.org/techniques/T1553/004/
+- https://www.eicar.org/
+- https://blog.clamav.net/2021/04/false-positive-management-in-clamav.html
+- https://attack.mitre.org/tactics/TA0005/
+
+<!-- cyberlab-enriched: v6 -->
