@@ -321,6 +321,35 @@ tags:
 | **MITRE ATT&CK Technique** | [T1059.007 Command and Scripting Interpreter: JavaScript](https://attack.mitre.org/techniques/T1059/007/) |
 | **Authoritative Source** | [Adobe PDF Reference (ISO 32000-1)](https://www.adobe.com/content/dam/acom/en/devnet/pdf/pdfs/PDF32000_1.pdf) |
 
+
+### Essential Commands & Features
+
+Beyond the basic operations, `pdf-parser` offers advanced flags for deep inspection. Use **`-f`** to display cross-references (xref table) for mapping object relationships; e.g., `pdf-parser -f suspicious.pdf` reveals references critical for detecting obfuscated objects. The **`-w`** flag triggers raw stream decompression without formatting, ideal for extracting embedded scripts: `pdf-parser -w -o 5 document.pdf` outputs unformatted stream content for object 5. Flag **`-c`** lists only compressed objects, highlighting potential packed payloads: `pdf-parser -c file.pdf`. Use **`-e`** to extract selected objects to separate files, essential for isolating suspicious streams: `pdf-parser -e -o 3 -d extracted.bin sample.pdf`. The **`-r`** flag recursively parses objects, following all references to reveal hidden chains: `pdf-parser -r report.pdf`.  
+
+For `pdfid`, the **`-s`** flag enables custom keyword scanning to hunt for specific indicators. For example, `pdfid -s "/Launch" suspect.pdf` identifies Launch actions often used in exploits. Add **`-j`** for JSON output, enabling automated analysis: `pdfid -s "/JS" -j invoice.pdf` returns structured results highlighting JavaScript injections.  
+
+These techniques directly uncover indicators of techniques such as **T1204.001** (User Execution: Malicious Link) and **T1059.001** (Command and Scripting Interpreter: PowerShell), where PDFs deliver links to PowerShell download cradles.  
+
+**Authoritative Resources:** [SANS DFIR PDF Analysis Poster](https://www.sans.org/posters/dfir-pdf-analysis-poster/) and [Remnux pdf-parser Documentation](https://docs.remnux.org/tools/analyze-pdfs/pdf-parser).
+
+### Common Pitfalls & Result Validation
+
+When analyzing PDFs, analysts often misinterpret tool outputs or overlook critical indicators, leading to false negatives or positives. A frequent mistake is **assuming all JavaScript in a PDF is malicious**—legitimate PDFs (e.g., forms) may use benign scripts. Conversely, analysts may **dismiss obfuscated code** (e.g., hex-encoded strings) as "noise" without deeper inspection, missing embedded payloads. Another pitfall is **ignoring structural anomalies**, such as mismatched object references or unexpected streams, which may indicate tampering (e.g., [T1036.005: Match Legitimate Name or Location](https://attack.mitre.org/techniques/T1036/005/)).
+
+To validate findings:
+1. **Cross-check with multiple tools** (e.g., `pdfid`, `peepdf`, and `pdf-parser`) to confirm suspicious objects.
+2. **Manually inspect streams** for encoded content (e.g., Base64, XOR) or shellcode, especially in `/OpenAction` or `/AA` (Additional Actions) triggers.
+3. **Correlate with MITRE ATT&CK**: For example, if a PDF drops an executable, check for [T1204.002: User Execution: Malicious File](https://attack.mitre.org/techniques/T1204/002/) or [T1106: Native API](https://attack.mitre.org/techniques/T1106/) for API abuse.
+
+Avoid false conclusions by:
+- **Testing in a sandbox** (e.g., REMnux’s `pdfxray`) to observe behavior without execution.
+- **Reviewing timestamps**—inconsistent creation/modification dates may signal spoofing.
+- **Documenting context**: A single suspicious artifact (e.g., `/Launch`) is not definitive; pair with other indicators (e.g., C2 callbacks).
+
+**Sources**:
+- [CERT-EU: PDF Analysis Techniques](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_pdf_v1_1.pdf)
+- [NIST SP 800-152: Guide to Malware Analysis](https://csrc.nist.gov/publications/detail/sp/800-152/final)
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -371,3 +400,10 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - https://www.adobe.com/content/dam/acom/en/devnet/pdf/pdfs/PDF32000_1.pdf
 
 <!-- cyberlab-enriched: v5 -->
+- https://www.sans.org/posters/dfir-pdf-analysis-poster/
+- https://docs.remnux.org/tools/analyze-pdfs/pdf-parser
+- https://attack.mitre.org/techniques/T1036/005/
+- https://attack.mitre.org/techniques/T1106/
+- https://csrc.nist.gov/publications/detail/sp/800-152/final
+
+<!-- cyberlab-enriched: v6 -->
