@@ -297,9 +297,6 @@ Sources:
 - [CERT-EU: Memory Forensics Best Practices](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Memory_Forensics.pdf)
 
 
-### Essential Commands & Features
-To further enhance tradecraft, several essential commands and features in Volatility 3 are crucial for deeper analysis. The `yarascan` plugin can be used to scan memory for YARA rules, which is useful for detecting malware, as seen in [T1588.004, "Obfuscated Files or Information"](https://attack.mitre.org/techniques/T1588/004/). For example, `volatility3 -f memdump.raw yarascan --yara-rules /path/to/rules.yar` can be used to scan a memory dump for specific malware signatures. The `dlllist` plugin can be used to list loaded DLLs in a process, which is useful for detecting [T1218, "Signed Binary Proxy Execution"](https://attack.mitre.org/techniques/T1218/). For instance, `volatility3 -f memdump.raw dlllist --pid 1234` can be used to list loaded DLLs for a specific process. Additionally, the `timeliner` plugin can be used to create a timeline of system events, which is useful for analyzing system activity. The `windows.registry` plugin can be used to analyze the Windows registry, which is useful for detecting [T1112, "Modify Registry"](https://attack.mitre.org/techniques/T1112/). For more information on these plugins and their usage, refer to the [Volatility 3 documentation](https://www.volatilityfoundation.org/legacy/docs/volatility3/) and the [Digital Forensics and Incident Response (DFIR) training resources](https://www.dfir.training/).
-
 ### Detection Signatures & Reference Artifacts
 
 Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
