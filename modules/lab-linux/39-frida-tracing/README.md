@@ -342,6 +342,66 @@ detection:
 **Associated MITRE ATT&CK Technique:** T1140 Deobfuscate/Decode Files or Information  
 **Authoritative Source:** [https://attack.mitre.org/techniques/T1140/](https://attack.mitre.org/techniques/T1140/)
 
+
+### Essential Commands & Features
+
+Frida’s advanced APIs and flags unlock deeper runtime inspection and automation. Below are **undocumented but critical** commands for memory manipulation, pointer arithmetic, and non-interactive hooking—key for analyzing obfuscated malware (e.g., **T1127.001: Trusted Developer Utilities Proxy Execution**) or unpacking custom encryption (e.g., **T1027.009: Obfuscated Files or Information: Embedded Payloads**).
+
+#### Memory & NativePointer APIs
+Use `Memory` to read/write process memory and `NativePointer` for arithmetic:
+```javascript
+// Dump 32 bytes at a module's base address (e.g., unpacking T1027.009)
+const base = Module.findBaseAddress('target_module');
+const data = Memory.readByteArray(base, 32);
+console.log(data);
+
+// Resolve and patch a function pointer (e.g., hijacking T1127.001)
+const ptr = new NativePointer(0x12345678);
+ptr.writeU32(0xdeadbeef);  // Overwrite with new value
+```
+
+#### ObjC/Java APIs
+Hook Objective-C/Java methods dynamically:
+```javascript
+// Bypass iOS jailbreak checks (T1548.002: Abuse Elevation Control Mechanism)
+ObjC.classes.NSFileManager["- fileExistsAtPath:"].implementation = function(path) {
+  return false;  // Lie about jailbreak files
+};
+
+// Log Android keystore access (T1409: Credential Access via Keystore)
+Java.perform(function() {
+  var KeyStore = Java.use("java.security.KeyStore");
+  KeyStore.load.overload('[Ljava.security.KeyStore$LoadStoreParameter;').implementation = function(params) {
+    console.log("Keystore accessed with params: " + params);
+    this.load(params);
+  };
+});
+```
+
+#### `--no-pause` Flag
+Run hooks **non-interactively** (e.g., in CI/CD malware analysis):
+```bash
+frida --no-pause -l hook.js -f com.target.app -o output.log
+```
+*Use case*: Automate hooking for **T1106: Native API** calls without manual intervention.
+
+**Sources**:
+- [Frida API Reference: Memory & NativePointer](https://frida.re/docs/javascript-api/#memory)
+- [MITRE ATT&CK: T1127.001 & T1027.009](https://attack.mitre.org/techniques/T1127/001/)
+
+### Common Pitfalls & Result Validation
+
+When using Frida for dynamic tracing, analysts often encounter **false positives** or **miss critical behaviors** due to improper script design or validation. A frequent mistake is **over-filtering hooks**, which may exclude legitimate malicious activity (e.g., obfuscated API calls or delayed execution). For example, analysts targeting **T1059.003 (Windows Command Shell)** might miss commands if their Frida script only traces `CreateProcessW` without accounting for `ShellExecuteExW` or indirect execution via `cmd.exe /c`. Similarly, **T1102 (Web Service)** abuse—such as C2 communications over legitimate cloud services—can be overlooked if network-related hooks (e.g., `WinHttpOpen`) are too narrowly scoped.
+
+To validate findings, **cross-reference Frida output with static analysis** (e.g., Ghidra or IDA Pro) to confirm hooked functions align with expected behavior. For network-related traces, correlate Frida logs with **packet captures** (e.g., Wireshark) or EDR telemetry to rule out false positives from benign traffic. Avoid false conclusions by:
+1. **Testing edge cases**: Inject benign and malicious inputs to observe differential behavior.
+2. **Using multiple hooks**: For example, trace both `VirtualAlloc` and `NtCreateSection` to detect **T1564.001 (Hidden Window)** techniques.
+3. **Documenting baseline behavior**: Compare traces against known-good executions to identify anomalies.
+
+**Sources**:
+- [OWASP Frida Hooking Guide: Common Anti-Patterns](https://owasp.org/www-community/controls/Frida_Hooking_Guide)
+- [FireEye: Dynamic Tracing Pitfalls in Malware Analysis](https://www.fireeye.com/blog/threat-research/2021/03/dynamic-tracing-pitfalls-in-malware-analysis.html)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -396,3 +456,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://attack.mitre.org/techniques/T1140/](https://attack.mitre.org/techniques/T1140/
 
 <!-- cyberlab-enriched: v5 -->
+- https://frida.re/docs/javascript-api/#memory
+- https://attack.mitre.org/techniques/T1127/001/
+- https://owasp.org/www-community/controls/Frida_Hooking_Guide
+- https://www.fireeye.com/blog/threat-research/2021/03/dynamic-tracing-pitfalls-in-malware-analysis.html
+
+<!-- cyberlab-enriched: v6 -->
