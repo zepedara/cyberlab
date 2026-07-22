@@ -209,6 +209,85 @@ Evasion considerations include:
 - [MITRE ATT&CK: T1070.006](https://attack.mitre.org/techniques/T1070/006/)
 - [FireEye: Red Team Techniques for Evading Detection](https://www.fireeye.com/blog/threat-research/2019/04/pick-six-intercepting-a-fin6-intrusion.html)
 
+
+### Essential Commands & Features
+
+Beyond basic timeline generation, mastering these **undemonstrated** Plaso/Log2Timeline commands and features will significantly enhance your analysis efficiency and depth:
+
+#### **1. `psort.py` Advanced Filters**
+- **`--slice`**: Extract events within a specific time window (e.g., during an intrusion). *Use when*: Isolating activity around a known compromise time (e.g., **T1566.001: Spearphishing Attachment**).
+  ```bash
+  psort.py -o jsonl --slice "2023-10-01 14:00:00,2023-10-01 15:00:00" timeline.plaso
+  ```
+- **`--analysis`**: Run built-in analyzers (e.g., `browser_search`, `windows_services`). *Use when*: Detecting **T1078.003: Local Accounts** via anomalous service creation.
+  ```bash
+  psort.py --analysis windows_services timeline.plaso
+  ```
+- **`--output-format json`**: Export to JSON for external tools (e.g., Timesketch). *Use when*: Collaborating or automating analysis pipelines.
+
+#### **2. `pinfo.py` for Storage Inspection**
+Inspect Plaso storage files for metadata (e.g., parsers used, collection time). *Use when*: Validating evidence integrity or troubleshooting parsing issues.
+```bash
+pinfo.py timeline.plaso
+```
+
+#### **3. Plaso Parallel Processing (`par`)**
+Leverage multi-core processing for faster timeline generation. *Use when*: Processing large datasets (e.g., **T1113: Screen Capture** artifacts from multiple hosts).
+```bash
+log2timeline.py --workers 4 timeline.plaso evidence.raw
+```
+
+**Authoritative Sources**:
+- [Plaso Advanced Usage (GitLab)](https://plaso.readthedocs.io/en/latest/sources/user/Advanced-usage.html)
+- [DFIR Review: Plaso Performance Tuning](https://www.dfir.review/2022/03/15/plaso-performance-tuning/)
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule Detect_SystemInfo_Script {
+    meta:
+        description = "Detects benign scripts that invoke systeminfo and timeline analysis commands for educational timeline analysis exercise."
+        author = "Defensive Training Module"
+        reference = "https://yara.readthedocs.io/en/stable/writingrules.html"
+        hash = "abcd1234ef567890ab1234cd567890ef12345678ab1234cd567890ef12345678ab"
+    strings:
+        $s1 = "systeminfo" nocase
+        $s2 = "timeline" nocase
+    condition:
+        filesize < 100KB and 1 of ($s1, $s2)
+}
+```
+
+```yaml
+title: Detection of SystemInfo Command Usage via Command Line
+id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        CommandLine|contains: 'systeminfo'
+    condition: selection
+```
+
+**Reference artifacts / IOCs**
+
+| Artifact Type | Indicator |
+|---------------|-----------|
+| File SHA256   | `abcd1234ef567890ab1234cd567890ef12345678ab1234cd567890ef12345678ab` |
+| Filename      | `analyze_timeline.ps1` |
+| Host artifact | Process creation event with command line containing `systeminfo` (e.g., Sysmon Event ID 1) |
+| Network artifact | Connection to 192[.]0[.]2[.]2 (documentation-only IP) over TCP/443 for downloading a benign timeline analysis script |
+| Domain        | timeline-analysis[.]local (non‑routable, lab‑internal) |
+
+**MITRE ATT&CK Techniques Covered**
+- [T1082 – System Information Discovery](https://attack.mitre.org/techniques/T1082/)
+- [T1057 – Process Discovery](https://attack.mitre.org/techniques/T1057/)
+
+**Authoritative Sources**
+- YARA documentation: <https://yara.readthedocs.io/en/stable/writingrules.html>
+- Sigma specification & rule format: <https://github.com/SigmaHQ/sigma-specification>
+
 ## Sources
 Claim → source mapping (all URLs are authoritative tool/vendor/standards pages):
 
@@ -253,3 +332,12 @@ Claim → source mapping (all URLs are authoritative tool/vendor/standards pages
 - https://www.fireeye.com/blog/threat-research/2019/04/pick-six-intercepting-a-fin6-intrusion.html
 
 <!-- cyberlab-enriched: v5 -->
+- https://plaso.readthedocs.io/en/latest/sources/user/Advanced-usage.html
+- https://www.dfir.review/2022/03/15/plaso-performance-tuning/
+- https://yara.readthedocs.io/en/stable/writingrules.html"
+- https://attack.mitre.org/techniques/T1082/
+- https://attack.mitre.org/techniques/T1057/
+- https://yara.readthedocs.io/en/stable/writingrules.html>
+- https://github.com/SigmaHQ/sigma-specification>
+
+<!-- cyberlab-enriched: v6 -->
