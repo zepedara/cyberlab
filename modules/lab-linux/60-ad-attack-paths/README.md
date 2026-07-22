@@ -6,49 +6,119 @@ Active Directory attacks rarely rely on exploits — they abuse misconfigured pe
 ## Tools covered
 | Tool | Install | Purpose |
 |---|---|---|
-| BloodHound | apt install bloodhound / clone BloodHound | Graph AD objects + ACLs to reveal privilege-escalation and lateral-movement attack paths |
-| SharpHound | github.com/BloodHoundAD/SharpHound | Collector that gathers AD sessions, ACLs, group membership for BloodHound ingest |
-| Impacket (GetUserSPNs/GetNPUsers) | pip install impacket | Request Kerberoast (SPN) and AS-REP roastable hashes for offline cracking |
-| neo4j | apt install neo4j | Graph database backing BloodHound |
+| BloodHound | `sudo apt install bloodhound` on Kali/REMNUX [1] | Graph AD objects + ACLs to reveal privilege-escalation and lateral-movement attack paths |
+| SharpHound (or BloodHound.py) | Download from [GitHub releases](https://github.com/BloodHoundAD/SharpHound/releases) (SharpHound.exe); `pip install bloodhound` for the Python collector (BloodHound.py) [2] | Collector that gathers AD sessions, ACLs, group memberships for BloodHound ingestion |
+| Impacket (GetUserSPNs, GetNPUsers) | `pip install impacket` [3] | Request Kerberoast (SPN) and AS-REP roastable hashes for offline cracking |
+| neo4j | `sudo apt install neo4j` [4] | Graph database backing BloodHound |
 
 ## Learning objectives
-- Collect AD data with SharpHound and ingest it into BloodHound
+- Collect AD data with SharpHound (or BloodHound.py) and ingest it into BloodHound
 - Identify shortest paths from a low-priv user to Domain Admin
 - Perform Kerberoasting and AS-REP roasting with Impacket
 - Explain the defensive detections and mitigations for each path
 
 ## Environment check
-Confirm `neo4j status`, BloodHound launches, and `GetUserSPNs.py -h` runs. Use ONLY the provided isolated lab domain — never a production directory.
+Confirm neo4j is running: `sudo systemctl start neo4j` then `sudo systemctl status neo4j` [4]. Launch BloodHound from the terminal: `bloodhound`. Test Impacket: `GetUserSPNs.py -h` should show usage. Use ONLY the provided isolated lab domain — never a production directory.
 
 ## Guided walkthrough
-1. Collect with SharpHound: `SharpHound.exe -c All` (or the Python collector) against the lab DC.
-2. Import the resulting .zip into BloodHound and run the 'Shortest Paths to Domain Admins' query.
-3. Identify an abusable edge (e.g. GenericAll, AddMember, or a Kerberoastable SPN).
-4. Kerberoast: `GetUserSPNs.py lab.local/user:pass -request` → crack the TGS hash offline with hashcat mode 13100.
-5. AS-REP roast accounts without pre-auth: `GetNPUsers.py lab.local/ -usersfile users.txt -no-pass`.
+1. **Collect AD data** – On a Linux machine in the lab, run BloodHound.py (the Python collector) targeting a domain controller:
+   ```bash
+   bloodhound-python -u analyst -p 'LabPass123!' -d lab.local -dc 10.0.51.100 -c All
+   ```
+   *Why:* The `-c All` flag collects all available data (users, groups, computers, sessions, ACLs, trusts). Output files (`.json`) are written to the current directory. If a pre-collected SharpHound `.zip` is provided, skip this step. [2]
+
+2. **Ingest into BloodHound** – In BloodHound GUI, click *Upload Data* and select the `.zip` (SharpHound) or the folder containing `.json` (BloodHound.py). The data is stored in neo4j.
+
+3. **Find attack paths** – In the BloodHound search bar, type `analyst` (the low-priv user). Under *Node Info*, run the pre-built query *Shortest Paths to Domain Admins*. Examine the edges; common abusable edges include `GenericAll`, `GenericWrite`, `WriteOwner`, `AddMember`, or a Kerberoastable SPN.
+
+4. **Kerberoasting** – Once a service account with an SPN is identified (e.g., `svc_sql`), request its TGS ticket:
+   ```bash
+   GetUserSPNs.py lab.local/analyst:'LabPass123!' -request -outputfile kerberoast_hashes.txt
+   ```
+   *Why:* The `-request` flag returns the TGS-REP encrypted with the service account’s NTLM hash. The output file contains hashes crackable with hashcat mode 13100 [3][5]. If the hash is RC4 (0x17), it’s weak; AES (0x12, 0x18) is not crackable offline.
+
+5. **AS-REP roasting** – For accounts without Kerberos pre-authentication (e.g., `nopreauth_user`), request AS-REP hashes:
+   ```bash
+   GetNPUsers.py lab.local/ -usersfile users.txt -no-pass -format hashcat
+   ```
+   *Why:* The `-no-pass` flag skips password authentication; the AS-REP is encrypted with the user’s NTLM hash (mode 18200) [3][5].
+
+6. **Crack the hashes** (outside the lab, if allowed):
+   ```bash
+   hashcat -m 13100 kerberoast_hashes.txt /usr/share/wordlists/rockyou.txt --show
+   ```
 
 ## Hands-on exercise
-Ingest the provided SharpHound data into BloodHound, find the shortest path from `analyst` to `Domain Admins`, and name the abusable edge. Then Kerberoast the `svc_sql` SPN and identify the hashcat mode.
+Ingest the provided SharpHound data (`lab_data.zip`) into BloodHound, find the shortest path from `analyst` to `Domain Admins`, and name the abusable edge. Then Kerberoast the `svc_sql` SPN and identify the hashcat mode (13100 for Kerberos TGS, 18200 for AS-REP). Write the crack command.
 
 ## SOC analyst perspective
-Defenders use BloodHound proactively to find and cut attack paths (remove dangerous ACLs, tier admin accounts). Detections: 4769 TGS requests with RC4 (Kerberoasting), AS-REP requests, and anomalous SharpHound-like LDAP enumeration.
+**Detection logic for Kerberoasting (T1558.003):**
+- **Windows Event ID 4769** – A Kerberos service ticket request with *Ticket Encryption Type* `0x17` (RC4) from a non-DC host, especially in bulk or for unusual service names [6].
+- **Log source:** Domain Controller Security log (`Security.evtx`). Hunt for multiple `4769` events where `Service Name` does not end in `$` (computer accounts) and `Client Address` is not the DC itself.
+- **Zeek (Bro) detection:** In `kerberos.log`, look for high `request_type` (TGS) with `cipher` `rc4-hmac` and `service` not starting with `krbtgt` or `$` [7].
+- **Suricata pivots:** Alert on Kerberos TGS requests with RC4 encryption (rule matches `kerberos.tgs` and `kerberos.cipher == rc4-hmac`). Example hunt: count TGS requests per client IP over 1 hour, flag outliers > 50.
+
+**Detection logic for AS-REP roasting (T1558.004):**
+- **Windows Event ID 4768** – A Kerberos authentication ticket request with *Pre-Authentication Type* `0` (none) [6].
+- **Log source:** DC Security log. Hunt for `4768` where `Pre-Authentication Type` is `0` and `Account Name` is not a computer account.
+- **Threat-hunting pivot:** Query for accounts that have `userAccountControl` attribute containing `DONT_REQ_PREAUTH` (flag 4194304). Use LDAP query: `(&(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304))` [8].
+
+**BloodHound enumeration detection (T1069.002, T1087.002):**
+- **Windows Event ID 4662** – An operation was performed on an Active Directory object. High count of `LDAP query` events from a single source, especially using `samAccountType` or `objectClass` filters, indicates reconnaissance [6].
+- **Zeek detection:** In `ldap.log`, look for high-frequency `searchRequest` operations with base DN `DC=lab,DC=local`. Pivot on `result` count > 1000 in short time.
+
+**Mitigations:**
+- Remove unnecessary SPNs from service accounts; use Group Managed Service Accounts (gMSA) with automatic password rotation.
+- Enable Kerberos pre-authentication for all user accounts (default; audit for disabled).
+- Monitor and restrict who can request TGS tickets (Kerberos constrained delegation).
+- Tier AD administrative accounts – no service accounts in Domain Admins.
 
 ## Attacker perspective
-After a foothold, attackers enumerate AD, roast service accounts for offline cracking, and follow ACL/session edges to Domain Admin. Weak service-account passwords and accounts without Kerberos pre-auth are the common wins.
+After initial foothold (e.g., via phishing or unpatched service), an attacker enumerates AD:
+1. **Reconnaissance:** Run BloodHound collector (SharpHound.exe or BloodHound.py) to map the domain and identify high-value targets. Artifacts: network connections to LDAP port 389/636, spikes in LDAP queries on the DC, and possible SharpHound binary dropped on disk (if not executed in-memory).
+2. **Credential Access – Kerberoasting:** Enumerate service accounts with SPNs (e.g., via `setspn -T lab.local -Q */*`). Request TGS tickets for high-value SPNs (e.g., SQL, IIS, CIFS for file servers). Evasion: request only one SPN every few minutes to avoid triggering baselines; use RC4-only tickets by disabling AES encryption on the target account (if administrator privileges).
+3. **AS-REP Roasting:** Identify accounts with `DONT_REQ_PREAUTH` using LDAP query. Request AS-REP hashes without any authentication. Evasion: use multiple source IPs, sleep between requests.
+4. **Privilege Escalation – ACL abuse:** If BloodHound reveals e.g., `GenericAll` on a group that contains Domain Admins, the attacker can add their account to that group (using `net group` or PowerView). Artifacts: Windows Event ID 4728 (member added to security group) or 4732 (member added to local group) on the DC [6].
+5. **Cracking:** Offline crack obtained hashes with hashcat. If successful, impersonate the service account to move laterally.
+
+**Artifacts left:**
+- Kerberos ticket files (`.kirbi`) if exported via Mimikatz.
+- Network connections to port 88 (Kerberos) from non-DC hosts.
+- Event logs 4769/4768 on DC with unusual patterns.
+- Possible LDAP search queries (Event 4662) tied to BloodHound data gathering.
 
 ## Answer key
-BloodHound highlights the shortest path via an abusable edge (e.g. `svc_sql` GenericAll → group → DA). Kerberoast TGS hashes crack with hashcat `-m 13100`; AS-REP hashes use `-m 18200`.
+- **Shortest path example:** `analyst` → `GenericAll` on `IT_Support` group → `AddMember` to `Domain Admins` → `Domain Admin`. The abusable edge is `GenericAll` on the `IT_Support` group.
+- **Kerberoast hashcat mode:** `-m 13100` for TGS-REP hashes (Kerberos 5 TGS) [5].
+- **AS-REP hashcat mode:** `-m 18200` for AS-REP hashes (Kerberos 5 AS-REP) [5].
+- **Crack command:** `hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt --show`
+- **Expected hash example:** `$krb5tgs$23$*svc_sql$lab.local$lab.local/svc_sql*$...`
 
 ## MITRE ATT&CK & DFIR phase
-- **T1558.003** — Kerberoasting — request SPN TGS tickets for offline cracking
-- **T1558.004** — AS-REP Roasting — accounts without Kerberos pre-auth yield crackable hashes
-- **T1069.002** — Permission Groups Discovery: Domain Groups — BloodHound enumeration
+- **T1558.003** – *Kerberoasting* – Credential Access (request SPN TGS tickets for offline cracking) [9]
+- **T1558.004** – *AS-REP Roasting* – Credential Access (accounts without Kerberos pre-authentication) [9]
+- **T1069.002** – *Permission Groups Discovery: Domain Groups* – Discovery (BloodHound enumerating group memberships) [9]
+- **T1087.002** – *Account Discovery: Domain Account* – Discovery (LDAP queries for user/computer objects) [9]
+- **T1482** – *Domain Trust Discovery* – Discovery (BloodHound maps trusts) [9]
+- **T1098.002** – *Account Manipulation: Exchange of Account Permission* – Privilege Escalation (ACL abuse to add user to sensitive groups) [9]
+- **T1207** – *Hiding of Objects (Kerberos service accounts)* – Defense Evasion (disabling AES to force RC4) [9]
+- **DFIR phases:** Reconnaissance (T1069, T1087, T1482), Credential Access (T1558.003/4), Privilege Escalation (T1098.002), Defense Evasion (T1207)
 
 ## Sources
-- BloodHound docs: https://bloodhound.readthedocs.io/
-- Impacket: https://github.com/fortra/impacket
-- MITRE Kerberoasting T1558.003: https://attack.mitre.org/techniques/T1558/003/
+1. BloodHound Installation – Kali Tools: https://www.kali.org/tools/bloodhound/
+2. BloodHound.py – GitHub: https://github.com/BloodHoundAD/BloodHound-Tools/tree/main/BloodHound.py
+3. Impacket – GitHub: https://github.com/fortra/impacket (GetUserSPNs, GetNPUsers)
+4. Neo4j Installation – Official: https://neo4j.com/docs/operations-manual/current/installation/linux/
+5. hashcat Kerberos modes – hashcat wiki: https://hashcat.net/wiki/doku.php?id=example_hashes (mode 13100, 18200)
+6. Microsoft Windows Security Auditing – Event IDs 4769, 4768, 4662: https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/security-auditing-overview
+7. Zeek Kerberos Log – Zeek documentation: https://docs.zeek.org/en/current/scripts/base/protocols/kerberos/main.zeek.html
+8. LDAP pre-auth query – Microsoft: https://learn.microsoft.com/en-us/windows/win32/adschema/a-useraccountcontrol
+9. MITRE ATT&CK: https://attack.mitre.org/techniques/ (T1558.003, T1558.004, T1069.002, T1087.002, T1482, T1098.002, T1207)
 
 ## Related modules
-- - 11-offensive-kali — Impacket/NetExec/Responder foundations
-- - 40-password-cracking — crack the roasted hashes
+- [Scenario: ransomware memory investigation](../47-ransomware-memory-case/README.md) -- same learning path (Scenarios)
+- [Scenario: phishing document investigation](../48-phishing-doc-case/README.md) -- same learning path (Scenarios)
+- [Scenario: intrusion timeline reconstruction](../49-intrusion-timeline-case/README.md) -- same learning path (Scenarios)
+- [Scenario: C2 network traffic hunt](../50-c2-network-hunt/README.md) -- same learning path (Scenarios)
+
+<!-- cyberlab-enriched: v6 -->
