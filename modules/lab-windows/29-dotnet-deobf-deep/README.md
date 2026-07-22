@@ -40,33 +40,34 @@ Expected output: a `Name`/`Source` row for each of `dnSpy.exe`, `ILSpy.exe`, and
 > Note on `ilspycmd`: the console decompiler is a separate executable from the ILSpy GUI. If `ilspycmd.exe` is not on PATH it can be installed as a .NET global tool (`dotnet tool install --global ilspycmd`), per the ILSpy README: <https://github.com/icsharpcode/ILSpy#ilspycmd>. The `dotnet --info` output format is documented at Microsoft Learn: <https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-info>.
 
 ## Guided walkthrough
-1. Run de4dot in detection mode to fingerprint the protector without modifying the file. Running detect-only first is important during malware triage: you avoid touching (and potentially triggering anti-tamper logic in) the sample while you decide how to proceed.
+
+1. Run de4dot in detection mode to fingerprint the protector without modifying the file. Running detect-only first is important during malware triage: you avoid touching (and potentially triggering anti-tamper logic in) the sample while you decide how to proceed. Under the hood, de4dot scans the assembly’s metadata tables and IL bytecode for characteristic signatures of known protectors. For example, ConfuserEx embeds a `ConfuserEx.dll` helper assembly and adds a `ConfuserEx` attribute; .NET Reactor stores its name inside a special `.cctor` stub. de4dot’s detection engine matches these patterns against a hardcoded database of obfuscator fingerprints, then reports the protector name without modifying the file. This read-only approach preserves the original binary’s integrity, enabling safe triage in automated sandboxes or when handling multiple samples.
 ```powershell
-# -d = detect only. Reports the obfuscator name if recognized.
+
 de4dot.exe -d .\exercise\sample.exe
 ```
 Expected observable output: a line reporting the detected obfuscator (for recognized protectors such as ConfuserEx, .NET Reactor, Dotfuscator, etc.) or an "Unknown obfuscator" indication, plus the assembly full name. de4dot's obfuscator detection and supported-protector list are documented in the repo README: <https://github.com/de4dot/de4dot#detected-obfuscators>. Nuance: de4dot fingerprints by looking for the protector's characteristic runtime/helper types and metadata patterns, so a custom or updated obfuscator may read as "Unknown" even when the file is clearly obfuscated.
 
-2. Clean the assembly. de4dot writes a new `-cleaned` file next to the input. Cleaning renames tokens back toward readable identifiers where possible, decrypts embedded strings, removes proxy-call/anti-debug junk, and rebuilds the assembly.
+2. Clean the assembly. de4dot writes a new `-cleaned` file next to the input. Cleaning renames tokens back toward readable identifiers where possible, decrypts embedded strings, removes proxy-call/anti-debug junk, and rebuilds the assembly. This step reverses common obfuscation transformations: for string encryption, de4dot locates the decryption routine (often via a hardcoded XOR key or AES parameters) and statically executes it to restore the plaintext in the output; for proxy calls (method indirection), it resolves the target method and inlines the original call; for anti‑debug stubs, it removes unconditional jumps that would crash a decompiler if left intact. The result is a semantically equivalent assembly whose metadata and IL are structurally simpler, making subsequent analysis faster and more reliable. Understanding the cleaning process helps analysts evaluate whether de4dot correctly handled all obfuscation layers—if, for instance, a string is still encrypted after cleaning, the protector may use a custom algorithm not supported by de4dot.
 ```powershell
 de4dot.exe .\exercise\sample.exe
 Get-ChildItem .\exercise\sample-cleaned.exe | Select-Object Name, Length
 ```
-Expected observable output: de4dot logs its actions (loading, cleaning, and saving) and writes `sample-cleaned.exe`; the listing shows the new file with a size close to the original. Nuance: for a benign, un-obfuscated build the "cleaned" copy is essentially a round-trip rewrite and will look nearly identical — the value of this step only becomes obvious on genuinely protected samples. The default output-file naming convention (`-cleaned` suffix next to the input) is described in the de4dot README: <https://github.com/de4dot/de4dot#readme>.
+Expected observable output: de4dot logs its actions (loading, cleaning, and saving) and writes `sample-cleaned.exe`; the listing shows the new file with a size close to the original. Nuance: for a benign, un‑obfuscated build the "cleaned" copy is essentially a round‑trip rewrite and will look nearly identical—the value of this step only becomes obvious on genuinely protected samples. The default output‑file naming convention (`-cleaned` suffix next to the input) is described in the de4dot README: <https://github.com/de4dot/de4dot#readme>. Often, the attacker relies on user execution of this obfuscated file to achieve initial access, a behavior mapped to **T1204.002 (User Execution: Malicious File)** in the MITRE ATT&CK framework (<https://attack.mitre.org/techniques/T1204/002/>).
 
-3. Browse the cleaned assembly with the ILSpy command-line decompiler to dump C#. Dumping to files (rather than clicking through the GUI) makes the output greppable, diffable against the original, and easy to feed into detection-content workflows.
+3. Browse the cleaned assembly with the ILSpy command-line decompiler to dump C#. Dumping to files (rather than clicking through the GUI) makes the output greppable, diffable against the original, and easy to feed into detection‑content workflows. Ilspycmd uses Mono.Cecil to load the assembly, then applies decompilation patterns that transform IL opcodes back into C# syntax. It reconstructs high‑level constructs such as `foreach`, `using`, and `async/await` when possible, though compiler‑generated state machines and lambda closures remain as internal classes. The `-o` switch outputs a Visual Studio project folder containing all decompiled types, including embedded resources and project‑level settings. During analysis, examine the decompiled source for suspicious API calls. For instance, a call to `System.Diagnostics.Process.Start` with `"cmd.exe"` signals **T1059.003 (Command and Scripting Interpreter: Windows Command Shell)** (<https://attack.mitre.org/techniques/T1059/003/>), a common technique for executing arbitrary commands from .NET malware.
 ```powershell
-# ilspycmd ships with ILSpy; -o writes decompiled source to a folder.
+
 ilspycmd.exe -o .\exercise\decompiled .\exercise\sample-cleaned.exe
 Get-ChildItem -Recurse .\exercise\decompiled\*.cs | Select-Object -First 5 FullName
 ```
 Expected observable output: one or more `.cs` files under `exercise\decompiled\` containing readable class and method names. The `ilspycmd -o <dir>` option (project/source output) is documented in the ILSpy repo: <https://github.com/icsharpcode/ILSpy#ilspycmd>. Nuance: ILSpy reconstructs C# from IL, so recovered code is behaviorally equivalent but may differ from the original source (compiler-generated names, expanded iterators/async state machines, etc.).
 
-4. Open the cleaned file interactively in dnSpyEx for method-level inspection and (optionally) debugging.
+4. Open the cleaned file interactively in dnSpyEx for method‑level inspection and (optionally) debugging. DnSpyEx loads the assembly into a fully interactive decompiler disassembler: you can browse namespaces, view decompiled C# alongside raw IL, edit and recompile code on the fly, and attach a debugger to the running .NET process. This dynamic ability is crucial for observing values that only materialize at runtime, such as decrypted strings, dynamically resolved method addresses, or payloads retrieved from embedded resources. For example, set a breakpoint inside a suspicious constructor or decryption loop, run the sample in a controlled VM, and step through as the obfuscator’s runtime reveals the original strings in memory. DnSpyEx also supports debugging reflection‑invoked methods and dynamically generated assemblies, enabling you to capture the full execution flow of techniques like **T1055.012 (Process Injection: .NET)** (<https://attack.mitre.org/techniques/T1055/012/>), where the malware injects a compiled .NET assembly into another process.
 ```powershell
 Start-Process dnSpy.exe -ArgumentList ".\exercise\sample-cleaned.exe"
 ```
-Expected observable output: the dnSpy GUI opens with the assembly tree on the left; expand namespaces to read decompiled C# with restored control flow. Nuance: dnSpyEx can set breakpoints and step through managed code at runtime, which lets you observe decrypted strings and dynamically resolved calls that never appear in static output — see the dnSpyEx debugging features in the README: <https://github.com/dnSpyEx/dnSpy#features>.
+Expected observable output: the dnSpy GUI opens with the assembly tree on the left; expand namespaces to read decompiled C# with restored control flow. Nuance: dnSpyEx can set breakpoints and step through managed code at runtime, which lets you observe decrypted strings and dynamically resolved calls that never appear in static output—see the dnSpyEx debugging features in the README: <https://github.com/dnSpyEx/dnSpy#features>.
 
 ## Hands-on exercise
 Work against the sample in this module's `exercise/` directory.
@@ -124,21 +125,21 @@ Map recovered behavior to ATT&CK to drive fleet-wide hunts:
 - **MITRE ATT&CK T1574.001 — DLL Search Order Hijacking:** .NET malware often abuses DLL side-loading. Hunt for Sysmon Event ID 7 (Image loaded) where `ImageLoaded` is a non-Microsoft DLL loaded from a user-writable directory like `C:\Users\Public\`. MITRE technique: <https://attack.mitre.org/techniques/T1574/001/>.
 
 ## Attacker perspective
-Adversaries obfuscate .NET payloads to slow analysis and evade signatures. Concrete TTPs and their artifacts:
 
-- **Symbol renaming** to unreadable/Unicode tokens (**T1027**, <https://attack.mitre.org/techniques/T1027/>) — leaves anomalous, non-ASCII identifier tables in metadata that de4dot detects.
-- **String encryption** with a runtime decryptor method — the encrypted blobs sit in `#Strings`/resource streams, but the plaintext is materialized in memory at runtime, so a dnSpyEx breakpoint on the decryptor dumps it (defeating the protection).
-- **Control-flow flattening / proxy calls** — inflates method count and adds a dispatcher `switch`; de4dot's deobfuscation restores linear flow (<https://github.com/de4dot/de4dot#readme>).
-- **Packing / embedded compressed payloads** (**T1027.002 — Software Packing**, <https://attack.mitre.org/techniques/T1027/002/>) — the CLR loader and compressed resource are themselves a detectable artifact.
-- **Runtime string decoding at execution** maps to **T1140** (<https://attack.mitre.org/techniques/T1140/>).
+Adversaries obfuscate .NET payloads to impede analysis and evade detection by leveraging the inherent reversibility of .NET Intermediate Language (IL) while exploiting its metadata-rich structure. The following mechanisms illustrate why these techniques are effective—and why they ultimately fail against determined analysis:
 
-Offensive counterparts to the cleaners here include ConfuserEx and .NET Reactor. Evasion focus is on breaking static signatures and tiring out analysts — but because .NET IL is inherently reversible (ECMA-335 metadata is required for the CLR to execute the code), none of these protections prevent recovery; they only add time. Detectable residue includes the obfuscator's own runtime helper types/metadata patterns (which de4dot fingerprints), unusual assembly attributes, and the sheer anomaly of a heavily-renamed managed binary on an endpoint. dnSpyEx live debugging can dump decrypted values on the fly, defeating string encryption entirely (<https://github.com/dnSpyEx/dnSpy#features>).
+- **Symbol renaming** (**T1027**) replaces human-readable identifiers (e.g., `ExecutePayload`) with non-ASCII or randomized tokens (e.g., `ႠႡႢႣ`). This exploits the CLR’s requirement to preserve metadata for execution, leaving behind anomalous identifier tables in the `#Strings` stream. Deobfuscators like de4dot fingerprint these patterns by comparing entropy and Unicode ranges against known obfuscator signatures (e.g., ConfuserEx’s base64-like renaming scheme). The artifact persists because the CLR must resolve these tokens at runtime via the metadata token table (`0x02` for TypeDef, `0x04` for FieldDef), which de4dot reconstructs into readable names.
 
-**Advanced Attacker TTPs:**
-- **T1055.001 — Dynamic-link Library Injection:** .NET malware can inject a managed DLL into a remote process using Windows API calls like `CreateRemoteThread` and `LoadLibrary`. This leaves artifacts in Sysmon Event ID 8 (CreateRemoteThread) with a `StartAddress` pointing to `LoadLibrary` and a `SourceImage` that is a .NET executable. MITRE sub-technique: <https://attack.mitre.org/techniques/T1055/001/>.
-- **T1562.001 — Disable or Modify Tools:** Obfuscators often include anti-debugging and anti-VM checks. These manifest as calls to `IsDebuggerPresent`, `CheckRemoteDebuggerPresent`, or WMI queries for virtual hardware. In dnSpyEx, look for methods with names like `AntiDebug` or `VMDetect`. MITRE sub-technique: <https://attack.mitre.org/techniques/T1562/001/>.
-- **T1105 — Ingress Tool Transfer:** After deobfuscation, the payload may download additional modules. The deobfuscated code will reveal URLs and `WebClient` or `HttpClient` usage. This maps to MITRE technique T1105: <https://attack.mitre.org/techniques/T1105/>.
-- **T1543.003 — Windows Service:** Some .NET malware installs itself as a service. The deobfuscated code may contain `ServiceBase` or `sc.exe` command-line arguments. Hunt for Sysmon Event ID 1 with `CommandLine` containing `sc create` or `binPath=` pointing to a suspicious .NET executable. MITRE sub-technique: <https://attack.mitre.org/techniques/T1543/003/>.
+- **String encryption** embeds ciphertext in `#US` (user strings) or resource streams, decrypting it only at runtime via a dedicated method (e.g., `DecryptString(int key)`). The mechanism relies on the CLR’s just-in-time (JIT) compilation to materialize plaintext in memory, but this creates a detectable artifact: the decryptor method’s IL contains distinctive opcodes like `ldstr` (load encrypted string) followed by `call` (to the decryptor). Tools like dnSpyEx exploit this by setting breakpoints on the decryptor, dumping the decrypted strings from the evaluation stack before they’re garbage-collected. The protection fails because the CLR’s memory transparency (ECMA-335 §II.22) ensures strings are recoverable post-JIT.
+
+- **Control-flow flattening** transforms linear code into a state machine with a dispatcher `switch` statement, inflating method counts and obscuring execution paths. For example, a simple `if-else` block becomes a `switch` with 100+ cases, each calling a proxy method. This works by abusing the CLR’s support for arbitrary control flow (ECMA-335 §III.1.7), but de4dot reverses it by analyzing the dispatcher’s `switch` table and reconstructing the original control flow graph (CFG). The artifact is the inflated method count and the dispatcher’s signature (e.g., a `switch` with a single `ldloc` operand).
+
+- **Packing** (**T1027.002**) compresses the payload into a resource or custom section, decompressing it at runtime via a stub loader. The mechanism leverages the CLR’s support for embedded resources (ECMA-335 §II.24.2.1), but the loader’s IL (e.g., `Assembly.Load(byte[])`) and the compressed resource’s entropy (typically >7.5 bits/byte) are detectable. De4dot identifies these by scanning for high-entropy resources and loader methods with `Assembly.Load` calls.
+
+- **Runtime string decoding** (**T1140**) uses algorithms like XOR or AES to decode strings on demand. The artifact is the decoder method’s IL, which often contains hardcoded keys or initialization vectors (IVs). For example, a XOR decoder might use `ldc.i4` (load constant) followed by `xor`, while AES decoders call `System.Security.Cryptography.AesManaged`. Analysts can recover strings by emulating the decoder in dnSpyEx or extracting keys from the IL.
+
+**Advanced Attacker TTPs and Mechanisms:**
+- **T1608.001 — Stage Capabilities: Upload Malware:** Adversaries pre-position obfuscated .NET payloads on legitimate cloud storage (e.g., GitHub, Azure Blob) to evade network-based detection. The deobfuscated code reveals URLs or API endpoints (e.g., `https://raw.githubusercontent.com/...`) in `WebClient.DownloadString` calls. The mechanism exploits the CLR’s `System.Net` namespace to fetch payloads post-deobfuscation, leaving artifacts in
 
 ## Answer key
 - **de4dot detection:** the generated `sample.exe` is **not obfuscated** — de4dot reports an unknown/none obfuscator and still emits `sample-cleaned.exe`. This is expected for the benign build; the workflow (detect → clean → decompile) is identical for real obfuscated samples.
@@ -359,6 +360,10 @@ When deobfuscating .NET malware, analysts often misinterpret tool outputs or ove
 - MITRE ATT&CK T1564.001 Hidden Files and Directories: https://attack.mitre.org/techniques/T1564/001/
 - MITRE ATT&CK T1574.001 DLL Search Order Hijacking: https://attack.mitre.org/techniques/T1574/001/
 - SANS FOR610 Reverse-Engineering Malware: https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
+- https://attack.mitre.org/techniques/T1059/003/>
+- https://attack.mitre.org/techniques/T1055/012/>
+- https://attack.mitre.org/techniques/T1204/002/>
+- https://raw.githubusercontent.com/...`
 
 ## Related modules
 - [.NET reverse engineering](../14-dotnet-re/README.md) -- shares de4dot for managed-code analysis workflows.
@@ -387,3 +392,5 @@ When deobfuscating .NET malware, analysts often misinterpret tool outputs or ove
 - https://labs.f-secure.com/blog/deobfuscating-net-malware/
 
 <!-- cyberlab-enriched: v5 -->
+
+<!-- cyberlab-enriched: v6 -->
