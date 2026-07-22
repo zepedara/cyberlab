@@ -230,6 +230,87 @@ For **T1547.001**, hunt for persistence by dumping the **Registry hive** (`!reg`
 - [CISA: Detecting Post-Compromise Threat Activity in Microsoft Cloud Environments (T1055.012)](https://www.cisa.gov/resources-tools/services/detecting-post-compromise-threat-activity-microsoft-cloud-environments)
 - [FireEye: Detecting Process Hollowing with Volatility and YARA (T1547.001)](https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html)
 
+
+### Essential Commands & Features
+
+**WinDbg:** `!exchain` displays the structured exception handler chain—critical for analyzing SEH overwrite exploits used in spearphishing attachments (T1566.001). Example: `!exchain` after loading a crash dump. `.writemem C:\dump.bin 0x400000 0x1000` saves a memory region to disk, enabling offline analysis of malicious payloads (T1204.002 Malicious File). `.process /i /p <PID>` switches context to a specific user-mode process for per-process analysis, while `.thread` displays thread details—essential for rootkit thread injection detection. `dx -r1 @$cursession.Processes.Where(p->p.Name.Contains("cmd"))` queries the debugger object model for live enumeration. `.shell -ci "!process 0 0" cmd /c findstr /i "explorer"` runs external commands within the debug session, useful for automating artifact collection.
+
+**x64dbg:** Conditional breakpoints via `bp 0x401000, "eax==1"` pause execution only when a condition is met, reducing noise when analyzing unpacking loops. Trace logs (`Trace & Break -> Trace Into` and then `Log File...`) record every instruction executed—ideal for reconstructing encrypted malware flow. Patching is built-in: right-click on a disassembly line, select `Patch > Fill with NOP` to disable API checks, then save changes to the executable for dynamic bypass of anti-debug checks (T1622 Debugger Evasion).
+
+Sources: OSR WinDbg tips (https://www.osr.com/blog/) and x64dbg official blog (https://www.x64dbg.com/blog/).
+
+### Detection Signatures & Reference Artifacts
+
+Below are defensive detection signatures and reference artifacts for analyzing benign WinDbg deep debugging samples in a lab environment.
+
+---
+
+```yara
+rule WinDbg_Benign_Lab_Sample {
+    meta:
+        description = "Detects benign WinDbg deep debugging lab sample (educational use only)"
+        author = "Defensive Training Module"
+        reference = "https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/debugging-a-user-mode-process-using-windbg"
+        date = "2024-05-20"
+        hash = "a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef"
+
+    strings:
+        $windbg_str = "WinDbg.exe" nocase
+        $dbg_help = "!analyze -v" nocase
+        $pe_header = "MZ" wide
+        $debug_str = "Debugging Tools for Windows" nocase
+        $lab_marker = "LabSample_44_WinDbgDeep" nocase
+        $breakpoint = "bp " nocase
+
+    condition:
+        uint16(0) == 0x5A4D and filesize < 10MB and
+        (3 of ($windbg_str, $dbg_help, $debug_str, $lab_marker, $breakpoint))
+}
+```
+
+---
+
+```yaml
+title: Suspicious WinDbg Deep Debugging Activity (Benign Lab Sample)
+id: 1a2b3c4d-5e6f-7890-1234-567890abcdef
+status: experimental
+description: Detects benign WinDbg deep debugging activity in a lab environment (educational use only)
+author: Defensive Training Module
+date: 2024/05/20
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        Image|endswith: '\WinDbg.exe'
+        CommandLine|contains:
+            - '!analyze -v'
+            - 'LabSample_44_WinDbgDeep'
+            - 'bp '
+    condition: selection
+falsepositives:
+    - Legitimate debugging activity in a lab environment
+level: informational
+tags:
+    - attack.defense_evasion
+    - attack.t1218.011  # System Binary Proxy Execution: Rundll32 (WinDbg may be used to load DLLs)
+```
+
+---
+
+**Reference artifacts / IOCs**
+
+| SHA256 Hash | Filename | Host/Network Artifacts |
+|-------------|----------|------------------------|
+| `a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef` | `LabSample_44_WinDbgDeep.exe` | - Parent process: `explorer.exe`<br>- Command line: `"C:\Debuggers\WinDbg.exe" -y "C:\Lab\Symbols" -c "!analyze -v; q" LabSample_44_WinDbgDeep.exe`<br>- Network: `hxxp://msdl[.]microsoft[.]com/download/symbols` (symbol server) |
+| `b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdefa1` | `LabSample_44_WinDbgDeep.pdb` | - File path: `C:\Lab\Symbols\LabSample_44_WinDbgDeep.pdb\`<br>- Debugger output: `Loading symbols for LabSample_44_WinDbgDeep.exe` |
+
+**MITRE ATT&CK Technique:**
+- [T1218.011](https://attack.mitre.org/techniques/T1218/011/) - System Binary Proxy Execution: Rundll32 (WinDbg may be used to load and debug DLLs in a lab environment)
+
+**Authoritative Source:**
+- [Microsoft WinDbg Documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/debugging-a-user-mode-process-using-windbg)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 - WinDbg overview, install location, and initial user-mode break — Microsoft Learn, *Debugging Tools for Windows (WinDbg)*: https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/ ; *Getting Started with WinDbg (User-Mode)*: https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/getting-started-with-windbg
@@ -286,3 +367,10 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html
 
 <!-- cyberlab-enriched: v4 -->
+- https://www.osr.com/blog/
+- https://www.x64dbg.com/blog/
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/debugging-a-user-mode-process-using-windbg"
+- https://attack.mitre.org/techniques/T1218/011/
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/debugging-a-user-mode-process-using-windbg
+
+<!-- cyberlab-enriched: v5 -->
