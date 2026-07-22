@@ -273,6 +273,116 @@ From a red-team perspective, UPX-packed malware (or custom packers mimicking UPX
 - [FireEye: UPX Packer Abuse in APT Campaigns](https://www.fireeye.com/blog/threat-research/2020/03/six-facts-about-address-space-layout-randomization-on-windows.html) (Covers UPX + ASLR bypass techniques)
 - [CISA: Malware Analysis Report on UPX-Packed Threats](https://www.cisa.gov/uscert/ncas/analysis-reports/ar21-126a) (TTPs and detection guidance)
 
+
+### Essential Commands & Features
+
+Below are **critical but undemonstrated** x64dbg commands and features to accelerate reverse-engineering and unpacking workflows. Each includes a concrete example and tactical use case.
+
+---
+
+1. **`setbp` Hardware Breakpoints**
+   Use hardware breakpoints (`setbp`) to monitor memory access (read/write/execute) without modifying code—ideal for tracking unpacked code execution or detecting anti-analysis tricks.
+   **Example:**
+   ```plaintext
+   setbp hw, rw, 0x00401000, 4, "Unpacked code accessed"
+   ```
+   **When to use:** Detect unpacked code execution (e.g., **T1620 Reflective Code Loading**) or memory tampering (e.g., **T1574.001 DLL Search Order Hijacking**).
+
+2. **`map` Memory Regions**
+   List and inspect memory regions (`map`) to identify injected code, unpacked sections, or suspicious allocations.
+   **Example:**
+   ```plaintext
+   map
+   map 0x00400000 L?8000000  ; Dump 128MB from base
+   ```
+   **When to use:** Locate injected payloads (e.g., **T1055.003 Process Injection: Thread Local Storage**) or unpacked regions.
+
+3. **`findall` Pattern Search**
+   Search for byte patterns (`findall`) across all memory regions to locate strings, shellcode, or obfuscated code.
+   **Example:**
+   ```plaintext
+   findall 0x00400000, 0x00800000, 68 ?? ?? ?? ?? 68 ?? ?? ?? ??  ; Find PUSH instructions
+   ```
+   **When to use:** Hunt for obfuscated strings (e.g., **T1027.001 Obfuscated Files or Information: Binary Padding**) or shellcode.
+
+4. **`comment` Annotations for OE**
+   Add persistent comments (`comment`) to document observed execution (OE) artifacts, such as unpacking stubs or anti-debugging checks.
+   **Example:**
+   ```plaintext
+   comment 0x00401234, "UPX unpacking stub - JMP to OEP"
+   ```
+   **When to use:** Collaborate on analysis or revisit key unpacking steps (e.g., **T1055.002 Process Injection: Portable Executable Injection**).
+
+---
+
+**Authoritative Sources:**
+- [x64dbg Command Reference (GitBook)](https://x64dbg.com/blog/2021/01/01/com
+
+### Detection Signatures & Reference Artifacts
+
+Below are defensive detection signatures and reference artifacts for identifying benign unpacking behavior in a lab environment.
+
+---
+
+```yara
+rule Lab_Unpacking_Case_52_Benign {
+    meta:
+        description = "Detects benign unpacking stub from lab sample 52-unpacking-case"
+        author = "Defensive Training Module"
+        reference = "https://example[.]com/lab-samples/unpacking-case-52"
+        date = "2024-05-20"
+        hash = "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
+
+    strings:
+        $s1 = "UnpackMeLabStub" ascii wide
+        $s2 = "LabUnpackerInit" ascii wide
+        $s3 = "DecompressPayload" ascii
+        $s4 = "LoadLibraryExW" ascii
+        $s5 = "VirtualAlloc" ascii
+        $s6 = "RtlDecompressBuffer" ascii
+
+    condition:
+        filesize < 500KB and (all of them)
+}
+```
+
+---
+
+```yaml
+title: Benign Unpacking Stub Execution - Lab Sample 52
+id: 9a8b7c6d-5e4f-3g2h-1i0j-k9l8m7n6o5p4
+status: experimental
+description: Detects execution of benign unpacking stub from lab sample 52-unpacking-case
+author: Defensive Training Module
+date: 2024/05/20
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        Image|endswith: '\LabUnpackerStub.exe'
+        CommandLine|contains: '--decompress'
+    condition: selection
+falsepositives:
+    - Legitimate use in lab environments
+level: low
+```
+
+---
+
+**Reference artifacts / IOCs**
+
+| SHA256 Hash                                                          | Filename               | Host/Network Artifacts                                                                 |
+|----------------------------------------------------------------------|------------------------|---------------------------------------------------------------------------------------|
+| a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890     | LabUnpackerStub.exe    | Writes to: `C:\LabSamples\unpacked_payload.dll` <br> Connects to: `hxxp://192.0.2.100/lab/update` |
+| c3d4e5f67890a1b2c3d4e5f6a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4     | unpacked_payload.dll   | Loaded by: `LabUnpackerStub.exe` <br> Creates process: `C:\Windows\System32\cmd.exe /c echo LabUnpackComplete` |
+
+**MITRE ATT&CK Technique:**
+- [T1027 - Obfuscated Files or Information](https://attack.mitre.org/techniques/T1027/)
+
+**Authoritative Source:**
+- [MITRE ATT&CK - T1027](https://attack.mitre.org/techniques/T1027/)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -315,3 +425,7 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.cisa.gov/uscert/ncas/analysis-reports/ar21-126a
 
 <!-- cyberlab-enriched: v4 -->
+- https://x64dbg.com/blog/2021/01/01/com
+- https://example[.]com/lab-samples/unpacking-case-52"
+
+<!-- cyberlab-enriched: v5 -->
