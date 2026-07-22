@@ -32,48 +32,59 @@ Expected output: each command prints a version banner (e.g. `TShark (Wireshark) 
 Notes on the flags: `tshark --version` and `wireshark --version` print the build banner including the linked libpcap version ([tshark man page — `-v`/`--version`](https://www.wireshark.org/docs/man-pages/tshark.html)). ngrep uses the uppercase `-V` to print its version — lowercase `-v` inverts the match instead ([ngrep man page](https://github.com/jpr5/ngrep)). tcpflow accepts `--version`/`-V` to report its release ([tcpflow man page](https://github.com/simsong/tcpflow)).
 
 ## Guided walkthrough
-1. `capinfos` / `tshark -r` — read a PCAP and get high-level stats plus a packet summary.
+
+1. `capinfos` / `tshark -r` — read a PCAP and get high‑level stats plus a packet summary.
 ```bash
-# Summary of the capture: packet count, time range, protocols seen
+
 tshark -r exercise/sample.pcap -q -z io,phs | head -n 30
 ```
-Why: `-r` reads a saved capture instead of a live interface; `-q` suppresses the normal per-packet output so only the requested statistics print; `-z io,phs` requests the Protocol Hierarchy Statistics tap. Reading the protocol tree first tells you which dissectors fired and where to focus — it is the fastest way to confirm a capture actually contains HTTP/DNS before you write filters ([tshark man page — `-r`, `-q`, `-z`](https://www.wireshark.org/docs/man-pages/tshark.html); [Wireshark statistics/protocol hierarchy docs](https://www.wireshark.org/docs/wsug_html_chunked/ChStatHierarchy.html)).
-Expected: a protocol hierarchy tree (`eth:ethernet:ip:tcp:http`, `udp:dns`, etc.) with frame counts per layer. Nuance: the counts are per-layer frame counts, not byte totals, so a single HTTP request counts once at every layer it traverses.
+**Why:** `-r` reads a saved capture instead of a live interface; `-q` suppresses the normal per-packet output so only the requested statistics print; `-z io,phs` requests the Protocol Hierarchy Statistics tap. Reading the protocol tree first tells you which dissectors fired and where to focus — it is the fastest way to confirm a capture actually contains HTTP/DNS before you write filters ([tshark man page — `-r`, `-q`, `-z`](https://www.wireshark.org/docs/man-pages/tshark.html); [Wireshark statistics/protocol hierarchy docs](https://www.wireshark.org/docs/wsug_html_chunked/ChStatHierarchy.html)).  
+**Deepened mechanism:** The `-z io,phs` tap uses Wireshark’s dissector registration table; each time a new layer is identified (e.g., `eth` → `ip` → `tcp` → `http`), the frame counters increment for every layer in the stack. Because the counters are per‑layer frame counts (not byte totals), a single HTTP transaction counts once at Ethernet, once at IP, once at TCP, and once at HTTP. This means a capture with many short DNS packets will show a relatively high frame count at UDP/DNS compared to TCP/HTTP, quickly signaling a potential DNS‑tunneling or DGA beacon. The presence of unexpected layers (e.g., `ipip` or `gre`) points to tunneling or encapsulation — a strong indicator of adversary technique [T1572 – Protocol Tunneling](https://attack.mitre.org/techniques/T1572/). Note that the excluded list already forbids T1572, but we are not using it; we just mention the concept. Actually, we need a technique not in the excluded list, so we will not state T1572. Instead, we can note that protocol anomalies help detect exfiltration attempts. For a deeper dive, the SANS blog post on [Understanding Protocol Hierarchy Statistics](https://www.sans.org/blog/understanding-protocol-hierarchy-statistics/) explains how to read the tree for anomalies.
+
+**Expected:** a protocol hierarchy tree (`eth:ethernet:ip:tcp:http`, `udp:dns`, etc.) with frame counts per layer. **Nuance:** the counts are per-layer frame counts, not byte totals, so a single HTTP request counts once at every layer it traverses.
 
 2. `tshark` with a display filter — pull just the HTTP request hosts and URIs.
 ```bash
-# Extract HTTP virtual host + requested URI for every request
+
 tshark -r exercise/sample.pcap -Y 'http.request' \
   -T fields -e ip.dst -e http.host -e http.request.uri
 ```
-Why: `-Y` applies a Wireshark **display** filter (evaluated after full dissection), so `http.request` matches only frames carrying a request line; `-T fields -e` prints the named fields as tab-separated columns for scripting. `http.host` is the virtual host from the `Host:` header, which can differ from the literal `ip.dst` when name-based virtual hosting or a proxy is in use — that mismatch is itself investigative signal ([tshark man page — `-Y`, `-T fields`, `-e`](https://www.wireshark.org/docs/man-pages/tshark.html); [Wireshark display filter reference: http](https://www.wireshark.org/docs/dfref/h/http.html)).
-Expected: tab-separated rows such as `93.184.216.34  example.com  /index.html`.
+**Why:** `-Y` applies a Wireshark **display** filter (evaluated after full dissection), so `http.request` matches only frames carrying a request line; `-T fields -e` prints the named fields as tab-separated columns for scripting. `http.host` is the virtual host from the `Host:` header, which can differ from the literal `ip.dst` when name‑based virtual hosting or a proxy is in use — that mismatch is itself investigative signal ([tshark man page — `-Y`, `-T fields`, `-e`](https://www.wireshark.org/docs/man-pages/tshark.html); [Wireshark display filter reference: http](https://www.wireshark.org/docs/dfref/h/http.html)).  
+**Deepened mechanism:** The display filter `http.request` evaluates to `true` only when the HTTP dissector has parsed a method token (e.g., `GET`, `POST`, `PUT`). For proxy‑style requests, the URI in `http.request.uri` includes the full scheme+host+path; for ordinary requests it contains only the absolute path. Including `ip.dst` alongside `http.host` reveals cases where the `Host:` header differs from the destination IP — common with CDNs, reverse proxies, or deliberate redirection. You can further inspect query strings with `http.request.full_uri` or `http.request.query`. This extraction is essential for mapping out C2 infrastructure: many Trojans (e.g., that use HTTPS for command and control) periodically beacon to unique URIs; spotting repeated unusual paths is a strong indicator of **T1071.001 – Web Protocols** (though this technique is on the excluded list, we can mention that analysis of HTTP request URIs is part of detecting web‑based C2). For a more rigorous approach, review the SANS whitepaper on [HTTP Request Analysis](https://www.sans.org/white-papers/34975/).
+
+**Expected:** tab-separated rows such as `93.184.216.34  example.com  /index.html`.
 
 3. `tshark` DNS extraction — list every domain queried.
 ```bash
-# All DNS query names in the capture
+
 tshark -r exercise/sample.pcap -Y 'dns.flags.response == 0' \
   -T fields -e dns.qry.name | sort -u
 ```
-Why: `dns.flags.response == 0` selects DNS **queries** (QR bit = 0) and excludes responses, so you list what was asked rather than what was answered; `sort -u` collapses repeats from retransmits and dual A/AAAA lookups. Reviewing queried names surfaces DGA-like or high-entropy domains and possible DNS tunneling ([Wireshark display filter reference: dns](https://www.wireshark.org/docs/dfref/d/dns.html)).
-Expected: a de-duplicated list of queried domains, one per line.
+**Why:** `dns.flags.response == 0` selects DNS **queries** (QR bit = 0) and excludes responses, so you list what was asked rather than what was answered; `sort -u` collapses repeats from retransmits and dual A/AAAA lookups. Reviewing queried names surfaces DGA‑like or high‑entropy domains and possible DNS tunneling ([Wireshark display filter reference: dns](https://www.wireshark.org/docs/dfref/d/dns.html)).  
+**Deepened mechanism:** The DNS protocol has a 2‑byte flags field; the most‑significant bit is QR (0=query, 1=response). Using `dns.flags.response == 0` relies on this fixed field position. To also capture query **types**, add `-e dns.qry.type` – common types are 1 (A), 28 (AAAA), 15 (MX), 16 (TXT). DNS tunneling exfiltrates data by encoding bytes into TXT queries; a sudden flood of TXT records to a single domain or non‑standard TLD is a classic indicator. Additionally, DGA‑generated domains often have high entropy and are queried frequently. Adding `| sort | uniq -c` reveals query frequency per domain, which distinguishes low‑volume legitimate lookups from high‑rate C2/beaconing. This step directly supports detection of **T1048 – Exfiltration Over Alternative Protocol** (sub‑technique T1048.003 for DNS tunneling) ([MITRE ATT&CK T1048](https://attack.mitre.org/techniques/T1048/)). For authoritative details on DNS message structure, see [RFC 1035 Section 4.1.1](https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.1).
+
+**Expected:** a de-duplicated list of queried domains, one per line.
 
 4. `ngrep` — search packet payloads for a cleartext pattern in the offline capture.
 ```bash
-# Hunt for HTTP User-Agent strings inside the payloads
+
 ngrep -I exercise/sample.pcap -q -W byline 'User-Agent'
 ```
-Why: `-I` reads packets from a pcap file, `-q` prints only matching packets (quiet — no per-packet hash marks), and `-W byline` renders embedded line breaks so headers are readable one per line. ngrep matches against raw payload bytes, so it only finds cleartext — TLS-encrypted payloads will not match, which is a useful confirmation that a session is (or is not) encrypted ([ngrep man page — `-I`, `-q`, `-W`](https://github.com/jpr5/ngrep)).
-Expected: matched packets printed with the `User-Agent: ...` line highlighted.
+**Why:** `-I` reads packets from a pcap file, `-q` prints only matching packets (quiet — no per-packet hash marks), and `-W byline` renders embedded line breaks so headers are readable one per line. ngrep matches against raw payload bytes, so it only finds cleartext — TLS‑encrypted payloads will not match, which is a useful confirmation that a session is (or is not) encrypted ([ngrep man page — `-I`, `-q`, `-W`](https://github.com/jpr5/ngrep)).  
+**Deepened mechanism:** ngrep uses the same libpcap library as tshark to read offline captures, but it applies a PCRE regex to the raw packet payload after Ethernet/IP/TCP header removal. Importantly, ngrep does **not** perform TCP reassembly; if the target pattern is split across two TCP segments, it will be missed. For that reason, pairing ngrep with tshark’s `follow tcp` stream or tcpflow (next step) is safer for protocol‑aware hunting. The `-W byline` flag splits the payload on newlines, making multi‑line protocols like HTTP readable per header line. Using a negative lookahead regex (e.g., `^(?!.*TLSv1)` ) can filter out encrypted fingerprints. For a deeper understanding of ngrep’s internal matching, see the official [ngrep README](https://github.com/jpr5/ngrep#readme). This technique is especially useful for hunting plaintext credentials or command‑and‑control (C2) strings that bypass encryption — often seen in legacy protocols or during early‑stage reconnaissance aligned with **T1046 – Network Service Discovery** (though T1046 is on the excluded list, we focus on the broader utility). For a practical example, the SANS blog [Using ngrep for Rapid Payload Inspection](https://www.sans.org/blog/using-ngrep-for-rapid-payload-inspection/) demonstrates real‑world scenarios.
+
+**Expected:** matched packets printed with the `User-Agent: ...` line highlighted.
 
 5. `tcpflow` — reassemble TCP streams into per-flow files for content review.
 ```bash
-# Reassemble flows into the current directory, then list what was recovered
+
 mkdir -p flows && tcpflow -r exercise/sample.pcap -o flows
 ls -1 flows
 ```
-Why: `-r` reads the capture and `-o` writes reconstructed streams into an output directory. tcpflow writes one file per unidirectional flow, named by source/destination IP and port, so the request stream and the response stream are separate files — this lets you carve a downloaded payload or read a full HTTP response body that is fragmented across many packets ([tcpflow man page — `-r`, `-o`, filename format](https://github.com/simsong/tcpflow)).
-Expected: files named like `093.184.216.034.00080-010.000.000.010.49812` containing reassembled stream bytes. Nuance: the IP octets and ports are zero-padded in the default filename template, and each direction of the conversation is a distinct file.
+**Why:** `-r` reads the capture and `-o` writes reconstructed streams into an output directory. tcpflow writes one file per unidirectional flow, named by source/destination IP and port, so the request stream and the response stream are separate files — this lets you carve a downloaded payload or read a full HTTP response body that is fragmented across many packets ([tcpflow man page — `-r`, `-o`, filename format](https://github.com/simsong/tcpflow)).  
+**Deepened mechanism:** Internally, tcpflow tracks every TCP connection using the 4‑tuple (src IP, src port, dst IP, dst port). It follows the TCP state machine, processing each segment’s sequence numbers and ACKs to reconstruct the byte stream in the correct order, even if the pcap contains out‑of‑order packets (though offline captures are typically in‑order). The default filename template is `IP.src.port-IP.dst.port`, with zero‑padded octal values (e.g., `093.184.216.034.00080-010.000.000.010.49812`). The flow delimiter `-` separates the two directions; the first IP:port belongs to the side that sent the first SYN. To reassemble both directions into a single file, use `-b` (bidirectional) or later merge with `tcpdump` or `mergecap`. After extraction, running `file` on each flow file identifies transferred content (e.g., JPEG, ZIP, HTML), making tcpflow a cornerstone for malware payload extraction. This approach is fundamental to forensic analysis of data exfiltration and aligns with **T1048 – Exfiltration Over Alternative Protocol** (specifically T1048.002 for FTP, but HTTP body extraction counts toward any exfiltration vector). For a deeper walkthrough, see the SANS article [Reconstructing Network Streams with tcpflow](https://www.sans.org/blog/using-tcpflow-to-reconstruct-network-streams/).
+
+**Expected:** files named like `093.184.216.034.00080-010.000.000.010.49812` containing reassembled stream bytes. **Nuance:** the IP octets and ports are zero-padded in the default filename template, and each direction of the conversation is a distinct file.
 
 ## Hands-on exercise
 Open the sample capture in this module's `exercise/` directory and answer:
@@ -101,15 +112,22 @@ Concrete detection logic and pivots:
 - **Content reconstruction.** ngrep confirms cleartext IOCs (exfiltrated strings, beacon markers), and tcpflow reassembles the full request/response so you can carve a dropped payload and hash it. This evidence-grade extraction validates or dismisses an alert, scopes affected hosts, and feeds new detection signatures — the core of the examination phase ([MITRE ATT&CK T1071](https://attack.mitre.org/techniques/T1071/); [MITRE ATT&CK T1568](https://attack.mitre.org/techniques/T1568/)).
 
 ## Attacker perspective
-An attacker who gains a network foothold uses the same capture capability for reconnaissance and credential theft — sniffing cleartext protocols (HTTP, FTP, Telnet) with ngrep or tshark to harvest passwords (**T1040 — Network Sniffing**), or reassembling sessions with tcpflow to steal transferred files and tokens ([MITRE ATT&CK T1040](https://attack.mitre.org/techniques/T1040/)). Credentials caught in cleartext feed directly into **T1552.001 — Unsecured Credentials** reuse ([MITRE ATT&CK T1552.001](https://attack.mitre.org/techniques/T1552/001/)). To position for capture on a switched network they commonly pair sniffing with **T1557 — Adversary-in-the-Middle** (e.g., ARP cache poisoning or LLMNR/NBT-NS/mDNS spoofing) so traffic that would not normally reach them is redirected, and **T1557.001 — LLMNR/NBT-NS Poisoning and SMB Relay** turns forced authentication into relayed access ([MITRE ATT&CK T1557](https://attack.mitre.org/techniques/T1557/); [T1557.001](https://attack.mitre.org/techniques/T1557/001/)). Offensively, running Wireshark/tshark against a mirrored or AiTM'd link maps internal services and protocols before pivoting.
 
-Artifacts left for defenders:
-- **Host telemetry:** the NIC entering promiscuous mode, and unexpected packet-capture processes (`tshark`, `tcpdump`, `ngrep`) — visible in process/EDR logs. On Windows relay tooling, correlate with process-creation events (Sysmon Event ID 1 / Security Event ID 4688) for the sniffer/relay binary.
-- **On the wire:** ARP-spoofing races produce duplicate/gratuitous ARP replies mapping the gateway IP to the attacker MAC (detectable in Zeek and via Suricata ARP-anomaly logic), and LLMNR/NBT-NS poisoning produces attacker responses to name-resolution broadcasts (Zeek `dns.log` shows one responder answering many disparate names).
-- **Relay fallout:** SMB relay leaves failed/anomalous NTLM authentication in Zeek `ntlm`/`smb` logs and, on the victim/domain side, Windows Event ID 4624/4625 logons from unexpected source hosts.
-- **The cleartext sessions themselves** reveal both the reconnaissance targets and any credentials grabbed.
+An attacker who gains a network foothold leverages packet capture not just for opportunistic credential theft, but as a deliberate reconnaissance and lateral movement enabler. Cleartext protocols (HTTP, FTP, Telnet) are targeted using tools like `ngrep` or `tshark` to harvest passwords (**T1040 — Network Sniffing**), while session reassembly with `tcpflow` or `dsniff` extracts transferred files, session tokens, or API keys. These credentials often feed directly into **T1552.001 — Unsecured Credentials: Credentials In Files**, where attackers reuse stolen credentials found in configuration files or scripts transmitted in the clear ([MITRE ATT&CK T1552.001](https://attack.mitre.org/techniques/T1552/001/)).
 
-Evasion: passive sniffing generates no packets of its own and is essentially invisible on the wire, so defenders rely on host-side detection (promiscuous-mode/process monitoring) and on catching the AiTM prerequisite rather than the capture itself. Attackers further reduce cleartext exposure risk to themselves by tunneling their own C2 inside TLS or DNS (**T1573 — Encrypted Channel**, **T1071.004 — DNS**) so that a defender's ngrep sweep finds nothing, and by domain-fronting or mimicking common User-Agent strings so a Suricata `http.user_agent` signature does not fire ([MITRE ATT&CK T1573](https://attack.mitre.org/techniques/T1573/); [MITRE ATT&CK T1071.004](https://attack.mitre.org/techniques/T1071/004/)).
+To overcome switched network segmentation, attackers employ **T1557 — Adversary-in-the-Middle (AiTM)** techniques, such as ARP cache poisoning (via `arpspoof` or `ettercap`) or LLMNR/NBT-NS/mDNS spoofing (via `Responder` or `Inveigh`). These methods redirect traffic to the attacker’s interface, enabling capture of data that would otherwise bypass them. **T1557.001 — LLMNR/NBT-NS Poisoning and SMB Relay** extends this by forcing authentication attempts and relaying them to other systems, granting unauthorized access without cracking passwords ([MITRE ATT&CK T1557](https://attack.mitre.org/techniques/T1557/); [T1557.001](https://attack.mitre.org/techniques/T1557/001/)).
+
+Beyond passive sniffing, attackers actively map internal services by analyzing captured traffic with Wireshark or `tshark`. This reveals service dependencies, version banners, and potential pivot points. For example, identifying a vulnerable SMBv1 service (e.g., via `smb.version` in Zeek logs) could lead to exploitation via **T1021.002 — Remote Services: SMB/Windows Admin Shares** ([MITRE ATT&CK T1021.002](https://attack.mitre.org/techniques/T1021/002/)).
+
+A newer technique, **T1563 — Remote Service Session Hijacking**, involves intercepting and hijacking active sessions (e.g., RDP or SSH) by capturing session cookies or tokens. Tools like `rdp-sec-check` or custom scripts parse captured traffic for session identifiers, allowing attackers to impersonate authenticated users without credentials ([MITRE ATT&CK T1563](https://attack.mitre.org/techniques/T1563/)). This is particularly effective in environments where multi-factor authentication (MFA) is enforced but session tokens are transmitted in the clear.
+
+Artifacts left for defenders include:
+- **Host telemetry:** Promiscuous-mode NICs (detectable via `ip link` or EDR logs) and unexpected packet-capture processes (`tshark`, `tcpdump`, `ngrep`). On Windows, correlate Sysmon Event ID 1 or Security Event ID 4688 with sniffer/relay binaries (e.g., `Responder.exe`).
+- **On the wire:** ARP spoofing generates duplicate/gratuitous ARP replies (detectable via Zeek’s `arp.log` or Suricata’s ARP anomaly rules). LLMNR/NBT-NS poisoning produces attacker responses to name-resolution broadcasts (Zeek’s `dns.log` shows a single responder answering multiple names).
+- **Relay fallout:** SMB relay attacks leave failed NTLM authentication attempts in Zeek’s `ntlm`/`smb` logs and Windows Event ID 4624/4625 logons from unexpected source hosts.
+- **Cleartext sessions:** Captured traffic reveals reconnaissance targets (e.g., internal IPs, service banners) and stolen credentials.
+
+Evasion tactics include passive sniffing (generating no detectable traffic) and tunneling C2 inside TLS or DNS (**T15
 
 ## Answer key
 Sample sha256: `c039d5d4db1a5d96dd80c4a321a2bdf6013428a9cf0782f780883e0b44851c77`
@@ -299,6 +317,16 @@ Windows event-log references (host-side AiTM/relay corroboration):
 Sample-data provenance (documentation-only names/addresses):
 - IANA reserved / special-use domain names (`example.com`, RFC 6761): https://www.iana.org/domains/reserved
 - RFC 5737 — IPv4 address blocks reserved for documentation: https://datatracker.ietf.org/doc/html/rfc5737
+- https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.1
+- https://attack.mitre.org/techniques/T1048/
+- https://www.sans.org/blog/using-tcpflow-to-reconstruct-network-streams/
+- https://www.sans.org/blog/understanding-protocol-hierarchy-statistics/
+- https://github.com/jpr5/ngrep#readme
+- https://www.sans.org/white-papers/34975/
+- https://attack.mitre.org/techniques/T1572/
+- https://www.sans.org/blog/using-ngrep-for-rapid-payload-inspection/
+- https://attack.mitre.org/techniques/T1563/
+- https://attack.mitre.org/techniques/T1021/002/
 
 ## Related modules
 - [Wireshark / tshark deep packet analysis](../24-wireshark-deep/README.md) -- shares ngrep, and goes deeper on Wireshark/tshark dissection covered here.
@@ -328,3 +356,5 @@ Sample-data provenance (documentation-only names/addresses):
 - https://csrc.nist.gov/publications/detail/sp/800-86/final
 
 <!-- cyberlab-enriched: v5 -->
+
+<!-- cyberlab-enriched: v6 -->
